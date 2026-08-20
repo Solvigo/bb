@@ -257,6 +257,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "view",
     "overflow",
     "showLineNumbers",
+    "experimental_fullFileContents",
     "experimental_Original",
   ],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
