@@ -7,7 +7,7 @@
 // Server-owned policy lives here: the reply-anchor seed rule and the
 // empty-fork cleanup sweep. The archive cascade is BB's own: a hidden fork
 // retires with its source thread whether or not this plugin is enabled.
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const REPLY_SEED_PREFIX =
@@ -176,9 +176,14 @@ export const sideChatRpcContract = defineRpcContract({
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(sideChatRpcContract, {
     async createSideChat({ sourceThreadId, sourceSeqEnd, anchorText }) {
+      // The seed rule reads only the source's *last* conversation message, and
+      // every timeline segment is anchored at a user message — so the newest
+      // segment always holds it. Without this the lookup projects the default
+      // 20 segments of nested rows on the activation path.
       const timeline = await bb.sdk.threads.timeline({
         threadId: sourceThreadId,
         includeNestedRows: "true",
+        segmentLimit: "1",
       });
       const seedText = resolveReplySeedText({
         anchorText,

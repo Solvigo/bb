@@ -9,14 +9,14 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { AvailableModel, ProviderInfo } from "@bb/domain";
-import type { ProviderModelPickerValue } from "@bb/plugin-sdk";
+import type { ProviderModelPickerValue } from "@get-bb/plugin-sdk";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import {
-  claudeModelCatalogCacheKey,
-  writeCachedClaudeModelCatalog,
-} from "@/lib/claude-model-catalog-cache";
+  modelCatalogCacheKey,
+  writeCachedModelCatalog,
+} from "@/lib/model-catalog-cache";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { PluginProviderModelPicker } from "./PluginProviderModelPicker";
@@ -38,12 +38,13 @@ function provider(id: string, displayName: string): ProviderInfo {
     available: true,
     composerActions: [],
     capabilities: {
-      supportsArchive: true,
-      supportsRename: true,
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
       supportsServiceTier: false,
-      supportsUserQuestion: true,
+      supportsNativeUserQuestion: true,
       supportsFork: true,
-      supportedPermissionModes: ["auto"],
+      supportsSessionRewind: true,
+      permissionModes: ["auto"],
     },
   };
 }
@@ -207,8 +208,12 @@ describe("PluginProviderModelPicker", () => {
       }),
       executionOptions([model("gpt-5.5", "GPT-5.5", true)]),
     );
-    writeCachedClaudeModelCatalog(
-      claudeModelCatalogCacheKey({ environmentId: null, hostId: null }),
+    writeCachedModelCatalog(
+      modelCatalogCacheKey({
+        environmentId: null,
+        hostId: null,
+        providerId: "claude-code",
+      }),
       {
         models: [model("claude-stale", "Claude Stale", true)],
         selectedOnlyModels: [],

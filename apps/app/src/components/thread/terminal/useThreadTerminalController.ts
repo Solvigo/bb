@@ -30,6 +30,7 @@ import {
   shouldShowRetainedTerminalSession,
 } from "@/lib/terminal-session-visibility";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
+import type { TerminalCreateTarget } from "@bb/server-contract";
 
 export const DEFAULT_TERMINAL_COLS = 100;
 export const DEFAULT_TERMINAL_ROWS = 30;
@@ -46,6 +47,10 @@ export interface ThreadTerminalControllerArgs {
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
   panelStateId?: string;
+  /** Thread whose tabs are server-synced; null for local-only panel state. */
+  syncThreadId: string | null;
+  fixedPanelTarget?: TerminalCreateTarget;
+  fixedTerminalId?: string;
   target: ThreadTerminalTarget;
 }
 
@@ -66,6 +71,14 @@ export interface ThreadTerminalController {
   isCreateTerminalPending: boolean;
   isPanelOpen: boolean;
   isTerminalQueryLoading: boolean;
+  /**
+   * Whether the terminal UI (xterm + its socket) should be mounted right now.
+   * True while the panel is open, and — once the panel has been opened on this
+   * client — while it stays persisted-open but hidden (a compact drawer that
+   * was swiped closed). Keeping the view alive across a compact close/reopen
+   * avoids re-creating xterm/WebGL and replaying the scrollback on every open.
+   */
+  shouldMountTerminalView: boolean;
   showTerminalPlaceholders: boolean;
   shouldRetainActiveTerminalView: boolean;
   terminalBodyMessage: string;
@@ -125,6 +138,26 @@ export function shouldAutoCloseCleanTerminalSession({
   );
 }
 
+/**
+ * A hidden-but-persisted panel (compact drawer closed, persisted state still
+ * open) keeps an already-mounted terminal view alive; a panel that has never
+ * been opened on this client mounts nothing, so a persisted-open terminal tab
+ * synced from another device does not start xterm on a phone that never showed
+ * it. On desktop `isPanelOpen === isPanelPersistedOpen`, so this reduces to
+ * `isPanelOpen`.
+ */
+export function shouldMountTerminalViewForPanel({
+  hasPanelOpened,
+  isPanelOpen,
+  isPanelPersistedOpen,
+}: {
+  hasPanelOpened: boolean;
+  isPanelOpen: boolean;
+  isPanelPersistedOpen: boolean;
+}): boolean {
+  return isPanelOpen || (isPanelPersistedOpen && hasPanelOpened);
+}
+
 export function shouldAutoCloseCleanTerminalSessionsForPanel({
   isPanelOpen,
   isPanelPersistedOpen,
@@ -135,10 +168,16 @@ export function shouldAutoCloseCleanTerminalSessionsForPanel({
   return !isPanelOpen && !isPanelPersistedOpen;
 }
 
-function pickActiveTerminalId(
+export function pickActiveTerminalId(
   sessions: readonly TerminalSession[],
   preferredTerminalId: string | null,
+  fixedTerminalId?: string,
 ): string | null {
+  if (fixedTerminalId !== undefined) {
+    return sessions.some((session) => session.id === fixedTerminalId)
+      ? fixedTerminalId
+      : null;
+  }
   if (
     preferredTerminalId &&
     sessions.some((session) => session.id === preferredTerminalId)
@@ -166,6 +205,9 @@ export function useThreadTerminalController({
   isPanelOpen,
   isPanelPersistedOpen,
   panelStateId,
+  syncThreadId,
+  fixedPanelTarget,
+  fixedTerminalId,
   target,
 }: ThreadTerminalControllerArgs): ThreadTerminalController {
   const queryClient = useQueryClient();
@@ -180,23 +222,22 @@ export function useThreadTerminalController({
   const environmentQueryId =
     target.kind === "environment" ? target.environmentId : "";
   const fixedPanelStateId = panelStateId ?? terminalTargetId;
-  const fixedPanelSyncThreadId =
-    target.kind === "thread" ? target.threadId : null;
   const activeFixedTerminalId = useActiveFixedRightTerminalId(
     fixedPanelStateId,
-    fixedPanelSyncThreadId,
+    syncThreadId,
   );
   const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(
     fixedPanelStateId,
-    fixedPanelSyncThreadId,
+    syncThreadId,
   );
   const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
     fixedPanelStateId,
-    fixedPanelSyncThreadId,
+    syncThreadId,
+    fixedPanelTarget,
   );
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     fixedPanelStateId,
-    fixedPanelSyncThreadId,
+    syncThreadId,
   );
   const uiCreatedTerminalIdsRef = useRef<Set<string>>(new Set());
   const dirtyTerminalIdsRef = useRef<Set<string>>(new Set());
@@ -209,6 +250,20 @@ export function useThreadTerminalController({
   const [retainedTerminalViewId, setRetainedTerminalViewId] = useState<
     string | null
   >(null);
+  // Whether this client has shown the panel since it was last persisted-open.
+  // Derived during render (not in an effect) so the mount decision below never
+  // lags a commit behind `isPanelOpen`.
+  const [hasPanelOpened, setHasPanelOpened] = useState(isPanelOpen);
+  if (isPanelOpen && !hasPanelOpened) {
+    setHasPanelOpened(true);
+  } else if (!isPanelOpen && !isPanelPersistedOpen && hasPanelOpened) {
+    setHasPanelOpened(false);
+  }
+  const shouldMountTerminalView = shouldMountTerminalViewForPanel({
+    hasPanelOpened,
+    isPanelOpen,
+    isPanelPersistedOpen,
+  });
   const threadTerminalsQuery = useThreadTerminals(threadQueryId, {
     enabled: isPanelOpen && terminalTargetKind === "thread",
   });
@@ -285,8 +340,13 @@ export function useThreadTerminalController({
     [retainedTerminalViewId, sessions],
   );
   const activeTerminalId = useMemo(
-    () => pickActiveTerminalId(visibleSessions, activeFixedTerminalId),
-    [activeFixedTerminalId, visibleSessions],
+    () =>
+      pickActiveTerminalId(
+        visibleSessions,
+        activeFixedTerminalId,
+        fixedTerminalId,
+      ),
+    [activeFixedTerminalId, fixedTerminalId, visibleSessions],
   );
   const activeSession =
     visibleSessions.find((session) => session.id === activeTerminalId) ?? null;
@@ -295,7 +355,7 @@ export function useThreadTerminalController({
     activeSession.id === retainedTerminalViewId;
 
   useEffect(() => {
-    if (!isPanelOpen) {
+    if (!shouldMountTerminalView) {
       setRetainedTerminalViewId(null);
       return;
     }
@@ -313,8 +373,8 @@ export function useThreadTerminalController({
     activeSession?.id,
     activeSession?.status,
     activeTerminalId,
-    isPanelOpen,
     retainedTerminalViewId,
+    shouldMountTerminalView,
   ]);
 
   useEffect(() => {
@@ -729,6 +789,7 @@ export function useThreadTerminalController({
     isCreateTerminalPending,
     isPanelOpen,
     isTerminalQueryLoading: terminalsQuery.isLoading,
+    shouldMountTerminalView,
     showTerminalPlaceholders,
     shouldRetainActiveTerminalView,
     terminalBodyMessage,

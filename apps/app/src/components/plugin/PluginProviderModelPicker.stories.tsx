@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ProviderModelPickerValue } from "@bb/plugin-sdk";
+import type { ProviderModelPickerValue } from "@get-bb/plugin-sdk";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { PluginProviderModelPicker } from "./PluginProviderModelPicker";

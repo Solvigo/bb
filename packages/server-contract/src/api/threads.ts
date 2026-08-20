@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   activeThinkingSchema,
-  clientTurnRequestIdSchema,
   callerExecutionInputSourceSchema,
   environmentSchema,
   hostSchema,
@@ -10,7 +9,6 @@ import {
   pendingInteractionSchema,
   permissionModeInputSchema,
   promptInputSchema,
-  providerRateLimitStateSchema,
   reasoningLevelSchema,
   rawThreadIdSchema,
   serviceTierSchema,
@@ -22,6 +20,7 @@ import {
   threadTimelineGoalSchema,
   threadTimelineModelFallbackSchema,
   threadTimelinePendingTodosSchema,
+  threadEventTypeValues,
   threadVisibilitySchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
@@ -212,64 +211,6 @@ export const sendMessageRequestSchema = z.object({
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
-export const providerRateLimitRecoveryReasonSchema = z.enum([
-  "eligible",
-  "thread-not-failed",
-  "no-failed-turn",
-  "input-not-accepted",
-  "no-rate-limit-state",
-  "no-terminal-rate-limit-error",
-  "provider-will-retry",
-  "manual-only",
-  "output-or-side-effect-observed",
-  "superseded",
-  "execution-unavailable",
-]);
-export type ProviderRateLimitRecoveryReason = z.infer<
-  typeof providerRateLimitRecoveryReasonSchema
->;
-
-export const providerRateLimitRecoveryCandidateSchema = z.object({
-  failedRequestId: clientTurnRequestIdSchema,
-  turnId: z.string().min(1),
-  automatic: z.boolean(),
-  resetsAtMs: z.number().int().nonnegative().nullable(),
-  rateLimits: providerRateLimitStateSchema,
-});
-export type ProviderRateLimitRecoveryCandidate = z.infer<
-  typeof providerRateLimitRecoveryCandidateSchema
->;
-
-export const providerRateLimitRecoveryStatusSchema = z.object({
-  reason: providerRateLimitRecoveryReasonSchema,
-  scopeKey: z.string().min(1),
-  hostId: z.string().min(1),
-  rateLimits: providerRateLimitStateSchema.nullable(),
-  candidate: providerRateLimitRecoveryCandidateSchema.nullable(),
-});
-export type ProviderRateLimitRecoveryStatus = z.infer<
-  typeof providerRateLimitRecoveryStatusSchema
->;
-
-export const continueAfterProviderRateLimitRequestSchema = z
-  .object({
-    failedRequestId: clientTurnRequestIdSchema,
-    /** Omitted by pre-attribution clients; the server treats omission as manual. */
-    mode: z.enum(["automatic", "manual"]).optional(),
-  })
-  .strict();
-export type ContinueAfterProviderRateLimitRequest = z.infer<
-  typeof continueAfterProviderRateLimitRequestSchema
->;
-
-export const continueAfterProviderRateLimitResponseSchema = z.object({
-  ok: z.literal(true),
-  requestId: clientTurnRequestIdSchema,
-});
-export type ContinueAfterProviderRateLimitResponse = z.infer<
-  typeof continueAfterProviderRateLimitResponseSchema
->;
-
 export const editMessageRequestSchema = sendMessageRequestSchema
   .omit({ mode: true })
   .extend({
@@ -393,6 +334,9 @@ export type ThreadSearchHighlightRange = z.infer<
 export const threadSearchMatchSchema = z
   .object({
     sourceKind: threadSearchSourceKindSchema,
+    // Title matches carry the whole title. Message matches carry a bounded
+    // snippet around the first hit (an ellipsis marks each cut side), and the
+    // highlight ranges are offsets into that snippet.
     text: z.string(),
     highlightRanges: z.array(threadSearchHighlightRangeSchema),
     // Event sequence of the message this match came from, so the UI can deep-link
@@ -722,6 +666,13 @@ export const timelinePageMetadataSchema = z
 
 export const threadTimelineQuerySchema = z
   .object({
+    /**
+     * When `"true"`, completed turns carry their child rows inline and every
+     * command/tool row carries its full inline output (bounded by the 32 K
+     * inline cap). The default window collapses completed turns and replaces
+     * the running turn's large outputs with a head+tail preview marked by
+     * `outputPreview`; read those whole via `timelineTurnSummaryDetails`.
+     */
     includeNestedRows: z.enum(["true", "false"]),
     segmentLimit: z.string().regex(/^\d+$/),
     beforeAnchorSeq: z.string().regex(/^[1-9]\d*$/),
@@ -772,7 +723,17 @@ export type TimelineTurnSummaryDetailsQuery = z.infer<
 export const threadEventsQuerySchema = z
   .object({
     afterSeq: z.string().regex(/^\d+$/),
+    beforeSeq: z.string().regex(/^\d+$/),
     limit: z.string().regex(/^\d+$/),
+    order: z.enum(["asc", "desc"]),
+    types: z.string().refine(
+      (value) =>
+        isCommaSeparatedIncludeQueryValue({
+          allowedValues: threadEventTypeValues,
+          value,
+        }),
+      "Invalid thread event types",
+    ),
   })
   .partial();
 export type ThreadEventsQuery = z.infer<typeof threadEventsQuerySchema>;

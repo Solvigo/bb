@@ -13,11 +13,15 @@ import {
   getPendingInteractionByProviderRequest,
 } from "../src/data/pending-interactions.js";
 import {
+  appendDaemonEventsInTransaction,
+  hasParentedEventCrossingSequence,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
+  listStoredEventRows,
+  listStoredEventRowsByParentToolCallIds,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
@@ -171,9 +175,14 @@ function captureStatements(
     value: (source: string) => {
       const statement = originalPrepare(source);
       const originalAll = statement.all.bind(statement);
+      const originalGet = statement.get.bind(statement);
       statement.all = (...params: unknown[]) => {
         captured.push({ params: params as SqliteParameter[], sql: source });
         return originalAll(...params);
+      };
+      statement.get = (...params: unknown[]) => {
+        captured.push({ params: params as SqliteParameter[], sql: source });
+        return originalGet(...params);
       };
       return statement;
     },
@@ -213,7 +222,164 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
-  it("pins active background-task scans to the partial index", () => {
+  it("uses the thread/type/sequence index for filtered event pages", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listStoredEventRows(db, {
+          beforeSequence: 100,
+          limit: 25,
+          order: "desc",
+          threadId: thread.id,
+          types: ["provider/error", "turn/completed"],
+        }),
+      ).toEqual([]);
+    });
+    expect(captured).toHaveLength(2);
+    for (const query of captured) {
+      const details = queryPlanDetails({
+        db,
+        params: query.params,
+        sql: query.sql,
+      });
+      expect(details).toMatch(/USING INDEX events_thread_type_sequence_idx/u);
+      expect(details).not.toMatch(/events_thread_sequence_idx/u);
+    }
+
+    db.$client.close();
+  });
+
+  it("loads daemon item lifecycle state through the targeted partial index", () => {
+    const { db, logger, thread } = setup();
+    const turnId = "turn-lifecycle-plan";
+    const itemId = "item-lifecycle-plan";
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope(turnId),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ providerThreadId: "provider-plan" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/completed",
+        scope: turnScope(turnId),
+        itemId,
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          providerThreadId: "provider-plan",
+          item: { type: "agentMessage", id: itemId, text: "done" },
+        }),
+      },
+    ]);
+
+    db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/completed",
+            scope: turnScope(turnId),
+            itemId,
+            itemKind: "agentMessage",
+            parentToolCallId: null,
+            providerThreadId: "provider-plan",
+            data: JSON.stringify({
+              providerThreadId: "provider-plan",
+              item: { type: "agentMessage", id: itemId, text: "done" },
+            }),
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    const debugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" && fields.sql.includes("requested_item"),
+    });
+    expect(debugLog.fields.bindingArgumentCount).toBe(2);
+    const lifecycleTypes =
+      "IN ('item/started', 'item/completed', 'item/backgroundTask/completed')";
+    const planSql = debugLog.fields.sql.replaceAll(
+      "IN ( '?', '?', '?' )",
+      lifecycleTypes,
+    );
+    const details = queryPlanDetails({
+      db,
+      params: [thread.id, itemId],
+      sql: planSql,
+    });
+    expect(
+      details.match(/events_item_lifecycle_thread_item_sequence_idx/gu),
+    ).toHaveLength(2);
+
+    db.$client.close();
+  });
+
+  it("resolves parent crossings through the covering tool-call index", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        hasParentedEventCrossingSequence(db, {
+          sequence: 2,
+          threadId: thread.id,
+        }),
+      ).toBe(false);
+    });
+    const query = captured.find((entry) =>
+      entry.sql.includes("parent_event.item_id"),
+    );
+    if (!query) {
+      throw new Error("Expected the parent-crossing lookup SQL");
+    }
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(details).toMatch(
+      /SEARCH parent_event .*USING COVERING INDEX events_tool_call_parent_lookup_idx/u,
+    );
+
+    db.$client.close();
+  });
+
+  it("loads parented timeline rows through the normalized parent index", () => {
+    const { db, thread } = setup();
+
+    const [query] = captureStatements(db, () => {
+      expect(
+        listStoredEventRowsByParentToolCallIds(db, {
+          maxInlineOutputChars: null,
+          parentToolCallIds: ["parent-tool-call"],
+          threadId: thread.id,
+        }),
+      ).toEqual([]);
+    });
+    if (!query) {
+      throw new Error("Expected the parented timeline row lookup SQL");
+    }
+    expect(
+      queryPlanDetails({ db, params: query.params, sql: query.sql }),
+    ).toMatch(
+      /SEARCH events USING INDEX events_parent_tool_call_thread_parent_sequence_idx/u,
+    );
+
+    db.$client.close();
+  });
+
+  it("scans background-task history once without a completed-set join", () => {
     const { db, thread } = setup();
 
     const captured = captureStatements(db, () => {
@@ -222,12 +388,12 @@ describe("slow query index plans", () => {
       });
     });
     const query = captured.find((entry) =>
-      entry.sql.includes("latest_background_task_activity"),
+      entry.sql.includes("latest_background_task_state"),
     );
     if (!query) {
       throw new Error("Expected the active background-task count SQL");
     }
-    expect(query.params).toHaveLength(13);
+    expect(query.params).toHaveLength(15);
     const details = queryPlanDetails({
       db,
       params: query.params,
@@ -235,50 +401,67 @@ describe("slow query index plans", () => {
     });
     expect(
       details.match(/events_background_task_thread_type_item_sequence_idx/gu),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(details).not.toMatch(/CORRELATED|LEFT-JOIN|SCAN completed/u);
 
     db.$client.close();
   });
 
   it("uses selective indexes for conversation-outline events", () => {
-    const { db, logger, thread } = setup();
+    const { db, thread } = setup();
 
-    listStoredConversationOutlineEventRows(db, { threadId: thread.id });
-
-    const debugLog = findOnlyDebugLog({
-      logger,
-      predicate: (fields) =>
-        fields.operation === "all" && fields.sql.includes('from "events"'),
+    // The slow-query log truncates this union past 1,000 chars; capture the
+    // statement itself.
+    const captured = captureStatements(db, () => {
+      listStoredConversationOutlineEventRows(db, { threadId: thread.id });
     });
-    assertEmittedQueryPlanUsesIndex({
+    const outline = captured.filter((query) =>
+      query.sql.includes('from "events"'),
+    );
+    expect(outline).toHaveLength(1);
+    const [query] = outline;
+    expect(query?.params).toEqual([
+      thread.id,
+      "client/turn/requested",
+      "turn/input/accepted",
+      "turn/started",
+      "turn/completed",
+      "system/manager/user_message",
+      "system/thread/interrupted",
+      "system/error",
+      "provider/error",
+      "item/agentMessage/delta",
+      "item/plan/delta",
+      thread.id,
+      "item/completed",
+      "agentMessage",
+      "plan",
+      thread.id,
+      "item/started",
+      "item/completed",
+      "item/backgroundTask/progress",
+      "item/backgroundTask/completed",
+      "backgroundTask",
+      "toolCall",
+    ]);
+    const details = queryPlanDetails({
       db,
-      debugLog,
-      indexName: "events_thread_type_item_kind_sequence_idx",
-      params: [
-        thread.id,
-        "client/turn/requested",
-        "turn/input/accepted",
-        "turn/started",
-        "turn/completed",
-        "system/manager/user_message",
-        "system/thread/interrupted",
-        "system/error",
-        "provider/error",
-        "item/agentMessage/delta",
-        "item/plan/delta",
-        thread.id,
-        "item/completed",
-        "agentMessage",
-        "plan",
-        thread.id,
-        "item/started",
-        "item/completed",
-        "item/backgroundTask/progress",
-        "item/backgroundTask/completed",
-        "backgroundTask",
-        "toolCall",
-      ],
+      params: query?.params ?? [],
+      sql: query?.sql ?? "",
     });
+    // Each union branch stays on a thread/type index (the lifecycle branch has
+    // no item kind); the superseded-snapshot check on the structural branch
+    // probes the background-task partial index instead of scanning.
+    expect(
+      details.match(/USING INDEX events_thread_type_sequence_idx/gu),
+    ).toHaveLength(1);
+    expect(
+      details.match(/USING INDEX events_thread_type_item_kind_sequence_idx/gu),
+    ).toHaveLength(2);
+    expect(details).toMatch(
+      /USING COVERING INDEX events_background_task_thread_type_item_sequence_idx/u,
+    );
+    expect(details).not.toMatch(/SCAN events/u);
 
     db.$client.close();
   });
@@ -419,6 +602,7 @@ describe("slow query index plans", () => {
         }),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         scope: turnScope("turn_query_plan"),
         sequence: 1,
         threadId: thread.id,
@@ -433,6 +617,7 @@ describe("slow query index plans", () => {
         }),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         scope: turnScope("turn_query_plan"),
         sequence: 2,
         threadId: thread.id,
@@ -442,6 +627,7 @@ describe("slow query index plans", () => {
         data: "{}",
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         scope: threadScope(),
         sequence: 3,
         threadId: thread.id,
@@ -568,6 +754,7 @@ describe("slow query index plans", () => {
         }),
         itemId: "cmd-truncation-query-plan",
         itemKind: "commandExecution",
+        parentToolCallId: null,
         scope: turnScope("turn_truncation_query_plan"),
         sequence: 1,
         threadId: thread.id,
@@ -615,6 +802,7 @@ describe("slow query index plans", () => {
         data: JSON.stringify({ output: "first", parentToolCallId: "parent" }),
         itemId,
         itemKind: null,
+        parentToolCallId: "parent",
         scope: turnScope(turnId),
         sequence: 1,
         threadId: thread.id,
@@ -624,6 +812,7 @@ describe("slow query index plans", () => {
         data: JSON.stringify({ output: "second", parentToolCallId: "parent" }),
         itemId,
         itemKind: null,
+        parentToolCallId: "parent",
         scope: turnScope(turnId),
         sequence: 2,
         threadId: thread.id,
@@ -640,6 +829,7 @@ describe("slow query index plans", () => {
         }),
         itemId,
         itemKind: "commandExecution",
+        parentToolCallId: "parent",
         scope: turnScope(turnId),
         sequence: 3,
         threadId: thread.id,
@@ -699,6 +889,7 @@ describe("slow query index plans", () => {
         data: JSON.stringify({ goal: "guard the query plan" }),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         scope: threadScope(),
         sequence: 1,
         threadId: thread.id,

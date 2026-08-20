@@ -30,6 +30,7 @@ import type {
 } from "@bb/sdk";
 import type {
   BbSdk as BrowserBbSdk,
+  BrowserBbSdk as BrowserRuntimeBbSdk,
   BbRealtimeConnectionEvent as BrowserRealtimeConnection,
   EnvironmentStatusResult as BrowserEnvironmentStatus,
   FileReadResult as BrowserFileRead,
@@ -109,6 +110,7 @@ import type {
   ThreadSectionListResult as NodeThreadSectionList,
   ThreadSpawnResult as NodeThreadSpawn,
 } from "@bb/sdk/node";
+import type { createBrowserBbSdk } from "@bb/sdk/browser";
 
 interface RootSurface {
   environmentStatus: RootEnvironmentStatus;
@@ -293,12 +295,19 @@ type ExpectedPluginsKey =
   | "install"
   | "list"
   | "listUpdateResults"
+  | "marketplaces"
   | "reload"
   | "remove"
   | "token"
   | "updateSettings";
 
-type ExpectedPluginCatalogKey = "install" | "search" | "status" | "submission";
+type ExpectedPluginCatalogKey =
+  | "install"
+  | "installPlan"
+  | "search"
+  | "status";
+
+type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
 
 type ExpectedProjectsKey =
   | "attachments"
@@ -352,7 +361,6 @@ type ExpectedThreadsKey =
   | "childSummary"
   | "clearGoal"
   | "compact"
-  | "continueAfterRateLimit"
   | "conversationOutline"
   | "defaultExecutionOptions"
   | "delete"
@@ -370,7 +378,6 @@ type ExpectedThreadsKey =
   | "pin"
   | "promptHistory"
   | "queuedMessages"
-  | "rateLimitRecovery"
   | "reorderPinned"
   | "resolveMentions"
   | "search"
@@ -426,6 +433,17 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<BrowserBbSdk>().toEqualTypeOf<RootBbSdk>();
     expectTypeOf<CoreBbSdk>().toEqualTypeOf<RootBbSdk>();
     expectTypeOf<NodeBbSdk>().toEqualTypeOf<RootBbSdk>();
+  });
+
+  it("keeps the local guide area off the browser SDK instance", () => {
+    // The guide bundles the generated templates; the browser factory must not
+    // attach it so those bytes stay out of the web app's boot chunk.
+    expectTypeOf<keyof BrowserRuntimeBbSdk>().toEqualTypeOf<
+      Exclude<ExpectedBbSdkKey, "guide">
+    >();
+    expectTypeOf<
+      ReturnType<typeof createBrowserBbSdk>
+    >().toEqualTypeOf<BrowserRuntimeBbSdk>();
   });
 
   it("exports only the public permission presets", () => {
@@ -494,6 +512,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["plugins"]["catalog"]
     >().toEqualTypeOf<ExpectedPluginCatalogKey>();
+    expectTypeOf<
+      keyof RootBbSdk["plugins"]["marketplaces"]
+    >().toEqualTypeOf<ExpectedPluginMarketplacesKey>();
     expectTypeOf<
       keyof RootBbSdk["projects"]
     >().toEqualTypeOf<ExpectedProjectsKey>();

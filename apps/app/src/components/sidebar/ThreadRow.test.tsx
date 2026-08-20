@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
-import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resetSidebarTitleDoubleClickForTest,
@@ -22,9 +28,9 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
     renameThread: mocks.renameThread,
   }),
 }));
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import {
-  SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "./sidebarRowClasses";
@@ -49,6 +55,7 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
     <>{children}</>
   ),
   ThreadActionsMenu: () => null,
+  ThreadArchiveQuickAction: () => null,
 }));
 
 function createThread(
@@ -104,6 +111,7 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
 
 function ThreadRowTestHarness({
   accessibleTitle,
+  crossProjectId = null,
   displayTitle,
   hasComposerDraft = false,
   isActive = false,
@@ -112,6 +120,7 @@ function ThreadRowTestHarness({
   thread,
 }: {
   accessibleTitle?: string;
+  crossProjectId?: string | null;
   displayTitle?: string;
   hasComposerDraft?: boolean;
   isActive?: boolean;
@@ -130,17 +139,20 @@ function ThreadRowTestHarness({
 
   return (
     <MemoryRouter>
-      <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
-        <ThreadRow
-          projectId={thread.projectId}
-          thread={thread}
-          isActive={isActive}
-          hasComposerDraft={hasComposerDraft}
-          options={options}
-          displayTitle={displayTitle}
-          accessibleTitle={accessibleTitle}
-        />
-      </SidebarThreadShortcutKeysContext.Provider>
+      <TooltipProvider>
+        <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
+          <ThreadRow
+            projectId={thread.projectId}
+            thread={thread}
+            crossProjectId={crossProjectId}
+            isActive={isActive}
+            hasComposerDraft={hasComposerDraft}
+            options={options}
+            displayTitle={displayTitle}
+            accessibleTitle={accessibleTitle}
+          />
+        </SidebarThreadShortcutKeysContext.Provider>
+      </TooltipProvider>
     </MemoryRouter>
   );
 }
@@ -353,28 +365,6 @@ describe("ThreadRow", () => {
       expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
     },
   );
-
-  it("uses the opaque split tint on a sticky parent thread row", () => {
-    const { container } = renderSplitThreadRow({
-      options: {
-        kind: "parent",
-        depth: 0,
-        isCompact: false,
-        isCollapsed: false,
-        childCount: 1,
-        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-        stickyLevel: 0,
-        onToggleCollapsed: vi.fn(),
-      },
-    });
-
-    const stickyRow = container.querySelector(
-      '[data-sidebar-sticky-tier="parent"]',
-    );
-    expect(stickyRow?.classList).toContain(
-      SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
-    );
-  });
 
   it.each([
     ["idle", createThread()],
@@ -671,6 +661,65 @@ describe("ThreadRow", () => {
       screen.getByRole("link", { name: `Open ${resolvedTitle}` }),
     ).not.toBeNull();
     expect(screen.getByTitle(resolvedTitle)).not.toBeNull();
+  });
+
+  it("marks a child from another project with the project name", () => {
+    const { container } = render(
+      <SidebarThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map()}
+        projectNamesById={new Map([["proj_other", "Web App"]])}
+        threadById={new Map()}
+      >
+        <ThreadRowTestHarness
+          crossProjectId="proj_other"
+          thread={createThread({
+            parentThreadId: "thr_parent",
+            projectId: "proj_other",
+          })}
+        />
+      </SidebarThreadTitleMentionResourcesProvider>,
+    );
+
+    const marker = container.querySelector(
+      "[data-sidebar-thread-cross-project]",
+    );
+    expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
+    expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
+    // The marker hugs the title; it never sits in the trailing status slot.
+    expect(
+      marker?.closest("[data-sidebar-thread-trailing-indicator]"),
+    ).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open Thread" }).getAttribute("href"),
+    ).toBe("/projects/proj_other/threads/thr_test");
+  });
+
+  it("opens the thread when the cross-project marker is clicked", () => {
+    const { container } = render(
+      <ThreadRowTestHarness
+        crossProjectId="proj_other"
+        thread={createThread({
+          parentThreadId: "thr_parent",
+          projectId: "proj_other",
+        })}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const onLinkClick = vi.fn();
+    link.addEventListener("click", onLinkClick);
+
+    fireEvent.click(
+      container.querySelector("[data-sidebar-thread-cross-project]")!,
+    );
+
+    expect(onLinkClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the cross-project marker for same-project rows", () => {
+    const { container } = renderThreadRow({});
+    expect(
+      container.querySelector("[data-sidebar-thread-cross-project]"),
+    ).toBeNull();
   });
 
   it("keeps an explicit accessible title while resolving its mentions", () => {
@@ -1286,7 +1335,10 @@ describe("ThreadRow", () => {
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThread).toHaveBeenCalledWith("thr_test", "Renamed thread");
+    expect(mocks.renameThread).toHaveBeenCalledWith(
+      "thr_test",
+      "Renamed thread",
+    );
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Thread")).not.toBeNull();
   });

@@ -11,6 +11,9 @@ importers:
 
   .:
     devDependencies:
+      '@vitest/coverage-v8':
+        specifier: 4.1.1
+        version: 4.1.1(vitest@4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@24.12.4)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)))
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
@@ -47,9 +50,6 @@ importers:
 
   apps/app:
     dependencies:
-      '@bb/agent-providers':
-        specifier: workspace:*
-        version: link:../../packages/agent-providers
       '@bb/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -68,9 +68,6 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
-      '@bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -98,6 +95,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: ^5.2.8
         version: 5.2.8
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.80.0(react@19.2.4))
@@ -453,6 +453,9 @@ importers:
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
+      undici:
+        specifier: ^7.28.0
+        version: 7.28.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -757,9 +760,6 @@ importers:
 
   apps/server:
     dependencies:
-      '@bb/agent-providers':
-        specifier: workspace:*
-        version: link:../../packages/agent-providers
       '@bb/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -781,9 +781,6 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
-      '@bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../../packages/process-utils
@@ -814,6 +811,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 0.84.0
         version: 0.84.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.21.0)(zod@4.3.6)
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@hono/node-server':
         specifier: ^1.19.11
         version: 1.19.14(hono@4.11.9)
@@ -890,6 +890,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       tsx:
         specifier: ^4.23.1
         version: 4.23.1
@@ -1018,7 +1021,7 @@ importers:
         specifier: ^3.4.0
         version: 3.4.0
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@types/react':
@@ -1039,7 +1042,7 @@ importers:
 
   examples/plugins/composer-customization:
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@types/react':
@@ -1054,19 +1057,80 @@ importers:
 
   examples/plugins/content-script:
     devDependencies:
-      '@bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../../packages/tsconfig
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
+  examples/plugins/echo-provider:
+    dependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+    devDependencies:
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../../packages/agent-runtime
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../../../packages/domain
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../../../packages/provider-bridge-protocol
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+
+  examples/plugins/replacement-lab-alpha:
+    devDependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
+  examples/plugins/replacement-lab-beta:
+    devDependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
 
   examples/plugins/slack-bot:
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@types/node':
@@ -1100,7 +1164,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@radix-ui/react-context-menu':
@@ -1145,7 +1209,7 @@ importers:
 
   examples/plugins/thread-chat-demo:
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@types/react':
@@ -1158,28 +1222,6 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
-  packages/agent-providers:
-    dependencies:
-      '@bb/domain':
-        specifier: workspace:*
-        version: link:../domain
-      zod:
-        specifier: 4.3.6
-        version: 4.3.6
-    devDependencies:
-      '@bb/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
-      typescript-7:
-        specifier: npm:typescript@^7.0.2
-        version: typescript@7.0.2
-      vitest:
-        specifier: ^4.1.1
-        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@24.12.4)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
-
   packages/agent-runtime:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
@@ -1188,9 +1230,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.93.0
         version: 0.93.0(zod@4.3.6)
-      '@bb/agent-providers':
-        specifier: workspace:*
-        version: link:../agent-providers
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
@@ -1200,6 +1239,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../process-utils
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../provider-bridge-protocol
       '@earendil-works/pi-ai':
         specifier: 0.84.0
         version: 0.84.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.21.0)(zod@4.3.6)
@@ -1213,12 +1255,18 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../plugin-build
       '@bb/test-helpers':
         specifier: workspace:*
         version: link:../test-helpers
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
@@ -1310,9 +1358,6 @@ importers:
 
   packages/config:
     dependencies:
-      '@bb/agent-providers':
-        specifier: workspace:*
-        version: link:../agent-providers
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
@@ -1663,7 +1708,10 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
-      '@bb/plugin-sdk':
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../process-utils
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
       saxes:
@@ -1844,6 +1892,15 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
+      '@bb/host-daemon-contract':
+        specifier: workspace:*
+        version: link:../host-daemon-contract
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../process-utils
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../provider-bridge-protocol
       '@bb/sdk':
         specifier: workspace:*
         version: link:../sdk
@@ -1929,6 +1986,31 @@ importers:
       vitest:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  packages/provider-bridge-protocol:
+    dependencies:
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../process-utils
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
 
   packages/scripts:
     dependencies:
@@ -2349,7 +2431,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -2395,7 +2477,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@radix-ui/react-dialog':
@@ -2471,7 +2553,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@radix-ui/react-dialog':
@@ -2529,7 +2611,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -2626,7 +2708,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@radix-ui/react-dropdown-menu':
@@ -2678,7 +2760,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@pierre/diffs':
@@ -2730,7 +2812,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -2761,6 +2843,43 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  plugins/keep-awake:
+    dependencies:
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../../packages/shared-ui
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
+      jsdom:
+        specifier: ^29.0.1
+        version: 29.0.1(@noble/hashes@2.0.1)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
   plugins/memory:
     dependencies:
       '@bb/shared-ui':
@@ -2773,7 +2892,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@radix-ui/react-dialog':
@@ -2816,6 +2935,123 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  plugins/provider-acp:
+    dependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@bb/host-daemon-contract':
+        specifier: workspace:*
+        version: link:../../packages/host-daemon-contract
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../../packages/provider-bridge-protocol
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.3.6)
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  plugins/provider-claude-code:
+    dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.3.197
+        version: 0.3.197(@anthropic-ai/sdk@0.93.0(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(zod@4.3.6)
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.3.6)
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../../packages/provider-bridge-protocol
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  plugins/provider-codex:
+    dependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../../packages/process-utils
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../../packages/provider-bridge-protocol
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  plugins/provider-pi:
+    devDependencies:
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   plugins/provider-retry:
     dependencies:
       '@bb/shared-ui':
@@ -2825,7 +3061,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -2871,7 +3107,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@types/node':
@@ -2902,7 +3138,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -3002,7 +3238,7 @@ importers:
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -3057,7 +3293,7 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/plugin-sdk':
+      '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@testing-library/react':
@@ -3469,6 +3705,10 @@ packages:
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
 
+  '@bcoe/v8-coverage@1.0.2':
+    resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
+    engines: {node: '>=18'}
+
   '@better-auth/api-key@1.6.23':
     resolution: {integrity: sha512-HQMTv1GkY5FzE8BlUXdNhuKPBPUvusBYlAtIQElQjfsmGiPiBie7BdzuhcbXhAqJerunU299yvEge2WlZusp+Q==}
     peerDependencies:
@@ -3779,11 +4019,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.hirok.io'
+    deprecated: 'Merged into tsx: https://tsx.is'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.hirok.io'
+    deprecated: 'Merged into tsx: https://tsx.is'
 
   '@esbuild/aix-ppc64@0.19.12':
     resolution: {integrity: sha512-bmoCYyWdEL3wDQIVbcyzRyeKLgk2WtWLTWz1ZIAZF/EGbNOwSA6ew3PftJ1PqMiOOGu0OyFMzG53L0zqIpPeNA==}
@@ -7112,6 +7352,15 @@ packages:
       babel-plugin-react-compiler:
         optional: true
 
+  '@vitest/coverage-v8@4.1.1':
+    resolution: {integrity: sha512-nZ4RWwGCoGOQRMmU/Q9wlUY540RVRxJZ9lxFsFfy0QV7Zmo5VVBhB6Sl9Xa0KIp2iIs3zWfPlo9LcY1iqbpzCw==}
+    peerDependencies:
+      '@vitest/browser': 4.1.1
+      vitest: 4.1.1
+    peerDependenciesMeta:
+      '@vitest/browser':
+        optional: true
+
   '@vitest/expect@3.2.6':
     resolution: {integrity: sha512-1+7q9BtaKzEmO+fmNT3kYvoNn5Y71XWAx2Q5HRim4tTVRQVRv4uJFAQ5FbK0OPUeNP/WmVCpxYxoJdvuHVjzBQ==}
 
@@ -7339,6 +7588,9 @@ packages:
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
     engines: {node: '>=12'}
+
+  ast-v8-to-istanbul@1.0.5:
+    resolution: {integrity: sha512-UPAgKJFSEGMWSDr3LX4tqnAb4f7KGT8O40Tyx8wbYmmZ/yn58lNCm8h3svs3eXgiGd5AXxz8NDOvXWvicq+rJA==}
 
   astral-regex@2.0.0:
     resolution: {integrity: sha512-Z7tMw1ytTXt5jqMcOP+OQteU1VuNK9Y02uuJtKQ1Sv69jXQKKg5cibLwGJow8yzZP+eAc18EmLGPal0bp36rvQ==}
@@ -9014,6 +9266,9 @@ packages:
     resolution: {integrity: sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
+  html-escaper@2.0.2:
+    resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
+
   html-url-attributes@3.0.1:
     resolution: {integrity: sha512-ol6UPyBWqsrO6EJySPz2O7ZSr856WDrEzM5zMqp+FJJLGMW35cLYmmZnl0vztAZxRUoNZJFTCohfjuIJ8I4QBQ==}
 
@@ -9214,6 +9469,18 @@ packages:
     resolution: {integrity: sha512-FFUtZMpoZ8RqHS3XeXEmHWLA4thH+ZxCv2lOiPIn1Xc7CxrqhWzNSDzD+/chS/zbYezmiwWLdQC09JdQKmthOw==}
     engines: {node: '>=20'}
 
+  istanbul-lib-coverage@3.2.2:
+    resolution: {integrity: sha512-O8dpsF+r0WV/8MNRKfnmrtCWhuKjxrq2w+jpzBL5UZKTi2LeVWnWOmWRxFlesJONmc+wLAGvKQZEOanko0LFTg==}
+    engines: {node: '>=8'}
+
+  istanbul-lib-report@3.0.1:
+    resolution: {integrity: sha512-GCfE1mtsHGOELCU8e/Z7YWzpmybrx/+dSTfLrvY8qRmaY6zXTKWn6WQIjaAFw069icm6GVMNkgu0NzI4iPZUNw==}
+    engines: {node: '>=10'}
+
+  istanbul-reports@3.2.0:
+    resolution: {integrity: sha512-HGYWWS/ehqTV3xN10i23tkPkpH46MLCIMFNCaaKNavAXTF1RkqxawEPtnjnGZ6XKSInBKkiOA5BKS+aZiY3AvA==}
+    engines: {node: '>=8'}
+
   jackspeak@3.4.3:
     resolution: {integrity: sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw==}
 
@@ -9256,6 +9523,9 @@ packages:
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
+
+  js-tokens@10.0.0:
+    resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -9529,6 +9799,13 @@ packages:
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
+
+  magicast@0.5.4:
+    resolution: {integrity: sha512-llBEhWm1SacoRwgHUoQJYtwp4PBLF4faQi5TCpIGyGs9n4y5+juI0tDgyKIfpqxckRHaHzouUEph3THklWh03w==}
+
+  make-dir@4.0.0:
+    resolution: {integrity: sha512-hXdUTZYIVOt1Ex//jAQi+wTZZpUpwBj/0QsOzqegb3rGMMeJiSEu5xLHnYfBrRV4RH2+OCSOO95Is/7x1WJ4bw==}
+    engines: {node: '>=10'}
 
   markdown-extensions@2.0.0:
     resolution: {integrity: sha512-o5vL7aDWatOTX8LzaS1WMoaoxIiLRQJuIKKe2wAw6IeULDHaqbiqiggmx+pKvZDb1Sj+pE46Sn1T7lCqfFtg1Q==}
@@ -11073,6 +11350,10 @@ packages:
     resolution: {integrity: sha512-PSkbLUoxOFRzJYjjxHJt9xro7D+iilgMX/C9lawzVuYiIdcihh9DXmVibBe8lmcFrRi/VzlPjBxbN7rH24q8/Q==}
     engines: {node: '>=14.0.0'}
 
+  tinyrainbow@3.1.1:
+    resolution: {integrity: sha512-yau8yJdTt989Mm0Bd/236QnzEiPf2xLLTqUZRUJOo/3CB078LSwzei343DgtJVmfJKJE3TMINY1u42SQsP6mXw==}
+    engines: {node: '>=14.0.0'}
+
   tinyspy@4.0.4:
     resolution: {integrity: sha512-azl+t0z7pw/z958Gy9svOTuzqIk6xq+NSheJzn5MMWtWTFywIacg2wUlzKFGtt3cthx0r2SxMK0yzJOR0IES7Q==}
     engines: {node: '>=14.0.0'}
@@ -12205,6 +12486,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@bcoe/v8-coverage@1.0.2': {}
 
   '@better-auth/api-key@1.6.23(kwfb6lyrxcj2vebmactxzkfwj4)':
     dependencies:
@@ -15779,6 +16062,20 @@ snapshots:
       '@rolldown/plugin-babel': 0.2.3(@babel/core@7.29.0)(@babel/runtime@7.29.7)(rolldown@1.0.0)(vite@8.0.12(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
       babel-plugin-react-compiler: 1.0.0
 
+  '@vitest/coverage-v8@4.1.1(vitest@4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@24.12.4)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)))':
+    dependencies:
+      '@bcoe/v8-coverage': 1.0.2
+      '@vitest/utils': 4.1.1
+      ast-v8-to-istanbul: 1.0.5
+      istanbul-lib-coverage: 3.2.2
+      istanbul-lib-report: 3.0.1
+      istanbul-reports: 3.2.0
+      magicast: 0.5.4
+      obug: 2.1.1
+      std-env: 4.0.0
+      tinyrainbow: 3.1.1
+      vitest: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@24.12.4)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
   '@vitest/expect@3.2.6':
     dependencies:
       '@types/chai': 5.2.3
@@ -16114,6 +16411,12 @@ snapshots:
     optional: true
 
   assertion-error@2.0.1: {}
+
+  ast-v8-to-istanbul@1.0.5:
+    dependencies:
+      '@jridgewell/trace-mapping': 0.3.31
+      estree-walker: 3.0.3
+      js-tokens: 10.0.0
 
   astral-regex@2.0.0:
     optional: true
@@ -18047,6 +18350,8 @@ snapshots:
     transitivePeerDependencies:
       - '@noble/hashes'
 
+  html-escaper@2.0.2: {}
+
   html-url-attributes@3.0.1: {}
 
   html-void-elements@3.0.0: {}
@@ -18223,6 +18528,19 @@ snapshots:
 
   isexe@4.0.0: {}
 
+  istanbul-lib-coverage@3.2.2: {}
+
+  istanbul-lib-report@3.0.1:
+    dependencies:
+      istanbul-lib-coverage: 3.2.2
+      make-dir: 4.0.0
+      supports-color: 7.2.0
+
+  istanbul-reports@3.2.0:
+    dependencies:
+      html-escaper: 2.0.2
+      istanbul-lib-report: 3.0.1
+
   jackspeak@3.4.3:
     dependencies:
       '@isaacs/cliui': 8.0.2
@@ -18251,6 +18569,8 @@ snapshots:
       react: 19.2.4
 
   joycon@3.1.1: {}
+
+  js-tokens@10.0.0: {}
 
   js-tokens@4.0.0: {}
 
@@ -18516,6 +18836,16 @@ snapshots:
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  magicast@0.5.4:
+    dependencies:
+      '@babel/parser': 7.29.7
+      '@babel/types': 7.29.7
+      source-map-js: 1.2.1
+
+  make-dir@4.0.0:
+    dependencies:
+      semver: 7.8.5
 
   markdown-extensions@2.0.0: {}
 
@@ -20593,6 +20923,8 @@ snapshots:
   tinyrainbow@2.0.0: {}
 
   tinyrainbow@3.0.3: {}
+
+  tinyrainbow@3.1.1: {}
 
   tinyspy@4.0.4: {}
 

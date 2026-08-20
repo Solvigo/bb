@@ -36,6 +36,7 @@ import {
   PULL_REQUEST_STATE_DISPLAY,
 } from "@/lib/pull-request-display";
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
+import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -633,7 +634,9 @@ function PullRequestBannerLink({
       className={cn(
         "flex items-center gap-1.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
-        SEGMENT_SHRINK_CLASS,
+        // Preserve the checked status pill (min-w-9) plus the inlay's px-2.
+        // Labels may still truncate, but the two status glyphs must not clip.
+        "min-w-13 overflow-hidden",
       )}
     >
       <PullRequestStatusPill pullRequest={pullRequest} className="h-4" />
@@ -654,35 +657,6 @@ function PullRequestBannerLink({
         </span>
       ) : null}
     </a>
-  );
-}
-
-function AnimatedBody({
-  id,
-  labelledBy,
-  isExpanded,
-  children,
-}: {
-  id: string;
-  labelledBy: string;
-  isExpanded: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      id={id}
-      role="region"
-      aria-labelledby={labelledBy}
-      aria-hidden={!isExpanded}
-      className={cn(
-        "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
-        isExpanded
-          ? "grid-rows-[1fr] border-t border-border opacity-100"
-          : "pointer-events-none grid-rows-[0fr] border-t border-transparent opacity-0",
-      )}
-    >
-      <div className="overflow-hidden bg-popover">{children}</div>
-    </section>
   );
 }
 
@@ -759,9 +733,7 @@ function ActiveChildThreadsCard({
           />
           <span className="min-w-0 flex-1 truncate text-left">
             <span className="text-muted-foreground">
-              {needsApproval
-                ? "Needs your input: "
-                : "Active child thread: "}
+              {needsApproval ? "Needs your input: " : "Active child thread: "}
             </span>
             <span className="font-medium text-foreground/80">
               {primary.title}
@@ -783,6 +755,7 @@ function ActiveChildThreadsCard({
         </button>
       </div>
       <AnimatedBody
+        collapsedBorder="reserve"
         id={SECTION_IDS.childThreads.body}
         labelledBy={SECTION_IDS.childThreads.toggle}
         isExpanded={isExpanded}
@@ -858,10 +831,7 @@ function ReadOnlyContextBanner({
             className="size-3.5 shrink-0"
             aria-hidden="true"
           />
-          <span
-            className="min-w-0 truncate"
-            aria-hidden="true"
-          >
+          <span className="min-w-0 truncate" aria-hidden="true">
             {statusLabel}
           </span>
         </div>
@@ -871,6 +841,7 @@ function ReadOnlyContextBanner({
       </div>
       {parentThreadSection ? (
         <AnimatedBody
+          collapsedBorder="reserve"
           id={SECTION_IDS.parentThread.body}
           labelledBy={SECTION_IDS.parentThread.toggle}
           isExpanded={isParentThreadExpanded}
@@ -916,9 +887,7 @@ export function ThreadPromptContextBanner({
         statusAriaLabel={
           environmentGoneCopy?.ariaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
         }
-        statusLabel={
-          environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL
-        }
+        statusLabel={environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL}
         statusAction={
           archivedSection?.onUnarchive && !environmentGone ? (
             <ThreadUnarchiveTextAction
@@ -1017,8 +986,7 @@ export function ThreadPromptContextBanner({
   // inline as "Parent <name>" with the name as a link. There's no other
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
-  const isParentThreadOnly =
-    showParentThread && !showGit && !showPullRequest;
+  const isParentThreadOnly = showParentThread && !showGit && !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
   const showPullRequestLabel =
@@ -1134,6 +1102,7 @@ export function ThreadPromptContextBanner({
         </div>
         {showParentThread && parentThreadSection && !isParentThreadOnly ? (
           <AnimatedBody
+            collapsedBorder="reserve"
             id={SECTION_IDS.parentThread.body}
             labelledBy={SECTION_IDS.parentThread.toggle}
             isExpanded={isParentThreadExpanded}
@@ -1147,6 +1116,7 @@ export function ThreadPromptContextBanner({
         ) : null}
         {showGit ? (
           <AnimatedBody
+            collapsedBorder="reserve"
             id={SECTION_IDS.git.body}
             labelledBy={SECTION_IDS.git.toggle}
             isExpanded={isGitExpanded}
@@ -1168,7 +1138,7 @@ export function ThreadPromptContextBanner({
 
   if (activeChildThreadsCard && compactContextBanner) {
     return (
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         {activeChildThreadsCard}
         {compactContextBanner}
       </div>

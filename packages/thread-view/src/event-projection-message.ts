@@ -139,6 +139,7 @@ export type EventProjectionToolParsedIntent =
 export interface EventProjectionDelegationMetadata {
   subagentType?: string;
   description?: string;
+  model?: string;
 }
 
 export interface EventProjectionToolCallMessage extends EventProjectionMessageBase {
@@ -369,10 +370,18 @@ export interface EventProjectionDelegationMessage
 export interface EventProjectionWorkflowMessage extends EventProjectionMessageBase {
   kind: "workflow";
   itemId: string;
+  /**
+   * The provider's stable task id shared across restarted generations of the
+   * same task. Null for events persisted before the item carried it — those
+   * encode the family in the item id's legacy `#N` suffix.
+   */
+  familyId: string | null;
   /** Raw SDK task discriminant (e.g. "local_workflow", "local_bash"). */
   taskType: string;
   workflowName: string | null;
   description: string;
+  /** Model requested by the spawning delegation, when the provider exposed it. */
+  model: string | null;
   status: Extract<
     EventProjectionMessageStatus,
     "pending" | "completed" | "error" | "interrupted"

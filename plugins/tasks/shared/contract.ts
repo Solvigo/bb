@@ -1,4 +1,4 @@
-import { defineRpcContract } from "@bb/plugin-sdk";
+import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   TASK_SORTS,
@@ -48,6 +48,7 @@ const presetReasoningLevelSchema = z.enum([
   "high",
   "xhigh",
   "max",
+  "ultra",
 ]);
 export const PRESET_PERMISSION_MODES = [
   "accept-edits",
@@ -432,7 +433,15 @@ export const tasksRpcContract = defineRpcContract({
   },
   deleteFolder: {
     input: z.object({ folderId: idSchema }).strict(),
-    output: z.object({ deleted: z.boolean() }).strict(),
+    // `deleted: false` means no folder matched (already removed by another
+    // client). The moved IDs are read in the delete's own transaction.
+    output: z
+      .object({
+        deleted: z.boolean(),
+        movedProjectIds: z.array(idSchema),
+        movedFolderIds: z.array(idSchema),
+      })
+      .strict(),
   },
   listFolders: {
     input: z.null(),
@@ -691,7 +700,7 @@ export const tasksRpcContract = defineRpcContract({
             .object({
               id: z.string(),
               name: z.string(),
-              supportedPermissionModes: z.array(presetPermissionModeSchema),
+              permissionModes: z.array(presetPermissionModeSchema),
             })
             .strict(),
         ),

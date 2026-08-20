@@ -1,10 +1,13 @@
 import { useStore } from "jotai";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   isDocumentVisible,
   subscribeToDocumentVisibility,
 } from "@/lib/document-visibility";
+import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
 // Shared animation tokens for height transitions across the timeline.
@@ -250,6 +253,11 @@ export interface AutoHeightContainerProps {
   children: ReactNode;
   className?: string;
   durationMs?: number;
+  /**
+   * A revision for authoritative layout replacements that should not animate
+   * through their intermediate height. Normal child growth still animates.
+   */
+  snapRevision?: string;
 }
 
 /**
@@ -276,13 +284,35 @@ const AUTO_HEIGHT_INITIAL_SETTLE_MS = 250;
 // fresh whole-timeline pixel height on each ResizeObserver tick.
 const AUTO_HEIGHT_WIDTH_RESIZE_SETTLE_MS = 120;
 
+/**
+ * Whether the wrapper should snap to every size change instead of easing.
+ *
+ * On phones (coarse pointer) streaming deltas arrive every ~250ms, so the
+ * 180ms tween runs continuously: each eased frame re-lays out the whole
+ * timeline while the bottom-anchored scroller chases the moving edge with a
+ * JS scrollTop restore. Reduced motion asks for the same. Without CSS scroll
+ * anchoring (WebKit) there is no browser-side pin either, so that JS restore
+ * is the only thing following the tween and every frame costs a layout plus a
+ * scroll write.
+ */
+function useSnapHeightGrowth(): boolean {
+  const isPointerCoarse = usePointerCoarse();
+  const prefersReducedMotion = usePrefersReducedMotion();
+  return isPointerCoarse || prefersReducedMotion || !supportsScrollAnchoring();
+}
+
 export function AutoHeightContainer({
   children,
   className,
-  durationMs = HEIGHT_TRANSITION_DURATION_MS,
+  durationMs: requestedDurationMs = HEIGHT_TRANSITION_DURATION_MS,
+  snapRevision,
 }: AutoHeightContainerProps) {
+  const snapGrowth = useSnapHeightGrowth();
+  const durationMs = snapGrowth ? 0 : requestedDurationMs;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
+  const previousSnapRevisionRef = useRef(snapRevision);
   const store = useStore();
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
@@ -300,6 +330,12 @@ export function AutoHeightContainer({
       restoreTimerId: null,
       usingIntrinsicHeight: false,
     };
+    const snapToCurrentHeight = () => {
+      cancelIntrinsicHeightRestore(resizeState);
+      resizeState.usingIntrinsicHeight = false;
+      applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
+    };
+    snapToCurrentHeightRef.current = snapToCurrentHeight;
     const deferInitialSettleComplete = () => {
       if (initialSettleComplete) {
         return;
@@ -350,13 +386,12 @@ export function AutoHeightContainer({
     const onVisibility = () => {
       if (!isDocumentVisible()) return;
       pendingVisibilitySnap = true;
-      cancelIntrinsicHeightRestore(resizeState);
-      resizeState.usingIntrinsicHeight = false;
-      applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
+      snapToCurrentHeight();
     };
     const unsubscribeFromDocumentVisibility =
       subscribeToDocumentVisibility(onVisibility);
     return () => {
+      snapToCurrentHeightRef.current = null;
       observer.disconnect();
       unsubscribeFromDocumentVisibility();
       window.clearTimeout(initialSettleTimerId);
@@ -364,6 +399,15 @@ export function AutoHeightContainer({
       cleanupSnapState(wrapper, snapState);
     };
   }, [store]);
+  // Authoritative replacements (turn completion) must update before paint,
+  // but they must not reinstall the observer and reset its settle/resize state.
+  useLayoutEffect(() => {
+    if (previousSnapRevisionRef.current === snapRevision) {
+      return;
+    }
+    previousSnapRevisionRef.current = snapRevision;
+    snapToCurrentHeightRef.current?.();
+  }, [snapRevision]);
   return (
     <div
       ref={wrapperRef}

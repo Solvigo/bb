@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ProviderModelPickerProps } from "@bb/plugin-sdk";
+import type { ProviderModelPickerProps } from "@get-bb/plugin-sdk";
 import { ModelReasoningPicker } from "@/components/pickers/ModelReasoningPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { PickerOption } from "@/components/pickers/OptionPicker";

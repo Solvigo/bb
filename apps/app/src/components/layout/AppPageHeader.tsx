@@ -51,6 +51,15 @@ export const HEADER_PANE_ACTION_ICON_BUTTON_CLASS =
  */
 export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
 
+/**
+ * Shared page-header surface treatment. Secondary chrome that sits beside a
+ * page header can reuse this token so the two regions read as one title row.
+ * No `backdrop-blur`: the header is a non-overlapping flex sibling above the
+ * scroller, so nothing paints behind it and a blur would only add a
+ * compositing pass on every frame.
+ */
+export const APP_PAGE_HEADER_SURFACE_CLASS = "bg-surface-scrim";
+
 interface AppPageHeaderProps {
   center?: ReactNode;
   actions?: ReactNode;
@@ -94,7 +103,8 @@ export function AppPageHeader({
       className={cn(
         CHROME_ROW_HEIGHT_CLASS,
         HEADER_SEAM_CLASS,
-        "relative shrink-0 bg-surface-scrim px-4 backdrop-blur-sm",
+        APP_PAGE_HEADER_SURFACE_CLASS,
+        "relative shrink-0 px-4",
         usesDesktopChrome && isWindowDragRegion && MACOS_WINDOW_DRAG_CLASS,
         className,
       )}

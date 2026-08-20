@@ -3,11 +3,14 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publishedMigrationWhensByTag } from "../src/migration-history.js";
+import { defaultAppSettings } from "@bb/domain";
 import {
   createQueuedThreadMessage,
   createThread,
   createConnection,
   createProject,
+  getAppKeybindingOverrides,
+  getAppSettings,
   migrate,
   noopNotifier,
   upsertHost,
@@ -141,6 +144,11 @@ interface MigratedEventDataRow {
   data: string;
 }
 
+interface MigratedEventParentRow {
+  id: string;
+  parentToolCallId: string | null;
+}
+
 interface MigratedExperimentRow {
   key: string;
   updatedAt: number;
@@ -177,6 +185,11 @@ interface MigratedPluginCatalogProvenanceRow {
   id: string;
   provenance: string;
   catalogEntryId: string | null;
+}
+
+interface MigratedNamedCatalogProvenanceRow {
+  id: string;
+  catalogMarketplaceName: string | null;
 }
 
 interface MigratedPluginCatalogRow {
@@ -273,6 +286,12 @@ function restoreWideExperimentsTable(db: DbConnection): void {
   `);
 }
 
+// 0102 moved app settings into key/value rows. Rewinds past it have to drop
+// the table so the forward replay can re-create and re-backfill it.
+function dropAppSettingsValuesTable(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS app_settings_values").run();
+}
+
 function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
@@ -285,10 +304,13 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_theme").run();
   db.$client.prepare("DROP TABLE IF EXISTS app_settings").run();
+  dropAppSettingsValuesTable(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugin_state_snapshots").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_artifacts").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_catalog").run();
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
+  dropMarketplaceCatalogSchema(db);
+  dropEventParentToolCallIdColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
@@ -298,6 +320,7 @@ function dropRewindAddedTables(db: DbConnection): void {
     .run();
   dropHostMaxPermissionModeColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
+  dropPluginArtifactGitCheckoutRootColumn(db);
   dropThreadSectionSchema(db);
   restoreWideExperimentsTable(db);
   // system_experiments predates thread search, so the table itself isn't
@@ -389,6 +412,7 @@ const queuedMessageGroupingMigrationWhen = 1782273194188;
 const pendingInteractionsMigrationWhen = 1783626227375;
 const permissionModesMigrationWhen = 1784311522462;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
+const eventParentToolCallMigrationWhen = 1787181956957;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -421,11 +445,35 @@ const experimentKeyValueMigrationPath = resolve(
   "drizzle",
   "0090_equal_reaper.sql",
 );
+const appSettingsKeyValueMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0102_app_settings_key_value.sql",
+);
 const retireRequestedAtMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
   "0091_daffy_dark_phoenix.sql",
+);
+const pluginArtifactCheckoutRootMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0094_mighty_polaris.sql",
+);
+const namedMarketplaceCatalogMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0095_normal_elektra.sql",
+);
+const curatedMarketplaceRenameMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0098_rename_curated_marketplace.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -603,6 +651,47 @@ function resetMigrationsAfterThreadSearch(db: DbConnection): void {
     .run(threadSearchRowidFtsMigrationWhen);
 }
 
+/**
+ * Migration 0094 adds the marketplace catalog tables and the plugins
+ * marketplace-name column, and 0095 adds the git tag-range columns. Rewind
+ * scenarios that clear those journal rows must remove all of them, or
+ * migrate() replays the CREATE/ADD against a DB that has them.
+ */
+function dropMarketplaceCatalogSchema(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplace_icons").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplaces").run();
+  const columns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(plugins)")
+      .all()
+      .map((column) => column.name),
+  );
+  for (const column of [
+    "catalog_marketplace_name",
+    "source_git_range",
+    "source_git_tag_prefix",
+    "source_git_resolved_tag",
+  ]) {
+    if (columns.has(column)) {
+      db.$client.prepare(`ALTER TABLE plugins DROP COLUMN ${column}`).run();
+    }
+  }
+}
+
+function dropEventParentToolCallIdColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(events)")
+    .all();
+  if (columns.some((column) => column.name === "parent_tool_call_id")) {
+    db.$client.exec(
+      "DROP INDEX IF EXISTS events_parent_tool_call_thread_parent_sequence_idx",
+    );
+    db.$client
+      .prepare("ALTER TABLE events DROP COLUMN parent_tool_call_id")
+      .run();
+  }
+}
+
 function dropEnvironmentNameColumn(db: DbConnection): void {
   db.$client.prepare("ALTER TABLE environments DROP COLUMN name").run();
 }
@@ -615,6 +704,20 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
 
 // Migration 0091 adds the dedicated archive-grace clock. Rewind scenarios
 // that clear its journal row must remove the column before replaying the ADD.
+// Migration 0094 records the git checkout root on each artifact. Rewind
+// scenarios that clear its journal row must remove the column before replaying
+// the ADD.
+function dropPluginArtifactGitCheckoutRootColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(plugin_artifacts)")
+    .all();
+  if (columns.some((column) => column.name === "git_checkout_root")) {
+    db.$client
+      .prepare("ALTER TABLE plugin_artifacts DROP COLUMN git_checkout_root")
+      .run();
+  }
+}
+
 function dropEnvironmentRetireRequestedAtColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
@@ -681,7 +784,9 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropEventParentToolCallIdColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
+  dropPluginArtifactGitCheckoutRootColumn(db);
   dropProjectGitRemoteUrlColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`
@@ -1303,6 +1408,65 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  it("backfills the first checkout commit component for every artifact shape", () => {
+    const db = createConnection(":memory:");
+    const commit = "d".repeat(40);
+    try {
+      db.$client.exec(`
+        CREATE TABLE plugin_artifacts (
+          id text PRIMARY KEY NOT NULL,
+          source_kind text NOT NULL,
+          git_resolved_commit text,
+          path text NOT NULL
+        );
+      `);
+      const insert = db.$client.prepare<
+        [string, string, string | null, string]
+      >(
+        "INSERT INTO plugin_artifacts (id, source_kind, git_resolved_commit, path) VALUES (?, ?, ?, ?)",
+      );
+      insert.run("root", "git", commit, `/cache/repo/${commit}`);
+      insert.run("nested", "git", commit, `/cache/repo/${commit}/plugins/a`);
+      insert.run(
+        "collision",
+        "git",
+        commit,
+        `/cache/repo/${commit}/vendor/${commit}`,
+      );
+      insert.run(
+        "windows",
+        "git",
+        commit,
+        `C:\\cache\\repo\\${commit}\\plugins\\a`,
+      );
+      insert.run("npm", "npm", null, "/cache/npm/package/1.0.0");
+      insert.run("unresolved-git", "git", null, "/cache/git/legacy");
+
+      runMigrationFile({
+        db,
+        migrationPath: pluginArtifactCheckoutRootMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { id: string; root: string | null }
+          >("SELECT id, git_checkout_root AS root FROM plugin_artifacts ORDER BY id")
+          .all(),
+      ).toEqual([
+        { id: "collision", root: `/cache/repo/${commit}` },
+        { id: "nested", root: `/cache/repo/${commit}` },
+        { id: "npm", root: null },
+        { id: "root", root: `/cache/repo/${commit}` },
+        { id: "unresolved-git", root: null },
+        { id: "windows", root: `C:\\cache\\repo\\${commit}` },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("backfills the retirement clock only for environments already retiring", () => {
     const db = createConnection(":memory:");
     try {
@@ -1380,6 +1544,140 @@ describe("migrate", () => {
     }
   });
 
+  // Every preference is read back through the data layer rather than compared
+  // to raw rows: that is what catches a key name or JSON encoding in the
+  // migration that the reader does not agree with.
+  it("moves app settings columns into key/value rows without losing values", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings (
+          id text PRIMARY KEY NOT NULL,
+          caffeinate integer DEFAULT false NOT NULL,
+          show_keyboard_hints integer DEFAULT true NOT NULL,
+          steer_active_thread_on_enter integer DEFAULT false NOT NULL,
+          show_unhandled_provider_events integer DEFAULT false NOT NULL,
+          codex_memory_enabled integer DEFAULT true NOT NULL,
+          claude_code_memory_enabled integer DEFAULT true NOT NULL,
+          codex_subagents_disabled integer DEFAULT false NOT NULL,
+          claude_code_subagents_disabled integer DEFAULT false NOT NULL,
+          claude_code_workflows_disabled integer DEFAULT false NOT NULL,
+          keybinding_overrides text DEFAULT '[]' NOT NULL,
+          onboarding_completed_at text,
+          updated_at integer NOT NULL
+        );
+        INSERT INTO app_settings VALUES (
+          'current', true, false, true, true, false, true, true, false, true,
+          '[{"command":"thread.new","shortcut":null}]',
+          '2026-08-01T00:00:00.000Z',
+          1234
+        );
+      `);
+
+      runMigrationFile({ db, migrationPath: appSettingsKeyValueMigrationPath });
+
+      expect(getAppSettings(db)).toEqual({
+        showKeyboardHints: false,
+        steerActiveThreadOnEnter: true,
+        showUnhandledProviderEvents: true,
+        codexMemoryEnabled: false,
+        claudeCodeMemoryEnabled: true,
+        codexSubagentsDisabled: true,
+        claudeCodeSubagentsDisabled: false,
+        claudeCodeWorkflowsDisabled: true,
+        onboardingCompletedAt: "2026-08-01T00:00:00.000Z",
+      });
+      expect(getAppKeybindingOverrides(db)).toEqual([
+        { command: "thread.new", shortcut: null },
+      ]);
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { updatedAt: number }
+          >("SELECT updated_at AS updatedAt FROM app_settings_values WHERE key = 'showKeyboardHints'")
+          .get(),
+      ).toEqual({ updatedAt: 1234 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  // A never-onboarded install stores JSON null, not SQL NULL: the column is
+  // NOT NULL, so a bad encoding fails the migration outright.
+  it("keeps a never-onboarded install null through the app settings move", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings (
+          id text PRIMARY KEY NOT NULL,
+          caffeinate integer DEFAULT false NOT NULL,
+          show_keyboard_hints integer DEFAULT true NOT NULL,
+          steer_active_thread_on_enter integer DEFAULT false NOT NULL,
+          show_unhandled_provider_events integer DEFAULT false NOT NULL,
+          codex_memory_enabled integer DEFAULT true NOT NULL,
+          claude_code_memory_enabled integer DEFAULT true NOT NULL,
+          codex_subagents_disabled integer DEFAULT false NOT NULL,
+          claude_code_subagents_disabled integer DEFAULT false NOT NULL,
+          claude_code_workflows_disabled integer DEFAULT false NOT NULL,
+          keybinding_overrides text DEFAULT '[]' NOT NULL,
+          onboarding_completed_at text,
+          updated_at integer NOT NULL
+        );
+        INSERT INTO app_settings (id, updated_at) VALUES ('current', 1234);
+      `);
+
+      runMigrationFile({ db, migrationPath: appSettingsKeyValueMigrationPath });
+
+      expect(getAppSettings(db)).toEqual(defaultAppSettings);
+      expect(getAppKeybindingOverrides(db)).toEqual([]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  // Fresh installs never wrote the legacy row; the migration must not invent
+  // one or fail on the empty select.
+  it("leaves app settings unset when there is no legacy row", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(`
+        CREATE TABLE app_settings (
+          id text PRIMARY KEY NOT NULL,
+          caffeinate integer DEFAULT false NOT NULL,
+          show_keyboard_hints integer DEFAULT true NOT NULL,
+          steer_active_thread_on_enter integer DEFAULT false NOT NULL,
+          show_unhandled_provider_events integer DEFAULT false NOT NULL,
+          codex_memory_enabled integer DEFAULT true NOT NULL,
+          claude_code_memory_enabled integer DEFAULT true NOT NULL,
+          codex_subagents_disabled integer DEFAULT false NOT NULL,
+          claude_code_subagents_disabled integer DEFAULT false NOT NULL,
+          claude_code_workflows_disabled integer DEFAULT false NOT NULL,
+          keybinding_overrides text DEFAULT '[]' NOT NULL,
+          onboarding_completed_at text,
+          updated_at integer NOT NULL
+        );
+      `);
+
+      runMigrationFile({ db, migrationPath: appSettingsKeyValueMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { count: number }
+          >("SELECT COUNT(*) AS count FROM app_settings_values")
+          .get(),
+      ).toEqual({ count: 0 });
+      expect(getAppSettings(db)).toEqual(defaultAppSettings);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   // Side chats used to be their own origin kind. 0084 hands every existing one
   // to the builtin side-chat plugin, so old side chats keep opening in the
   // plugin's panel instead of stranding on a removed origin kind.
@@ -1391,8 +1689,12 @@ describe("migrate", () => {
     // exactly what an upgrading user's database looks like.
     restoreWideExperimentsTable(db);
     dropOnboardingCompletedAtColumn(db);
+    dropAppSettingsValuesTable(db);
     dropNewOnboardingExperimentColumn(db);
     dropEnvironmentRetireRequestedAtColumn(db);
+    dropPluginArtifactGitCheckoutRootColumn(db);
+    dropMarketplaceCatalogSchema(db);
+    dropEventParentToolCallIdColumn(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
     db.$client
@@ -1681,9 +1983,13 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
+      dropAppSettingsValuesTable(db);
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
+      dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2081,9 +2387,13 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
+      dropAppSettingsValuesTable(db);
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
+      dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2178,9 +2488,13 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
+      dropAppSettingsValuesTable(db);
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
+      dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -3711,6 +4025,7 @@ describe("migrate", () => {
         "item_kind",
         "data",
         "created_at",
+        "parent_tool_call_id",
       ]);
       const eventIndexNames = readIndexNames({
         db,
@@ -3721,10 +4036,13 @@ describe("migrate", () => {
         "events_completed_item_truncation_idx",
         "events_environment_idx",
         "events_goal_thread_sequence_idx",
+        "events_item_lifecycle_thread_item_sequence_idx",
+        "events_parent_tool_call_thread_parent_sequence_idx",
         "events_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
         "events_thread_type_sequence_idx",
+        "events_tool_call_parent_lookup_idx",
       ]);
 
       const migrationCreatedAts = db.$client
@@ -4469,6 +4787,188 @@ describe("migrate", () => {
     }
   });
 
+  it("moves the curated marketplace, its icons, and its installs together", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE plugin_marketplaces (
+          name text PRIMARY KEY NOT NULL,
+          etag text,
+          last_modified text
+        );
+        CREATE TABLE plugin_marketplace_icons (
+          marketplace_name text NOT NULL,
+          entry_id text NOT NULL,
+          PRIMARY KEY (marketplace_name, entry_id)
+        );
+        CREATE TABLE plugins (
+          id text PRIMARY KEY NOT NULL,
+          catalog_marketplace_name text
+        );
+        INSERT INTO plugin_marketplaces VALUES
+          ('bb-official', 'W/\"abc\"', 'Wed, 01 Jan 2025 00:00:00 GMT'),
+          ('acme', 'W/\"xyz\"', 'Thu, 02 Jan 2025 00:00:00 GMT');
+        INSERT INTO plugin_marketplace_icons VALUES
+          ('bb-official', 'notes'),
+          ('acme', 'tasks');
+        INSERT INTO plugins VALUES
+          ('notes', 'bb-official'),
+          ('tasks', 'acme'),
+          ('local', NULL);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: curatedMarketplaceRenameMigrationPath,
+      });
+
+      // A dangling reference is the failure that matters: a renamed row whose
+      // installs still name the old key would list every entry twice.
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { name: string }
+          >("SELECT name FROM plugin_marketplaces ORDER BY name")
+          .all(),
+      ).toEqual([{ name: "acme" }, { name: "bb-community" }]);
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { marketplaceName: string }
+          >("SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name")
+          .all(),
+      ).toEqual([
+        { marketplaceName: "acme" },
+        { marketplaceName: "bb-community" },
+      ]);
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { id: string; catalogMarketplaceName: string | null }
+          >("SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id")
+          .all(),
+      ).toEqual([
+        { id: "local", catalogMarketplaceName: null },
+        { id: "notes", catalogMarketplaceName: "bb-community" },
+        { id: "tasks", catalogMarketplaceName: "acme" },
+      ]);
+
+      // The stored manifest still declares the old name. A conditional refresh
+      // that answers 304 parses that document and checks its name against the
+      // row, so the renamed row must not carry validators that can produce a
+      // 304. Other marketplaces keep theirs.
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { name: string; etag: string | null; lastModified: string | null }
+          >("SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name")
+          .all(),
+      ).toEqual([
+        {
+          name: "acme",
+          etag: 'W/"xyz"',
+          lastModified: "Thu, 02 Jan 2025 00:00:00 GMT",
+        },
+        { name: "bb-community", etag: null, lastModified: null },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("names only catalog provenance during the marketplace upgrade", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE plugins (
+          id text PRIMARY KEY NOT NULL,
+          provenance text NOT NULL,
+          catalog_entry_id text
+        );
+        INSERT INTO plugins VALUES
+          ('catalog-plugin', 'catalog', 'catalog-entry'),
+          ('direct-plugin', 'direct', NULL),
+          ('builtin-plugin', 'builtin', NULL);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: namedMarketplaceCatalogMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], MigratedNamedCatalogProvenanceRow>(
+            `
+              SELECT id,
+                catalog_marketplace_name AS catalogMarketplaceName
+              FROM plugins
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        { id: "builtin-plugin", catalogMarketplaceName: null },
+        { id: "catalog-plugin", catalogMarketplaceName: "bb-official" },
+        { id: "direct-plugin", catalogMarketplaceName: null },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("seeds the Keep Awake configuration from the legacy preference", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO app_settings (id, caffeinate, updated_at)
+        VALUES ('current', 1, 123)
+        ON CONFLICT (id) DO UPDATE SET caffeinate = 1, updated_at = 123;
+        DELETE FROM plugin_kv
+        WHERE plugin_id = 'keep-awake' AND key = 'configuration';
+      `);
+      migrate(db);
+      expect(
+        db.$client
+          .prepare<
+            [],
+            {
+              key: string;
+              pluginId: string;
+              updatedAt: number;
+              value: string;
+            }
+          >(
+            `
+              SELECT
+                plugin_id AS pluginId,
+                key,
+                value,
+                updated_at AS updatedAt
+              FROM plugin_kv
+              WHERE plugin_id = 'keep-awake' AND key = 'configuration'
+            `,
+          )
+          .get(),
+      ).toEqual({
+        pluginId: "keep-awake",
+        key: "configuration",
+        value: JSON.stringify({
+          enabled: true,
+          selection: { mode: "all" },
+        }),
+        updatedAt: 123,
+      });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("backfills legacy side-chat rows to hidden visibility", () => {
     const db = createConnection(":memory:");
     try {
@@ -4534,6 +5034,102 @@ describe("migrate", () => {
           { id: legacyOriginSideChat.id, visibility: "hidden" },
           { id: fork.id, visibility: "visible" },
         ].sort((left, right) => left.id.localeCompare(right.id)),
+      );
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("backfills normalized parent tool-call ids from legacy event payloads", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        name: "event-parent-migration-host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "event-parent-migration-project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/event-parent-migration",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+
+      dropEventParentToolCallIdColumn(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(eventParentToolCallMigrationWhen);
+      db.$client.exec(`
+        INSERT INTO events (
+          id, thread_id, scope_kind, turn_id, sequence, type, item_id, item_kind, data, created_at
+        ) VALUES
+          (
+            'evt_top_level_parent',
+            '${thread.id}',
+            'turn',
+            'legacy-turn',
+            1,
+            'turn/started',
+            NULL,
+            NULL,
+            '{"parentToolCallId":"parent-top-level"}',
+            1
+          ),
+          (
+            'evt_item_parent',
+            '${thread.id}',
+            'turn',
+            'legacy-turn',
+            2,
+            'item/completed',
+            'child-message',
+            'agentMessage',
+            '{"item":{"id":"child-message","type":"agentMessage","parentToolCallId":"parent-item"}}',
+            2
+          ),
+          (
+            'evt_no_parent',
+            '${thread.id}',
+            'thread',
+            NULL,
+            3,
+            'system/error',
+            NULL,
+            NULL,
+            '{"message":"parentToolCallId is only text here"}',
+            3
+          );
+      `);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[], MigratedEventParentRow>(
+            `
+              SELECT id, parent_tool_call_id AS parentToolCallId
+              FROM events
+              WHERE id LIKE 'evt_%_parent'
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        { id: "evt_item_parent", parentToolCallId: "parent-item" },
+        { id: "evt_no_parent", parentToolCallId: null },
+        { id: "evt_top_level_parent", parentToolCallId: "parent-top-level" },
+      ]);
+      expect(readIndexNames({ db, tableName: "events" })).toContain(
+        "events_parent_tool_call_thread_parent_sequence_idx",
       );
     } finally {
       closeConnection(db);

@@ -36,6 +36,7 @@ export const REASONING_LEVELS = [
   "high",
   "xhigh",
   "max",
+  "ultra",
 ] as const;
 export const PERMISSION_MODES = PRESET_PERMISSION_MODES;
 export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
@@ -245,7 +246,7 @@ export function PresetDialog({
     !providerCustom && draft.providerId !== ""
       ? (providers
           ?.find((provider) => provider.id === draft.providerId)
-          ?.supportedPermissionModes.filter(isPermissionMode) ?? [])
+          ?.permissionModes.filter(isPermissionMode) ?? [])
       : [];
   const permissionOptions: readonly PermissionMode[] = providerCustom
     ? PERMISSION_MODES
