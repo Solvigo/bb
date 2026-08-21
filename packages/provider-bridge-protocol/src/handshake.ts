@@ -1,5 +1,30 @@
 import { providerForkSchema } from "@bb/domain";
 import { z } from "zod";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "./version.js";
+
+/**
+ * The inclusive `[min, max]` range of `thread/delta` grammar versions a bridge
+ * speaks. Distinct from the JSON-RPC `protocolVersion`: the envelope can stay
+ * put while the delta vocabulary grows, and a bridge that speaks both v2 and
+ * v3 says so here instead of forcing a daemon bump.
+ */
+export const bridgeGrammarVersionsSchema = z
+  .tuple([z.number().int().positive(), z.number().int().positive()])
+  .refine(([min, max]) => min <= max, {
+    message: "grammarVersions must be an ascending [min, max] range",
+  });
+export type BridgeGrammarVersions = z.infer<typeof bridgeGrammarVersionsSchema>;
+
+/**
+ * How the bridge delivers `turn/steer` while a turn is live. `inject` feeds
+ * the steer text into the running model loop (claude, codex); `queue` holds
+ * it for the next prompt boundary (ACP v1 cancels the live prompt and
+ * re-prompts with the queued text). The runtime sends `turn/steer` either
+ * way; the mode is what the composer tells the user and what WS4's recovery
+ * logic keys `staleTurn` on.
+ */
+export const bridgeSteerModeSchema = z.enum(["inject", "queue"]);
+export type BridgeSteerMode = z.infer<typeof bridgeSteerModeSchema>;
 
 /**
  * Session-behavior facts the bridge reports at `initialize`. These are
@@ -53,6 +78,27 @@ export const bridgeCapabilitiesSchema = z
      * settings.
      */
     approvalEnforcedBy: z.enum(["runtime", "provider"]).default("runtime"),
+    /**
+     * The `thread/delta` grammar range this bridge speaks. A bridge that says
+     * nothing speaks exactly the protocol version it negotiated — today's
+     * bridges all emit v2 — so the default is `[2, 2]`, never a wider range
+     * it never claimed. A v3-capable bridge reports `[2, 3]` (or `[3, 3]`
+     * once the v2 paths are deleted).
+     */
+    grammarVersions: bridgeGrammarVersionsSchema.default([
+      PROVIDER_BRIDGE_PROTOCOL_VERSION,
+      PROVIDER_BRIDGE_PROTOCOL_VERSION,
+    ]),
+    /**
+     * Mid-turn steer delivery ({@link bridgeSteerModeSchema}). Defaults to
+     * `queue`, the conservative reading: absence is the definite "no" the
+     * rest of this handshake uses, and `inject` is the stronger promise (the
+     * steer reaches the model before the turn ends) a bridge must make
+     * explicitly. Nothing in the runtime branches on it yet, so the default
+     * changes no behavior today; claude and codex declare `inject` before WS4
+     * reads it.
+     */
+    steerMode: bridgeSteerModeSchema.default("queue"),
   })
   .passthrough();
 

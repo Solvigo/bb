@@ -8,17 +8,29 @@
  * every canonical event construction. Deltas carry provider-native join keys
  * (tool-call ids, stream keys, parent refs, provider turn ids) so the
  * assembler can hold the bidirectional provider↔bb id maps.
+ *
+ * Grammar v3 (docs/provider-plugin-api.md §3) is accepted beside v2 in this
+ * schema: the core vocabulary gains `fileRead`, `search`, `delegation`,
+ * `planSteps` and the open `extension` shape, every `item.open`/`item.close`
+ * may carry a declarative `presentation`, and `extension.state` carries
+ * plugin-declared thread state. Every v3 addition is optional or a new union
+ * member, so a v2 bridge's deltas still validate unchanged; the workstream
+ * that deletes the v2 paths makes `presentation` required.
  */
 import {
   backgroundTaskStatusSchema,
   backgroundTaskUsageSchema,
   clientTurnRequestIdSchema,
+  extensionKindSchema,
+  jsonValueSchema,
   providerErrorCategorySchema,
   providerErrorInfoSchema,
   providerRateLimitStateSchema,
   providerRawEventSchema,
+  threadEventItemPresentationSchema,
   threadEventItemStatusSchema,
   threadEventPlanStepSchema,
+  threadEventSearchModeSchema,
   threadEventTokenUsageBreakdownSchema,
   threadEventTurnStatusSchema,
   threadEventWarningCategorySchema,
@@ -28,6 +40,21 @@ import {
 import { z } from "zod";
 
 export const THREAD_DELTA_NOTIFICATION_METHOD = "thread/delta";
+
+/**
+ * Declarative presentation a bridge attaches to an item at `item.open` (and
+ * re-states on `item.close`, whose item is the full terminal shape). The
+ * assembler persists it on the canonical item so the row renders after the
+ * plugin is uninstalled or upgraded, and so mobile renders every kind without
+ * plugin code. The same schema as the persisted field
+ * (`threadEventItemPresentationSchema` in @bb/domain) — one vocabulary, no
+ * translation.
+ *
+ * Optional in grammar v3 so v2 bridges still validate; a later workstream
+ * makes it required once every first-party bridge attaches it.
+ */
+export const deltaPresentationSchema = threadEventItemPresentationSchema;
+export type DeltaPresentation = z.infer<typeof deltaPresentationSchema>;
 
 /**
  * Internal separator the runtime's assembler joins provider key parts with
@@ -139,6 +166,95 @@ export type DeltaBackgroundTaskShape = z.infer<
   typeof deltaBackgroundTaskShapeSchema
 >;
 
+/**
+ * A file the agent read (grammar v3). Claude `Read` is the top generic tool in
+ * the production corpus — 7,568 calls rendered as opaque `tool` rows — and
+ * codex reads files through `cat`/`sed -n` commands the bridge already
+ * classifies as read intents. `cmd` carries that native shell form when the
+ * read ran through a command rather than a structured tool.
+ */
+export const deltaFileReadShapeSchema = z.object({
+  type: z.literal("fileRead"),
+  path: z.string(),
+  cmd: z.string().optional(),
+});
+export type DeltaFileReadShape = z.infer<typeof deltaFileReadShapeSchema>;
+
+/**
+ * Grep, glob and directory listing as one shape (grammar v3), discriminated
+ * by `mode`: `content` searches inside files (Claude `Grep`, `rg`), `path`
+ * matches file names (Claude `Glob`, `fd`), `list` enumerates a directory
+ * (`ls`, codex `list_dir`). `query` is the pattern — text or a regex for
+ * `content`, a glob for `path`, an optional filter for `list` (empty when the
+ * whole directory is listed); `path` is the root the search ran under when
+ * the provider named one; `cmd` is the native shell form when it ran through
+ * a command.
+ */
+export const deltaSearchShapeSchema = z.object({
+  type: z.literal("search"),
+  mode: threadEventSearchModeSchema,
+  query: z.string(),
+  path: z.string().optional(),
+  cmd: z.string().optional(),
+});
+export type DeltaSearchShape = z.infer<typeof deltaSearchShapeSchema>;
+
+/**
+ * Delegated work (grammar v3): one shape for the three encodings in the
+ * production data — codex `spawnAgent`/`wait` tool calls, the Claude `Agent`
+ * tool with nested child turns, and backgrounded `local_agent` background
+ * tasks — and for the `thread/openWork` notification, since an open
+ * delegation IS open work. `childRef` is the provider-native child id; the
+ * child's own deltas link back through `parentRef`. `background: true` marks
+ * a delegation that outlives its turn: the assembler routes its progress and
+ * close to the thread-scoped `item/delegation/*` events exactly as it does
+ * for `backgroundTask` (WS1a). The terminal `status` rides `item.close`, as
+ * for `command` and `tool`; `summary` is the child's terminal summary.
+ */
+export const deltaDelegationShapeSchema = z.object({
+  type: z.literal("delegation"),
+  childRef: deltaKeyPartSchema,
+  label: z.string(),
+  background: z.boolean(),
+  summary: z.string().optional(),
+});
+export type DeltaDelegationShape = z.infer<typeof deltaDelegationShapeSchema>;
+
+/**
+ * A structured plan snapshot as an item (grammar v3): codex `update_plan`
+ * (295 production threads, discarded by the UI today because it only rides
+ * the turn-level `turn.plan`) and Claude `TaskCreate`/`TaskUpdate`/`TodoWrite`.
+ * Each snapshot carries the full step list and supersedes the previous one.
+ * `turn.plan` stays for bridges that only know the turn-level form.
+ */
+export const deltaPlanStepsShapeSchema = z.object({
+  type: z.literal("planSteps"),
+  steps: z.array(threadEventPlanStepSchema),
+  explanation: z.string().optional(),
+});
+export type DeltaPlanStepsShape = z.infer<typeof deltaPlanStepsShapeSchema>;
+
+/**
+ * A plugin-defined item kind outside the core vocabulary (grammar v3).
+ * `kind` is the namespaced `"<pluginId>/<name>"` the plugin declared in its
+ * provider registration (`extensionKinds`); only the namespace shape is
+ * validated here. The payload is opaque JSON at this layer.
+ *
+ * TODO(WS1a): the server validates `payload` against the plugin's declared
+ * item schema for `kind` at ingest and rejects the event on mismatch; until
+ * that lands the assembler refuses extension shapes (see delta-assembler.ts).
+ *
+ * `presentation` is REQUIRED: an extension item has no core renderer, so the
+ * declarative base is the only thing every client can show.
+ */
+export const deltaExtensionShapeSchema = z.object({
+  type: z.literal("extension"),
+  kind: extensionKindSchema,
+  payload: jsonValueSchema,
+  presentation: deltaPresentationSchema,
+});
+export type DeltaExtensionShape = z.infer<typeof deltaExtensionShapeSchema>;
+
 export const deltaItemShapeSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("command"),
@@ -153,6 +269,13 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
     /** Empty only on bare close-without-open fallbacks (path unknown). */
     changes: z.array(deltaFileChangeSchema),
   }),
+  /**
+   * The generic tool call: the escape hatch for tools with no core kind. In
+   * grammar v3 the bridge says how the row reads through the delta's
+   * `presentation` (label, icon, suppression) instead of core keeping a
+   * tool-name table; a `tool` item without presentation renders with the
+   * generic tool row.
+   */
   z.object({
     type: z.literal("tool"),
     tool: z.string(),
@@ -182,8 +305,27 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("imageView"), path: z.string() }),
   deltaBackgroundTaskShapeSchema,
+  // Grammar v3 shapes. Every existing shape above is kept unchanged.
+  deltaFileReadShapeSchema,
+  deltaSearchShapeSchema,
+  deltaDelegationShapeSchema,
+  deltaPlanStepsShapeSchema,
+  deltaExtensionShapeSchema,
 ]);
 export type DeltaItemShape = z.infer<typeof deltaItemShapeSchema>;
+export type DeltaItemShapeType = DeltaItemShape["type"];
+
+/**
+ * The re-embedded snapshot an `item.progress` may carry for work that
+ * outlives its turn. `backgroundTask` is the v2 form; `delegation` joins it in
+ * v3 for background delegations (the assembler routes it to
+ * `item/delegation/progress` in WS1a).
+ */
+export const deltaProgressSnapshotSchema = z.discriminatedUnion("type", [
+  deltaBackgroundTaskShapeSchema,
+  deltaDelegationShapeSchema,
+]);
+export type DeltaProgressSnapshot = z.infer<typeof deltaProgressSnapshotSchema>;
 
 export const deltaMessageChannelSchema = z.enum(["assistant", "reasoning"]);
 export type DeltaMessageChannel = z.infer<typeof deltaMessageChannelSchema>;
@@ -282,6 +424,12 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     kind: z.literal("item.open"),
     key: deltaItemKeySchema,
     item: deltaItemShapeSchema,
+    /**
+     * Grammar v3: how the row reads, persisted with the opened item. Optional
+     * while v2 deltas are accepted; `extension` shapes carry their own
+     * mandatory presentation inside the shape.
+     */
+    presentation: deltaPresentationSchema.optional(),
     attach: deltaAttachSchema.optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
@@ -310,6 +458,12 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     /** Terminal approval verdict (codex declined → denied). Default null. */
     approvalStatus: z.literal("denied").optional(),
     item: deltaItemShapeSchema,
+    /**
+     * Grammar v3: the terminal presentation. Like `item`, the close carries
+     * the full terminal form; when absent the opened item's presentation
+     * survives onto the completed item (close-echo).
+     */
+    presentation: deltaPresentationSchema.optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
@@ -328,8 +482,10 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
 
   /**
    * Free-form progress on an open item (non-command tool updates), or — with
-   * `snapshot` — a re-embedded background-task snapshot
-   * (`item/backgroundTask/progress`, thread-scoped, no turn required).
+   * `snapshot` — a re-embedded snapshot of work that outlives its turn: a
+   * background task (`item/backgroundTask/progress`) or, in grammar v3, a
+   * background delegation (`item/delegation/progress`); both thread-scoped,
+   * no turn required.
    *
    * Progress is throttled centrally by the assembler (one emission per item
    * key per policy interval, 500ms default; the newest suppressed snapshot is
@@ -341,7 +497,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     kind: z.literal("item.progress"),
     key: deltaItemKeySchema,
     message: z.string().optional(),
-    snapshot: deltaBackgroundTaskShapeSchema.optional(),
+    snapshot: deltaProgressSnapshotSchema.optional(),
     flush: z.boolean().optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
@@ -478,6 +634,25 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     timeUsedSeconds: z.number(),
   }),
   z.object({ kind: z.literal("thread.goalCleared") }),
+
+  /**
+   * Plugin-declared thread state (grammar v3): `"<pluginId>/<name>"` kinds
+   * beside the core thread-state family (usage, context window, rate limits,
+   * model fallback, context cleared). Latest snapshot wins per kind — the
+   * assembler and the timeline keep one value per `kind`, so a bridge re-sends
+   * the whole state, never a diff. Codex goals (`thread.goal` above) become a
+   * codex extension state once the codex plugin declares the kind. The payload
+   * is opaque here; the server validates it against the plugin's declared
+   * `state` schema at ingest (TODO(WS1a), same site as extension items).
+   * The namespaced kind travels as `extensionKind` only because `kind` is
+   * this union's discriminator; the item shape and the persisted item call
+   * the same value `kind`.
+   */
+  z.object({
+    kind: z.literal("extension.state"),
+    extensionKind: extensionKindSchema,
+    payload: jsonValueSchema,
+  }),
 
   /**
    * Normalized rate-limit snapshot. The provider-dialect merge (codex's
