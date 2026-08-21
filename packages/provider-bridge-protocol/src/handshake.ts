@@ -16,6 +16,28 @@ export const bridgeGrammarVersionsSchema = z
 export type BridgeGrammarVersions = z.infer<typeof bridgeGrammarVersionsSchema>;
 
 /**
+ * Two-way grammar negotiation. The runtime states the range its assembler
+ * speaks in the `initialize` params; the bridge states its own range in the
+ * `initialize` result; both sides may use any version in the intersection,
+ * and the highest common version is the one a bridge should emit. Disjoint
+ * ranges fail the handshake the way a wrong `protocolVersion` does — a bridge
+ * that can only emit a grammar the runtime cannot assemble must not start.
+ *
+ * A side that says nothing is read as `[protocolVersion, protocolVersion]`,
+ * so an older runtime that predates the field keeps a newer bridge on the
+ * version it negotiated, and an older bridge keeps emitting what it always
+ * did.
+ */
+export function negotiateGrammarVersion(
+  runtime: BridgeGrammarVersions,
+  bridge: BridgeGrammarVersions,
+): number | null {
+  const min = Math.max(runtime[0], bridge[0]);
+  const max = Math.min(runtime[1], bridge[1]);
+  return min <= max ? max : null;
+}
+
+/**
  * How the bridge delivers `turn/steer` while a turn is live. `inject` feeds
  * the steer text into the running model loop (claude, codex); `queue` holds
  * it for the next prompt boundary (ACP v1 cancels the live prompt and
@@ -83,7 +105,10 @@ export const bridgeCapabilitiesSchema = z
      * nothing speaks exactly the protocol version it negotiated — today's
      * bridges all emit v2 — so the default is `[2, 2]`, never a wider range
      * it never claimed. A v3-capable bridge reports `[2, 3]` (or `[3, 3]`
-     * once the v2 paths are deleted).
+     * once the v2 paths are deleted) and emits the highest version inside
+     * the intersection with the runtime's `initialize` params range
+     * ({@link negotiateGrammarVersion}); the runtime rejects a disjoint
+     * range at startup.
      */
     grammarVersions: bridgeGrammarVersionsSchema.default([
       PROVIDER_BRIDGE_PROTOCOL_VERSION,
@@ -109,6 +134,15 @@ export const initializeParamsSchema = z
   .object({
     protocolVersion: z.number().int().positive(),
     client: z.object({ name: z.string().min(1), version: z.string().min(1) }),
+    /**
+     * The `thread/delta` grammar range the runtime's assembler accepts (see
+     * {@link negotiateGrammarVersion}). A runtime that predates the field
+     * reads as speaking exactly its protocol version.
+     */
+    grammarVersions: bridgeGrammarVersionsSchema.default([
+      PROVIDER_BRIDGE_PROTOCOL_VERSION,
+      PROVIDER_BRIDGE_PROTOCOL_VERSION,
+    ]),
   })
   .passthrough();
 
