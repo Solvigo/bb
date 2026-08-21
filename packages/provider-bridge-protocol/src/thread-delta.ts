@@ -208,7 +208,7 @@ export type DeltaSearchShape = z.infer<typeof deltaSearchShapeSchema>;
  * child's own deltas link back through `parentRef`. `background: true` marks
  * a delegation that outlives its turn: the assembler routes its progress and
  * close to the thread-scoped `item/delegation/*` events exactly as it does
- * for `backgroundTask` (WS1a). The terminal `status` rides `item.close`, as
+ * for `backgroundTask`. The terminal `status` rides `item.close`, as
  * for `command` and `tool`; `summary` is the child's terminal summary.
  */
 export const deltaDelegationShapeSchema = z.object({
@@ -238,11 +238,10 @@ export type DeltaPlanStepsShape = z.infer<typeof deltaPlanStepsShapeSchema>;
  * A plugin-defined item kind outside the core vocabulary (grammar v3).
  * `kind` is the namespaced `"<pluginId>/<name>"` the plugin declared in its
  * provider registration (`extensionKinds`); only the namespace shape is
- * validated here. The payload is opaque JSON at this layer.
- *
- * TODO(WS1a): the server validates `payload` against the plugin's declared
- * item schema for `kind` at ingest and rejects the event on mismatch; until
- * that lands the assembler refuses extension shapes (see delta-assembler.ts).
+ * validated here. The payload is opaque JSON at this layer: the assembler
+ * copies it onto the canonical item, and the server validates it against the
+ * plugin's declared item schema for `kind` at ingest, persisting a
+ * `provider/unhandled` in its place on a miss.
  *
  * The shape carries no presentation of its own: presentation lives in ONE
  * place, the `item.open`/`item.close` delta's `presentation` field, and for
@@ -321,7 +320,7 @@ export type DeltaItemShapeType = DeltaItemShape["type"];
  * The re-embedded snapshot an `item.progress` may carry for work that
  * outlives its turn. `backgroundTask` is the v2 form; `delegation` joins it in
  * v3 for background delegations (the assembler routes it to
- * `item/delegation/progress` in WS1a).
+ * `item/delegation/progress`).
  */
 export const deltaProgressSnapshotSchema = z.discriminatedUnion("type", [
   deltaBackgroundTaskShapeSchema,
@@ -668,7 +667,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    * the whole state, never a diff. Codex goals (`thread.goal` above) become a
    * codex extension state once the codex plugin declares the kind. The payload
    * is opaque here; the server validates it against the plugin's declared
-   * `state` schema at ingest (TODO(WS1a), same site as extension items).
+   * `state` schema at ingest (the same site as extension items).
    * The namespaced kind travels as `extensionKind` only because `kind` is
    * this union's discriminator; the item shape and the persisted item call
    * the same value `kind`.

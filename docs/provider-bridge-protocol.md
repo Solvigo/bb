@@ -216,9 +216,14 @@ and a `background: true` delegation is thread-attached like a background
 task — its `item.progress` snapshots and its `item.close` ride the
 thread-scoped `item/delegation/progress` and `item/delegation/completed`
 events, need no open turn, and survive turn settlement and `session.ended`.
-The assembler reports `grammarVersions: [2, 3]`. Extension kinds are still
-refused with `UnsupportedDeltaShapeError` until the server validates their
-payloads at ingest.
+The assembler reports `grammarVersions: [2, 3]`. An `extension` shape
+becomes the canonical `extension` item (opaque payload, the delta's
+presentation); `extension.state` becomes the thread-scoped
+`thread/extensionState/updated` event. The server validates both payloads
+against the owning plugin's declared `experimental_extensionKinds` schema at
+ingest (64 KiB cap); an undeclared kind or a schema miss is persisted as a
+`provider/unhandled` in the same batch slot, never dropped and never stored
+unvalidated.
 
 ## Identifiers
 

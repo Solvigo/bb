@@ -326,23 +326,6 @@ function streamKeyString(args: {
 }
 
 /**
- * Grammar v3 extension kinds (the `extension` item shape and
- * `extension.state`) are accepted by the protocol schema so v3 bridges
- * validate, but this assembler does not build their canonical events yet:
- * that lands with the server's ingest validation of extension payloads, so a
- * bridge that emits one fails loudly here instead of persisting an
- * unvalidated payload. Every core kind, v2 and v3, assembles.
- */
-export class UnsupportedDeltaShapeError extends Error {
-  constructor(shapeType: string, site: string) {
-    super(
-      `thread/delta item shape "${shapeType}" is not assembled yet (${site}): extension kinds are accepted by the protocol but not assembled until ingest validation lands`,
-    );
-    this.name = "UnsupportedDeltaShapeError";
-  }
-}
-
-/**
  * Grammar v3 presentation rides the lifecycle delta, not the shape, and is
  * persisted on the canonical item so the row renders after the plugin is
  * gone. `userMessage` is bb-authored and carries none.
@@ -760,10 +743,10 @@ export function createDeltaAssembler(
       case "delegation":
       case "planSteps":
         return item.type === shape.type;
-      // Unsupported until WS1a layer 3 (extension kinds): see
-      // UnsupportedDeltaShapeError.
       case "extension":
-        throw new UnsupportedDeltaShapeError(shape.type, "shapeMatchesItem");
+        // Two extension kinds are two classifications: a close that names a
+        // different kind than the open settles both (dual-settle).
+        return item.type === "extension" && item.kind === shape.kind;
     }
   }
 
@@ -873,6 +856,41 @@ export function createDeltaAssembler(
     );
   }
 
+  /**
+   * A plugin-defined item: opaque payload plus the mandatory presentation the
+   * lifecycle delta carries (an extension item has no core renderer, so the
+   * declarative base is the whole row). The server validates the payload
+   * against the plugin's declared schema at ingest.
+   */
+  function buildExtensionItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "extension" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
+  ): Extract<ThreadEventItem, { type: "extension" }> {
+    if (presentation === undefined) {
+      // Unreachable for a parsed delta: the protocol schema refuses an
+      // `item.open`/`item.close` whose shape is `extension` and that carries
+      // no presentation (requireExtensionPresentation). Stated here because
+      // the TypeScript delta type does not encode that refinement.
+      throw new Error(
+        `extension item "${shape.kind}" reached the assembler without a presentation`,
+      );
+    }
+    return withParentToolCallId(
+      {
+        type: "extension",
+        id: bbItemId,
+        kind: shape.kind,
+        payload: shape.payload,
+        status,
+        presentation,
+      },
+      parentToolCallId,
+    );
+  }
+
   function buildPlanStepsItem(
     bbItemId: string,
     shape: Extract<DeltaItemShape, { type: "planSteps" }>,
@@ -923,10 +941,28 @@ export function createDeltaAssembler(
     }
   }
 
+  /**
+   * The opened (pending) canonical item for a shape. `presentation` is the
+   * lifecycle delta's (grammar v3): persisted on every kind that carries one,
+   * required for `extension`, absent on v2 traffic.
+   */
   function buildOpenedItem(
     bbItemId: string,
     shape: DeltaItemShape,
     parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
+  ): ThreadEventItem {
+    return withPresentation(
+      buildOpenedItemShape(bbItemId, shape, parentToolCallId, presentation),
+      presentation,
+    );
+  }
+
+  function buildOpenedItemShape(
+    bbItemId: string,
+    shape: DeltaItemShape,
+    parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
   ): ThreadEventItem {
     switch (shape.type) {
       case "command":
@@ -1047,10 +1083,14 @@ export function createDeltaAssembler(
         );
       case "planSteps":
         return buildPlanStepsItem(bbItemId, shape, "pending", parentToolCallId);
-      // Unsupported until WS1a layer 3 (extension kinds): see
-      // UnsupportedDeltaShapeError.
       case "extension":
-        throw new UnsupportedDeltaShapeError(shape.type, "buildOpenedItem");
+        return buildExtensionItem(
+          bbItemId,
+          shape,
+          "pending",
+          parentToolCallId,
+          presentation,
+        );
     }
   }
 
@@ -1130,18 +1170,44 @@ export function createDeltaAssembler(
         return buildDelegationItem(started.id, started, close.status, parent);
       case "planSteps":
         return buildPlanStepsItem(started.id, started, close.status, parent);
+      case "extension":
+        return buildExtensionItem(
+          started.id,
+          started,
+          close.status,
+          parent,
+          started.presentation,
+        );
       default:
         // Message-ish started items never travel item.close; settle generically.
         return started;
     }
   }
 
-  /** Build the completed item from the close delta's terminal shape. */
+  /**
+   * Build the completed item from the close delta's terminal shape.
+   * `presentation` is the close-echo result (the close's own, else the opened
+   * item's); required for `extension`.
+   */
   function buildClosedItemFromShape(
     bbItemId: string,
     shape: DeltaItemShape,
     close: CloseFields,
     parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
+  ): ThreadEventItem {
+    return withPresentation(
+      buildClosedItemShape(bbItemId, shape, close, parentToolCallId, presentation),
+      presentation,
+    );
+  }
+
+  function buildClosedItemShape(
+    bbItemId: string,
+    shape: DeltaItemShape,
+    close: CloseFields,
+    parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
   ): ThreadEventItem {
     switch (shape.type) {
       case "command": {
@@ -1250,18 +1316,24 @@ export function createDeltaAssembler(
           close.status,
           parentToolCallId,
         );
+      case "extension":
+        return buildExtensionItem(
+          bbItemId,
+          shape,
+          close.status,
+          parentToolCallId,
+          presentation,
+        );
       case "agentMessage":
       case "reasoning":
       case "plan":
       case "imageView":
         // Status-less canonical items: the terminal shape is the whole item.
-        return buildOpenedItem(bbItemId, shape, parentToolCallId);
-      // Unsupported until WS1a layer 3 (extension kinds): see
-      // UnsupportedDeltaShapeError.
-      case "extension":
-        throw new UnsupportedDeltaShapeError(
-          shape.type,
-          "buildClosedItemFromShape",
+        return buildOpenedItemShape(
+          bbItemId,
+          shape,
+          parentToolCallId,
+          presentation,
         );
     }
   }
@@ -1438,8 +1510,10 @@ export function createDeltaAssembler(
           registerItemId(state, delta.key.providerItemId, bbItemId);
         }
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
-        const item = withPresentation(
-          buildOpenedItem(bbItemId, delta.item, parentToolCallId),
+        const item = buildOpenedItem(
+          bbItemId,
+          delta.item,
+          parentToolCallId,
           delta.presentation,
         );
         state.openItemsByKey.set(keyStr, {
@@ -1544,13 +1618,11 @@ export function createDeltaAssembler(
         // Close-echo for presentation: the close's value wins; when the close
         // carries none the opened item's survives onto the completed item.
         const presentation = delta.presentation ?? presentationOf(open?.item);
-        const item = withPresentation(
-          buildClosedItemFromShape(
-            bbItemId,
-            delta.item,
-            closeFields,
-            parentToolCallId ?? open?.item.parentToolCallId,
-          ),
+        const item = buildClosedItemFromShape(
+          bbItemId,
+          delta.item,
+          closeFields,
+          parentToolCallId ?? open?.item.parentToolCallId,
           presentation,
         );
         state.openItemsByKey.delete(keyStr);
@@ -1745,7 +1817,12 @@ export function createDeltaAssembler(
               : delta.channel === "plan"
                 ? { type: "plan", text: "" }
                 : { type: "reasoning", summary: [], content: [] };
-          const item = buildOpenedItem(bbItemId, shape, parentToolCallId);
+          const item = buildOpenedItem(
+            bbItemId,
+            shape,
+            parentToolCallId,
+            undefined,
+          );
           state.openItemsByKey.set(keyStr, {
             bbItemId,
             item,
@@ -2266,14 +2343,19 @@ export function createDeltaAssembler(
       }
 
       case "extension.state": {
-        // Unsupported until WS1a: plugin-declared thread state has no
-        // canonical event yet (the extension-state event and its latest-
-        // snapshot-wins fold land with the generic assembler). Loud, not
-        // silent — see UnsupportedDeltaShapeError.
-        throw new UnsupportedDeltaShapeError(
-          `extension.state:${delta.extensionKind}`,
-          "extension.state",
-        );
+        // Plugin-declared thread state: thread-scoped like goals and rate
+        // limits, latest snapshot per kind wins downstream. The payload is
+        // opaque here; the server validates it against the plugin's declared
+        // `state` schema at ingest.
+        events.push({
+          type: "thread/extensionState/updated",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: threadScope(),
+          kind: delta.extensionKind,
+          payload: delta.payload,
+        });
+        return;
       }
 
       case "session.reset": {

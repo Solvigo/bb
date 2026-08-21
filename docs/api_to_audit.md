@@ -407,9 +407,11 @@ and deep-freezes them and carries them on the normalized declaration. Nothing
 projects them yet: `ProviderInfo` gained matching optional `strings`,
 `serviceTiers`, `reasoningLevels`, and `extensionKinds` fields, and WS2a
 (registry) fills them from the declaration and points the usage banners,
-pickers, mobile, and the agent guide at them instead of per-provider tables;
-WS1a (generic assembler) validates extension payloads against the declared
-schemas at ingest.
+pickers, mobile, and the agent guide at them instead of per-provider tables.
+The server already validates extension payloads against the declared
+schemas at ingest (`apps/server/src/internal/extension-payloads.ts`): the
+registry carries the validators on each registration and resolves a
+namespaced kind through its plugin-id prefix.
 
 **Audit before stabilizing.**
 

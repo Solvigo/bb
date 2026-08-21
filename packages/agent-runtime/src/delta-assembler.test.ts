@@ -1879,6 +1879,128 @@ describe("delta assembler grammar v3 core kinds", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Grammar v3 extension kinds: extension items and extension.state
+// ---------------------------------------------------------------------------
+
+describe("delta assembler extension kinds", () => {
+  const presentation = {
+    label: { pending: "Updating goal", completed: "Goal updated" },
+    icon: { glyph: "Target" },
+    title: "Ship WS1a",
+  };
+
+  function itemOf(event: ThreadEvent | undefined) {
+    return event?.type === "item/started" || event?.type === "item/completed"
+      ? event.item
+      : undefined;
+  }
+
+  it("opens and settles an extension item with its opaque payload and the delta's presentation", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const [started] = assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "x-1", parentRef: "agent-1" },
+      item: {
+        type: "extension",
+        kind: "provider-codex/goal",
+        payload: { objective: "Ship WS1a", tokensUsed: 12 },
+      },
+      presentation,
+    });
+    const startedItem = itemOf(started);
+    expect(startedItem).toMatchObject({
+      type: "extension",
+      kind: "provider-codex/goal",
+      payload: { objective: "Ship WS1a", tokensUsed: 12 },
+      status: "pending",
+      presentation,
+    });
+    expect(startedItem?.parentToolCallId).toBeDefined();
+
+    // The close carries the full terminal payload and no presentation: the
+    // opened one echoes onto the completed item.
+    const [closed] = assemble(assembler, {
+      kind: "item.close",
+      key: { providerItemId: "x-1", parentRef: "agent-1" },
+      status: "completed",
+      item: {
+        type: "extension",
+        kind: "provider-codex/goal",
+        payload: { objective: "Ship WS1a", tokensUsed: 40 },
+      },
+    });
+    expect(itemOf(closed)).toEqual({
+      ...startedItem,
+      payload: { objective: "Ship WS1a", tokensUsed: 40 },
+      status: "completed",
+    });
+  });
+
+  it("treats two extension kinds as two classifications on close (dual-settle)", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "x-1" },
+      item: { type: "extension", kind: "plugin-a/one", payload: 1 },
+      presentation,
+    });
+    const events = assemble(assembler, {
+      kind: "item.close",
+      key: { providerItemId: "x-1" },
+      status: "completed",
+      item: { type: "extension", kind: "plugin-a/two", payload: 2 },
+      presentation,
+    });
+    expect(
+      events.map((event) => {
+        const item = itemOf(event);
+        return item?.type === "extension" ? item.kind : item?.type;
+      }),
+    ).toEqual(["plugin-a/one", "plugin-a/two"]);
+  });
+
+  it("interrupts an open extension item on session.ended with its presentation intact", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "x-1" },
+      item: { type: "extension", kind: "plugin-a/one", payload: null },
+      presentation,
+    });
+    const [interrupted] = assemble(assembler, { kind: "session.ended" });
+    expect(itemOf(interrupted)).toMatchObject({
+      type: "extension",
+      kind: "plugin-a/one",
+      status: "interrupted",
+      presentation,
+    });
+  });
+
+  it("emits plugin thread state as a thread-scoped extensionState event", () => {
+    const assembler = createAssembler();
+    // No turn needed: thread state is thread metadata like goals.
+    const events = assemble(assembler, {
+      kind: "extension.state",
+      extensionKind: "provider-codex/goal",
+      payload: { objective: "Ship WS1a", status: "active" },
+    });
+    expect(events).toEqual([
+      {
+        type: "thread/extensionState/updated",
+        threadId: "",
+        providerThreadId: "",
+        scope: threadScope(),
+        kind: "provider-codex/goal",
+        payload: { objective: "Ship WS1a", status: "active" },
+      },
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Background tasks, central progress throttling, model fallback (claude cut)
 // ---------------------------------------------------------------------------
 
