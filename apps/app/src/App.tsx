@@ -75,6 +75,8 @@ const ProjectSettingsView = lazy(() =>
   })),
 );
 const SplitWorkspaceRoute = lazy(() => import("./views/SplitWorkspaceRoute"));
+// CARVE PHASE 1: the fleet board is the app's default view. One import, two routes, nothing deleted.
+const TowerBoardRoute = lazy(() => import("./views/TowerBoardRoute"));
 
 export function LegacyAutomationDetailRedirect() {
   const location = useLocation();
@@ -239,6 +241,17 @@ function AppRoutes() {
               element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
             />
           </Route>
+          {/* ── CARVE PHASE 1 ──────────────────────────────────────────────────────────────────
+              THE DEFAULT VIEW IS THE FLEET BOARD. The root used to fall through to
+              SplitWorkspaceRoute, which renders the compose surface for "/" — now it renders the
+              board, and `/tower/*` keeps the board's own internal routes deep-linkable.
+
+              THE SPLAT BELOW IS DELIBERATELY UNTOUCHED even though the carve plan says "replace the
+              catch-all": that splat serves EVERY thread url, every plugin panel url and the legacy
+              project routes. Replacing it wholesale would strand all of them, and phase 1 deletes
+              nothing. Reverting this whole phase is removing these two <Route> elements. */}
+          <Route path="/" element={<TowerBoardRoute />} />
+          <Route path="/tower/*" element={<TowerBoardRoute />} />
           <Route path="*" element={<SplitWorkspaceRoute />} />
         </Routes>
       </Suspense>
