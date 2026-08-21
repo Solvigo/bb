@@ -14,6 +14,7 @@
  * (`@bb/shared-ui/icon`); the persisted form is glyph-only by design.
  */
 import type { DeltaPresentation } from "@get-bb/plugin-sdk/provider-bridge";
+import type { AcpToolKind } from "./wire.js";
 
 /** Row headlines stay one line and short; the item carries the full text. */
 const TITLE_MAX_LENGTH = 160;
@@ -107,24 +108,75 @@ export function fileChangePresentation(args: {
   );
 }
 
+export function fileReadPresentation(path: string): DeltaPresentation {
+  return withTitle(
+    {
+      label: { pending: "Reading file", completed: "Read file" },
+      icon: { glyph: "FileText" },
+    },
+    presentationTitle(fileName(path)),
+  );
+}
+
+/** `content` searches inside files; `path` matches file names. */
+export function searchPresentation(args: {
+  mode: "content" | "path";
+  query: string;
+}): DeltaPresentation {
+  return withTitle(
+    args.mode === "content"
+      ? {
+          label: { pending: "Searching files", completed: "Searched files" },
+          icon: { glyph: "Search" },
+        }
+      : {
+          label: { pending: "Finding files", completed: "Found files" },
+          icon: { glyph: "FolderOpen" },
+        },
+    presentationTitle(args.query),
+  );
+}
+
+export function webFetchPresentation(url: string): DeltaPresentation {
+  return withTitle(
+    {
+      label: { pending: "Fetching page", completed: "Fetched page" },
+      icon: { glyph: "Browser" },
+    },
+    presentationTitle(url),
+  );
+}
+
+/** A `think` tool call: the agent's reasoning, as a tool. */
+export function reasoningPresentation(): DeltaPresentation {
+  return {
+    label: { pending: "Thinking", completed: "Thought" },
+    icon: { glyph: "Brain" },
+  };
+}
+
+/**
+ * A plan snapshot (ACP `plan` update). The headline is the step in progress
+ * — what the agent is doing now. Collapsed by default: the todo banner reads
+ * the snapshot; the row is bookkeeping.
+ */
+export function planStepsPresentation(
+  steps: readonly { step: string; status?: string }[],
+): DeltaPresentation {
+  const active = steps.find((step) => step.status === "active");
+  return withTitle(
+    {
+      label: { pending: "Updating plan", completed: "Updated plan" },
+      icon: { glyph: "ListTodo" },
+      suppress: true,
+    },
+    active === undefined ? undefined : presentationTitle(active.step),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Native kinds
 // ---------------------------------------------------------------------------
-
-/**
- * The ACP tool-call kind vocabulary. `undefined` is an agent that sent no
- * kind; it reads as the generic `other`.
- */
-export type AcpToolKind =
-  | "read"
-  | "edit"
-  | "delete"
-  | "move"
-  | "search"
-  | "execute"
-  | "think"
-  | "fetch"
-  | "other";
 
 interface KindPresentationSpec {
   label: DeltaPresentation["label"];

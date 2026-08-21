@@ -708,32 +708,56 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
   });
 
-  it("translates plan updates", () => {
+  it("translates plan updates into settled planSteps snapshots", () => {
     const harness = startedHarness();
-    expect(
-      harness.translate(
-        updateEvent({
-          sessionUpdate: "plan",
-          entries: [
-            { content: "Read files", status: "completed" },
-            { content: "Fix bug", status: "in_progress" },
-            { content: "Run tests", status: "pending" },
-          ],
-        }),
-      ),
-    ).toEqual([
+    const first = harness.translate(
+      updateEvent({
+        sessionUpdate: "plan",
+        entries: [
+          { content: "Read files", status: "completed" },
+          { content: "Fix bug", status: "in_progress" },
+          { content: "Run tests", status: "pending" },
+        ],
+      }),
+    );
+    expect(first).toEqual([
       {
-        type: "turn/plan/updated",
+        type: "item/completed",
         threadId: "",
         providerThreadId: "",
         scope: turnScope(harness.openTurnId()),
-        plan: [
-          { step: "Read files", status: "completed" },
-          { step: "Fix bug", status: "active" },
-          { step: "Run tests", status: "pending" },
-        ],
+        item: {
+          type: "planSteps",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
+          steps: [
+            { step: "Read files", status: "completed" },
+            { step: "Fix bug", status: "active" },
+            { step: "Run tests", status: "pending" },
+          ],
+          status: "completed",
+          presentation: {
+            label: { pending: "Updating plan", completed: "Updated plan" },
+            icon: { glyph: "ListTodo" },
+            suppress: true,
+            title: "Fix bug",
+          },
+        },
       },
     ]);
+    // Each snapshot is its own item; the latest supersedes the rest.
+    const second = completedItems(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "plan",
+          entries: [{ content: "Run tests", status: "in_progress" }],
+        }),
+      ),
+    );
+    expect(second).toHaveLength(1);
+    expect(second[0]?.id).not.toBe(completedItems(first)[0]?.id);
+    expect(first.some((event) => event.type === "turn/plan/updated")).toBe(
+      false,
+    );
   });
 
   it("translates bridge warnings", () => {
@@ -998,5 +1022,185 @@ describe("acp delta translation (presentation)", () => {
       icon: { glyph: "Trash2" },
       title: "old.ts",
     });
+  });
+});
+
+/**
+ * The native kind enum maps straight onto the core kinds; the agent's title
+ * is the headline, never the tool name. A kind whose core shape the agent
+ * left unfilled stays a generic tool presenting as its kind.
+ */
+describe("acp delta translation (native kinds → core kinds)", () => {
+  function openItem(update: Record<string, unknown>) {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    const events = harness.translate(
+      updateEvent({ sessionUpdate: "tool_call", status: "pending", ...update }),
+    );
+    const started = events.find((event) => event.type === "item/started");
+    if (started?.type !== "item/started") {
+      throw new Error(
+        `Expected an item/started, got ${JSON.stringify(events)}`,
+      );
+    }
+    return started.item;
+  }
+
+  it("maps a read with a location to fileRead", () => {
+    expect(
+      openItem({
+        toolCallId: "read-1",
+        title: "Read File",
+        kind: "read",
+        locations: [{ path: "/workspace/src/a.ts", line: 3 }],
+      }),
+    ).toMatchObject({
+      type: "fileRead",
+      path: "/workspace/src/a.ts",
+      presentation: {
+        label: { pending: "Reading file", completed: "Read file" },
+        icon: { glyph: "FileText" },
+        title: "a.ts",
+      },
+    });
+  });
+
+  it("recovers the read path from a single code-ticked title token", () => {
+    expect(
+      openItem({
+        toolCallId: "read-2",
+        title: "Read `/home/user/project/README.md`",
+        kind: "read",
+        rawInput: {},
+      }),
+    ).toMatchObject({ type: "fileRead", path: "/home/user/project/README.md" });
+  });
+
+  it("keeps a read with no path a generic tool that presents as a read", () => {
+    expect(
+      openItem({
+        toolCallId: "read-3",
+        title: "Read File",
+        kind: "read",
+        rawInput: {},
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        type: "toolCall",
+        tool: "read",
+        presentation: {
+          label: { pending: "Reading file", completed: "Read file" },
+          icon: { glyph: "FileText" },
+          title: "Read File",
+        },
+      }),
+    );
+  });
+
+  it("maps a fetch to webFetch when the URL is known", () => {
+    expect(
+      openItem({
+        toolCallId: "fetch-1",
+        title: "Fetch: https://example.com/docs",
+        kind: "fetch",
+      }),
+    ).toMatchObject({
+      type: "webFetch",
+      url: "https://example.com/docs",
+      pattern: null,
+      presentation: {
+        label: { pending: "Fetching page", completed: "Fetched page" },
+        title: "https://example.com/docs",
+      },
+    });
+    expect(
+      openItem({ toolCallId: "fetch-2", title: "Web Fetch", kind: "fetch" }),
+    ).toMatchObject({
+      type: "toolCall",
+      tool: "fetch",
+      presentation: { label: { pending: "Fetching" }, title: "Web Fetch" },
+    });
+  });
+
+  it("maps a search with a query to the search kind", () => {
+    expect(
+      openItem({
+        toolCallId: "search-1",
+        title: "Grep",
+        kind: "search",
+        rawInput: { pattern: "TODO", path: "/workspace/src" },
+      }),
+    ).toMatchObject({
+      type: "search",
+      mode: "content",
+      query: "TODO",
+      path: "/workspace/src",
+      presentation: { label: { completed: "Searched files" }, title: "TODO" },
+    });
+    expect(
+      openItem({
+        toolCallId: "search-2",
+        title: "Find",
+        kind: "search",
+        rawInput: { glob: "**/*.test.ts" },
+      }),
+    ).toMatchObject({ type: "search", mode: "path", query: "**/*.test.ts" });
+    expect(
+      openItem({ toolCallId: "search-3", title: "Find", kind: "search" }),
+    ).toMatchObject({ type: "toolCall", tool: "search" });
+  });
+
+  it("maps a think call to a reasoning item with its thought", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "think-1",
+        title: "Thinking",
+        kind: "think",
+        status: "in_progress",
+      }),
+    );
+    const [settled] = completedItems(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "think-1",
+          status: "completed",
+          content: [
+            {
+              type: "content",
+              content: { type: "text", text: "Plan: A then B" },
+            },
+          ],
+        }),
+      ),
+    );
+    expect(settled).toMatchObject({
+      type: "reasoning",
+      summary: [],
+      content: ["Plan: A then B"],
+      presentation: { label: { pending: "Thinking", completed: "Thought" } },
+    });
+  });
+
+  it("names a generic call by its kind and keeps the title as the headline", () => {
+    expect(
+      openItem({ toolCallId: "other-1", title: "MCP: tool", kind: "other" }),
+    ).toEqual(
+      expect.objectContaining({
+        type: "toolCall",
+        tool: "other",
+        presentation: {
+          label: { pending: "Running tool", completed: "Ran tool" },
+          icon: { glyph: "Toolbox" },
+          title: "MCP: tool",
+        },
+      }),
+    );
+    expect(
+      openItem({ toolCallId: "other-2", title: "Task: Subagent task" }),
+    ).toMatchObject({ type: "toolCall", tool: "tool" });
   });
 });

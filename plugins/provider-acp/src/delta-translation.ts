@@ -17,19 +17,14 @@
 
 import {
   errorEnvelopeSchema,
-  extractResultText,
   jsonRpcEnvelopeSchema,
   providerRawEventSchema,
-  toOptionalString,
   type JsonRpcMessage,
   type ProviderRawEvent,
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type {
-  DeltaFileChange,
-  DeltaItemShape,
   DeltaNoTurnFallback,
-  DeltaPresentation,
   ThreadDelta,
   ThreadEventItemStatus,
   ThreadEventPlanStep,
@@ -52,15 +47,13 @@ import {
 } from "./bridge-protocol.js";
 import {
   COMPACTION_PRESENTATION,
-  commandPresentation,
   fileChangePresentation,
-  toolKindPresentation,
-  type AcpFileChangeVerb,
+  planStepsPresentation,
 } from "./presentation.js";
 import {
-  classifyAcpToolCall as classifyAcpToolCallOperation,
-  type AcpToolCallOperation,
-} from "./tool-call-operation.js";
+  classifyAcpToolCall,
+  extractAcpToolCallOutputText,
+} from "./tool-classification.js";
 import { acpVisibilityMetadata } from "./visibility.js";
 import {
   acpAgentMessageChunkUpdateSchema,
@@ -84,133 +77,18 @@ interface AcpDeltaTranslationContext {
 
 const ASSISTANT_STREAM_KEY = "assistant";
 const THOUGHT_STREAM_KEY = "thought";
-const INLINE_IMAGE_DATA_URL_PATTERN =
-  /data:image\/[a-z0-9.+-]+(?:;[^,]*)?;base64,[a-z0-9+/_=-]+/giu;
-
 const ACP_PLAN_STEP_STATUS_BY_ENTRY_STATUS = {
   pending: "pending",
   in_progress: "active",
   completed: "completed",
 } as const;
 
+/** Each ACP plan snapshot is its own settled item; the latest supersedes. */
+const PLAN_STEPS_CHANNEL = "planSteps";
+
 // ---------------------------------------------------------------------------
 // Pure ACP parsing helpers
 // ---------------------------------------------------------------------------
-
-function extractAcpToolCallOutputText(
-  event: AcpToolCallUpdateEvent,
-): string | undefined {
-  const chunks: string[] = [];
-  for (const entry of event.content ?? []) {
-    if (entry.type !== "content") {
-      continue;
-    }
-    const text = extractAcpContentText(entry.content);
-    if (text) {
-      chunks.push(text);
-    }
-  }
-  if (chunks.length > 0) {
-    return chunks.join("\n");
-  }
-  if (event.rawOutput === undefined) {
-    return undefined;
-  }
-  // Some ACP agents echo MCP image results as data-URL attachments in
-  // rawOutput. Keep the useful envelope, but do not persist or render the
-  // potentially multi-megabyte payload in the thread timeline.
-  const rawOutputText = extractResultText(event.rawOutput)
-    .replace(INLINE_IMAGE_DATA_URL_PATTERN, "[image]")
-    .trim();
-  return rawOutputText.length > 0 ? rawOutputText : undefined;
-}
-
-function buildAcpFileChanges(
-  event: AcpToolCallUpdateEvent,
-  operation: Extract<AcpToolCallOperation, { kind: "file_change" }>,
-): DeltaFileChange[] {
-  const changes: DeltaFileChange[] = [];
-  for (const entry of event.content ?? []) {
-    if (entry.type !== "diff") {
-      continue;
-    }
-    const oldText = entry.oldText ?? undefined;
-    changes.push({
-      path: entry.path,
-      kind: oldText === undefined ? "add" : "update",
-      ...(oldText === undefined ? {} : { oldText }),
-      newText: entry.newText,
-    });
-  }
-  if (changes.length > 0) {
-    return changes;
-  }
-  const [path] = operation.paths;
-  return path === undefined ? [] : [{ path, kind: operation.changeKind }];
-}
-
-/** A tool call's item shape plus the presentation that rides its lifecycle. */
-interface AcpClassifiedToolCall {
-  item: DeltaItemShape;
-  presentation: DeltaPresentation;
-}
-
-/** The verb a set of file changes reads as: all adds, all deletes, else edits. */
-function fileChangeVerb(
-  changes: readonly DeltaFileChange[],
-): AcpFileChangeVerb {
-  if (changes.every((change) => change.kind === "add")) {
-    return "add";
-  }
-  if (changes.every((change) => change.kind === "delete")) {
-    return "delete";
-  }
-  return "update";
-}
-
-function fileChangeItem(changes: DeltaFileChange[]): AcpClassifiedToolCall {
-  return {
-    item: { type: "fileChange", changes },
-    presentation: fileChangePresentation({
-      verb: fileChangeVerb(changes),
-      paths: changes.map((change) => change.path),
-    }),
-  };
-}
-
-/**
- * Classify a (merged) tool_call event into its parsed item shape and its
- * presentation. The command/file-change/generic decision is the shared
- * classifier's — the permission mapping (`interactions.ts`) uses the same
- * one, so an approval row and its timeline item can never disagree (#1803).
- */
-function classifyAcpToolCall(
-  event: AcpToolCallUpdateEvent,
-): AcpClassifiedToolCall {
-  const operation = classifyAcpToolCallOperation(event);
-  if (operation.kind === "command") {
-    return {
-      item: { type: "command", command: operation.command, cwd: "" },
-      presentation: commandPresentation(operation.command),
-    };
-  }
-  if (operation.kind === "file_change") {
-    const changes = buildAcpFileChanges(event, operation);
-    if (changes.length > 0) {
-      return fileChangeItem(changes);
-    }
-  }
-  return {
-    item: {
-      type: "tool",
-      tool: toOptionalString(event.title) ?? event.kind ?? "tool",
-    },
-    presentation: toolKindPresentation({
-      kind: event.kind,
-      title: toOptionalString(event.title),
-    }),
-  };
-}
 
 function isTerminalAcpStatus(
   status: AcpToolCallUpdateEvent["status"],
@@ -564,7 +442,14 @@ export function createAcpDeltaTranslator() {
         }
         mergedToolCalls.set(key, merged);
         const progressText = extractAcpToolCallOutputText(parsed.data);
-        if (progressText && classifyAcpToolCall(merged).item.type === "tool") {
+        // Commands and file changes settle with their output at the close;
+        // every other item streams its progress text.
+        const progressItemType = classifyAcpToolCall(merged).item.type;
+        if (
+          progressText &&
+          progressItemType !== "command" &&
+          progressItemType !== "fileChange"
+        ) {
           return [
             {
               kind: "item.progress",
@@ -584,6 +469,9 @@ export function createAcpDeltaTranslator() {
         if (!parsed.success) {
           return suppressedUnhandled(rawEvent);
         }
+        // An ACP plan update carries the whole entry list, so each one is a
+        // settled `planSteps` snapshot (grammar v3): a channel-keyed close
+        // mints a fresh item per snapshot and the latest supersedes the rest.
         const steps: ThreadEventPlanStep[] = parsed.data.entries.map(
           (entry) => ({
             step: entry.content,
@@ -594,8 +482,11 @@ export function createAcpDeltaTranslator() {
         );
         return [
           {
-            kind: "turn.plan",
-            steps,
+            kind: "item.close",
+            key: { channel: PLAN_STEPS_CHANNEL },
+            status: "completed",
+            item: { type: "planSteps", steps },
+            presentation: planStepsPresentation(steps),
             noTurnFallback: noTurnFallbackFor(rawEvent),
           },
         ];
