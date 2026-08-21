@@ -6,7 +6,6 @@ import {
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getStoredTurnRequestEventForTurn,
-  getStoredProviderThreadIdAtOrBeforeSequence,
   getThread,
   listStoredTurnStartedKeys,
   noopNotifier,
@@ -967,16 +966,6 @@ export function getLastProviderThreadId(
   return getLastStoredProviderThreadId(deps.db, threadId);
 }
 
-export function getProviderThreadIdAtOrBeforeSequence(
-  deps: ThreadEventReadDeps,
-  args: {
-    sequence: number;
-    threadId: string;
-  },
-): string | null {
-  return getStoredProviderThreadIdAtOrBeforeSequence(deps.db, args);
-}
-
 export function getLastExecutionOptions(
   deps: Pick<AppDeps, "db">,
   threadId: string,
@@ -990,5 +979,30 @@ export function getLastExecutionOptions(
         threadId: row.threadId,
         type: row.type,
       }).execution
+    : null;
+}
+
+const CODEX_NATIVE_TURN_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The provider checkpoint a completed root turn can be re-created through:
+ * what `turn/completed` recorded, which rewinds and point-in-time forks hand
+ * back to the bridge. Runtime-assembled Codex timelines have bb-minted turn
+ * ids and persist the native Codex turn id as the checkpoint. Older Codex
+ * timelines used the native UUID directly and have no checkpoint, so retain
+ * that compatibility fallback without ever forwarding a bb-minted id to Codex.
+ */
+export function resolveTurnProviderCheckpointId(args: {
+  providerCheckpointId: string | null | undefined;
+  providerId: string;
+  turnId: string;
+}): string | null {
+  if (args.providerCheckpointId) {
+    return args.providerCheckpointId;
+  }
+  return args.providerId === "codex" &&
+    CODEX_NATIVE_TURN_ID_PATTERN.test(args.turnId)
+    ? args.turnId
     : null;
 }

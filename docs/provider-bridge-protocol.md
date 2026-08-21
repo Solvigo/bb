@@ -288,8 +288,10 @@ carries the whole item, so refusing it would lose real content.
    of a session and apply at the next construction.
 4. Fork: absent `sourceProviderCheckpointId` means fork at the tip. A
    `fork: "tip"` bridge rejects checkpoint forks with
-   `FORK_CHECKPOINT_UNSUPPORTED` rather than cloning history the bb timeline
-   does not show.
+   `FORK_CHECKPOINT_UNSUPPORTED`; the server only asks such a bridge for a
+   tip fork. The forked bb thread inherits the source timeline through the
+   same point the clone ends on, so the checkpoint must be the one the
+   bridge reported on that turn's `turn/completed`.
 5. `thread/openWork` reports whether a thread still owns provider work that
    outlives its turn and that bb cannot see. Work reported as
    `backgroundTask` items is already tracked by the runtime; this is for

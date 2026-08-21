@@ -27,6 +27,7 @@ import {
   appendThreadEventInTransaction,
   createClientTurnRequestId,
   parseStoredTurnRequestEvent,
+  resolveTurnProviderCheckpointId,
 } from "./thread-events.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
@@ -260,24 +261,14 @@ function resolveEditableTurnCandidate(
   ) {
     conflict("This earlier turn has no provider history");
   }
-  // Runtime-assembled Codex timelines have bb-minted turn ids and persist the
-  // native Codex turn id as the checkpoint. Older timelines used the native
-  // UUID directly and have no checkpoint, so retain that compatibility
-  // fallback without ever forwarding a bb-minted id to Codex.
-  const legacyCodexCheckpoint =
-    thread.providerId === "codex" &&
-    precedingTurnId !== null &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      precedingTurnId,
-    )
-      ? precedingTurnId
-      : null;
   const precedingProviderCheckpoint =
     precedingTurnId === null
       ? null
-      : thread.providerId === "codex"
-        ? (precedingCompletion?.providerCheckpointId ?? legacyCodexCheckpoint)
-        : (precedingCompletion?.providerCheckpointId ?? null);
+      : resolveTurnProviderCheckpointId({
+          providerCheckpointId: precedingCompletion?.providerCheckpointId,
+          providerId: thread.providerId,
+          turnId: precedingTurnId,
+        });
   if (precedingTurnId !== null && precedingProviderCheckpoint === null) {
     conflict("This earlier provider turn has no editable history checkpoint");
   }

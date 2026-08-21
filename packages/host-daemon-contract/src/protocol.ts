@@ -1,3 +1,9 @@
+// Version 147 adds the optional `sourceProviderCheckpointId` to
+// `thread.start.fork`. A fork requested at an earlier source sequence now
+// clones the source session through that turn's recorded checkpoint instead
+// of silently cloning the tip. An older daemon would strip the field and
+// clone the tip, so it must update before it serves such a start.
+//
 // Version 146 adds the lightweight `host.list_branch_options` RPC so branch
 // pickers can read cached refs while the daemon refreshes remotes in the
 // background. Older daemons cannot parse or serve that command.
@@ -110,7 +116,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 146 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 147 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
