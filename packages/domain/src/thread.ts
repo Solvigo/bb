@@ -31,7 +31,7 @@ export type ThreadRuntimeDisplayStatus = z.infer<
   typeof threadRuntimeDisplayStatusSchema
 >;
 
-const threadRuntimeStateSchema = z.object({
+export const threadRuntimeStateSchema = z.object({
   displayStatus: threadRuntimeDisplayStatusSchema,
   hostReconnectGraceExpiresAt: z.number().nullable(),
 });

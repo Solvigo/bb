@@ -16,6 +16,7 @@ import {
 import type {
   Thread,
   ThreadActivityState,
+  ThreadChangeMetadata,
   ThreadListEntry,
   ThreadRuntimeState,
   ThreadStatus,
@@ -72,6 +73,11 @@ interface ToThreadResponseFromThreadArgs {
   now?: number;
   thread: Thread;
 }
+
+type ThreadStatusChangeRow = Pick<
+  Thread,
+  "environmentId" | "latestAttentionAt" | "projectId" | "status" | "updatedAt"
+>;
 
 interface ToThreadResponseWithHostArgs extends ToThreadResponseFromThreadArgs {
   environmentHostId: string | null;
@@ -234,12 +240,37 @@ function resolveThreadRuntimeStateFromLatestSession(
 
 function resolveThreadEnvironmentHostId(
   deps: ThreadRuntimeDisplayDeps,
-  thread: Thread,
+  thread: Pick<Thread, "environmentId">,
 ): string | null {
   if (thread.environmentId === null) {
     return null;
   }
   return getEnvironment(deps.db, thread.environmentId)?.hostId ?? null;
+}
+
+/**
+ * Metadata for a `status-changed` notification: the post-transition row
+ * fields plus the runtime the thread would render with right now. Clients
+ * patch their cached list rows from it instead of refetching every thread
+ * list. Producers without a hub (writes inside a transaction that buffer
+ * notifications) send the bare change kind and clients refetch as before.
+ */
+export function buildThreadStatusChangeMetadata(
+  deps: ThreadRuntimeDisplayDeps,
+  thread: ThreadStatusChangeRow,
+): ThreadChangeMetadata {
+  return {
+    projectId: thread.projectId,
+    statusChange: {
+      status: thread.status,
+      runtime: resolveThreadRuntimeState(deps, {
+        environmentHostId: resolveThreadEnvironmentHostId(deps, thread),
+        status: thread.status,
+      }),
+      latestAttentionAt: thread.latestAttentionAt,
+      updatedAt: thread.updatedAt,
+    },
+  };
 }
 
 function toThreadResponseWithHost(

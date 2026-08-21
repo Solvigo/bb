@@ -121,6 +121,7 @@ function mergeThreadChangeMetadata(
   const hasPendingInteraction =
     next.hasPendingInteraction ?? current?.hasPendingInteraction;
   const projectId = next.projectId ?? current?.projectId;
+  const statusChange = next.statusChange ?? current?.statusChange;
   const metadata: ThreadChangeMetadata = {};
   if (eventTypes) {
     metadata.eventTypes = eventTypes;
@@ -133,6 +134,9 @@ function mergeThreadChangeMetadata(
   }
   if (projectId !== undefined) {
     metadata.projectId = projectId;
+  }
+  if (statusChange !== undefined) {
+    metadata.statusChange = statusChange;
   }
   return metadata;
 }
@@ -180,6 +184,7 @@ function flushThreadInvalidations(
         hasPendingInteraction: undefined,
         projectId: undefined,
         queryClient,
+        statusChange: undefined,
         threadId: undefined,
       },
       handlers: REALTIME_THREAD_CHANGE_REGISTRY[changeKind].dirty,
@@ -197,6 +202,7 @@ function flushThreadInvalidations(
           hasPendingInteraction: metadata?.hasPendingInteraction,
           projectId: metadata?.projectId,
           queryClient,
+          statusChange: metadata?.statusChange,
           threadId,
         },
         handlers: REALTIME_THREAD_CHANGE_REGISTRY[changeKind].dirty,
