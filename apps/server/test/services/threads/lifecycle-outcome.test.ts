@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  appendStoredThreadEvent,
   createConnection,
   createEnvironment,
   createProject,
@@ -14,13 +15,100 @@ import {
 } from "@bb/db";
 import {
   changedMessageSchema,
+  formatClientTurnRequestIdSuffix,
+  threadScope,
+  turnScope,
+  type PromptInput,
   type ThreadChangedMessage,
   type ThreadStatus,
 } from "@bb/domain";
 import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
 import { NotificationHub } from "../../../src/ws/hub.js";
 import { createMockHubSocket } from "../../helpers/mock-hub-socket.js";
+import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
 import { testLogger } from "../../helpers/test-app.js";
+
+// Plan-mode activity is gated on the provider's declared plan command, so the
+// broadcast needs the real first-party declarations.
+const providerRegistry = await createTestProviderRegistry();
+
+const NO_ACTIVITY = {
+  activeBackgroundAgentCount: 0,
+  activeBackgroundCommandCount: 0,
+  activeGoalCount: 0,
+  activePlanModeCount: 0,
+  activeWorkflowCount: 0,
+};
+
+const planPromptInput: PromptInput[] = [
+  {
+    type: "text",
+    text: "/plan inspect the failing command",
+    mentions: [
+      {
+        start: 0,
+        end: 5,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ],
+  },
+];
+
+/** Records an accepted, still-open plan turn and an active goal for the thread. */
+function seedOpenPlanTurnWithGoal(db: DbConnection, threadId: string): void {
+  const requestId = formatClientTurnRequestIdSuffix({ suffix: "23456789ab" });
+  appendStoredThreadEvent(db, noopNotifier, {
+    threadId,
+    scope: threadScope(),
+    type: "client/turn/requested",
+    data: {
+      direction: "outbound",
+      source: "tell",
+      initiator: "user",
+      senderThreadId: null,
+      requestId,
+      input: planPromptInput,
+      target: { kind: "new-turn" },
+      request: { method: "turn/start", params: {} },
+      execution: {
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "workspace-write",
+        source: "client/turn/requested",
+        serviceTier: "default",
+      },
+    },
+  });
+  appendStoredThreadEvent(db, noopNotifier, {
+    threadId,
+    scope: turnScope("turn-plan"),
+    providerThreadId: "provider-plan",
+    type: "turn/input/accepted",
+    data: { providerThreadId: "provider-plan", clientRequestId: requestId },
+  });
+  appendStoredThreadEvent(db, noopNotifier, {
+    threadId,
+    scope: threadScope(),
+    providerThreadId: "provider-plan",
+    type: "thread/goal/updated",
+    data: {
+      providerThreadId: "provider-plan",
+      objective: "Finish the sidebar activity indicator",
+      status: "active",
+      tokenBudget: null,
+      tokensUsed: 64,
+      timeUsedSeconds: 5,
+    },
+  });
+}
 
 interface Setup {
   db: DbConnection;
@@ -101,7 +189,7 @@ describe("applyLoggedThreadLifecycleEvent", () => {
     hub.subscribe(socket, { kind: "thread-list" });
 
     const outcome = applyLoggedThreadLifecycleEvent(
-      { db, hub, logger: testLogger },
+      { db, hub, logger: testLogger, providerRegistry },
       { event: { type: "run.started" }, threadId },
     );
 
@@ -121,6 +209,7 @@ describe("applyLoggedThreadLifecycleEvent", () => {
             displayStatus: "active",
             hostReconnectGraceExpiresAt: null,
           },
+          activity: NO_ACTIVITY,
           latestAttentionAt: row?.latestAttentionAt,
           updatedAt: row?.updatedAt,
         },
@@ -135,7 +224,7 @@ describe("applyLoggedThreadLifecycleEvent", () => {
     hub.subscribe(socket, { kind: "thread-list" });
 
     applyLoggedThreadLifecycleEvent(
-      { db, hub, logger: testLogger },
+      { db, hub, logger: testLogger, providerRegistry },
       { event: { type: "run.started" }, threadId },
     );
 
@@ -145,13 +234,44 @@ describe("applyLoggedThreadLifecycleEvent", () => {
     ).toBe("waiting-for-host");
   });
 
+  it("carries the status-gated plan and goal activity of the post-transition row", () => {
+    // The sidebar's plan-mode and goal indicators come from this activity
+    // and nothing else pushes them to list rows: without it the patch would
+    // leave a finished plan turn's indicator lit until some unrelated refetch.
+    const { db, hostId, hub, threadId } = setup("idle");
+    connectDaemon(db, hub, hostId);
+    seedOpenPlanTurnWithGoal(db, threadId);
+    const socket = createMockHubSocket();
+    hub.subscribe(socket, { kind: "thread-list" });
+
+    applyLoggedThreadLifecycleEvent(
+      { db, hub, logger: testLogger, providerRegistry },
+      { event: { type: "run.started" }, threadId },
+    );
+    expect(
+      lastThreadListMessage(socket.messages).metadata?.statusChange?.activity,
+    ).toEqual({ ...NO_ACTIVITY, activeGoalCount: 1, activePlanModeCount: 1 });
+
+    applyLoggedThreadLifecycleEvent(
+      { db, hub, logger: testLogger, providerRegistry },
+      { event: { type: "run.succeeded" }, threadId },
+    );
+    // Plan mode is gated on an active thread; the goal outlives the turn.
+    expect(
+      lastThreadListMessage(socket.messages).metadata?.statusChange,
+    ).toMatchObject({
+      status: "idle",
+      activity: { ...NO_ACTIVITY, activeGoalCount: 1, activePlanModeCount: 0 },
+    });
+  });
+
   it("does not broadcast when the event is not applied", () => {
     const { db, hub, threadId } = setup("idle");
     const socket = createMockHubSocket();
     hub.subscribe(socket, { kind: "thread-list" });
 
     const outcome = applyLoggedThreadLifecycleEvent(
-      { db, hub, logger: testLogger },
+      { db, hub, logger: testLogger, providerRegistry },
       // idle has no run.succeeded cell.
       { event: { type: "run.succeeded" }, threadId },
     );

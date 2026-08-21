@@ -4,7 +4,11 @@ import {
   threadEventTypeValues,
   type ThreadEventType,
 } from "./provider-event.js";
-import { threadRuntimeStateSchema, threadStatusSchema } from "./thread.js";
+import {
+  threadActivityStateSchema,
+  threadRuntimeStateSchema,
+  threadStatusSchema,
+} from "./thread.js";
 
 export const THREAD_CHANGE_KINDS = [
   "thread-created",
@@ -196,16 +200,19 @@ export function realtimeSubscriptionTargetKey(
 }
 
 /**
- * The thread row fields a lifecycle transition rewrites, carried on a
+ * The thread list row fields a lifecycle transition rewrites, carried on a
  * `status-changed` notification so clients patch the cached row instead of
  * refetching every thread list (the sidebar bootstrap is ~1 KB per thread).
- * Producers that cannot resolve the post-transition runtime omit it; clients
- * then fall back to refetching.
+ * `activity` is included because the plan-mode and goal counts are gated on
+ * the thread status server-side and nothing else pushes them to list rows.
+ * Producers that cannot resolve the post-transition runtime omit the whole
+ * field; clients then fall back to refetching.
  */
 export const threadStatusChangeMetadataSchema = z
   .object({
     status: threadStatusSchema,
     runtime: threadRuntimeStateSchema,
+    activity: threadActivityStateSchema,
     latestAttentionAt: z.number(),
     updatedAt: z.number(),
   })

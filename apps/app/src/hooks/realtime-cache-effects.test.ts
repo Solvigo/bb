@@ -81,6 +81,14 @@ interface FakeVisibility extends RealtimeCacheEffectsVisibility {
   setVisible: (visible: boolean) => void;
 }
 
+const NO_THREAD_ACTIVITY = {
+  activeBackgroundAgentCount: 0,
+  activeBackgroundCommandCount: 0,
+  activeGoalCount: 0,
+  activePlanModeCount: 0,
+  activeWorkflowCount: 0,
+} as const;
+
 function createFakeVisibility(): FakeVisibility {
   let visible = true;
   const listeners = new Set<() => void>();
@@ -1834,6 +1842,7 @@ describe("createRealtimeCacheEffects", () => {
     });
     const sidebarNavigationKey = sidebarNavigationQueryKey();
     const idleRow = {
+      activity: NO_THREAD_ACTIVITY,
       id: "thr_1",
       latestAttentionAt: 100,
       runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
@@ -1841,6 +1850,7 @@ describe("createRealtimeCacheEffects", () => {
       updatedAt: 100,
     };
     const otherRow = {
+      activity: NO_THREAD_ACTIVITY,
       id: "thr_2",
       latestAttentionAt: 50,
       runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
@@ -1871,7 +1881,10 @@ describe("createRealtimeCacheEffects", () => {
     expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
     expect(threadListQueryFn).toHaveBeenCalledTimes(1);
 
+    // The plan-mode and goal indicators are server-computed and gated on the
+    // status, so the push carries the activity of the post-transition row.
     const statusChange = {
+      activity: { ...NO_THREAD_ACTIVITY, activePlanModeCount: 1 },
       latestAttentionAt: 100,
       runtime: {
         displayStatus: "active",
@@ -1947,6 +1960,7 @@ describe("createRealtimeCacheEffects", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const sidebarNavigationKey = sidebarNavigationQueryKey();
     const idleRow = {
+      activity: NO_THREAD_ACTIVITY,
       id: "thr_1",
       latestAttentionAt: 100,
       runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
@@ -2010,6 +2024,7 @@ describe("createRealtimeCacheEffects", () => {
       metadata: {
         projectId: "project-1",
         statusChange: {
+          activity: NO_THREAD_ACTIVITY,
           latestAttentionAt: 100,
           runtime: {
             displayStatus: "active",
@@ -2294,6 +2309,67 @@ describe("createRealtimeCacheEffects", () => {
 
       expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+      expect(
+        queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+      ).toBe(true);
+      effects.dispose();
+    });
+
+    it("refetches when a bare status-changed follows one that carried the row", () => {
+      // Stop requests, command failures and host interruptions still push the
+      // bare kind. Merged behind an earlier push's row snapshot, the resume
+      // flush must not patch the row to that earlier, now-stale status.
+      vi.useFakeTimers();
+      const visibility = createFakeVisibility();
+      const { effects, queryClient } =
+        createRealtimeEffectsTestContext(visibility);
+      const sidebarNavigationKey = sidebarNavigationQueryKey();
+      const idleRow = {
+        activity: NO_THREAD_ACTIVITY,
+        id: "thr_1",
+        latestAttentionAt: 100,
+        runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+        status: "idle",
+        updatedAt: 100,
+      };
+      queryClient.setQueryData(sidebarNavigationKey, {
+        projects: [{ threads: [idleRow] }],
+        personalProject: { threads: [] },
+      });
+
+      visibility.setVisible(false);
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          projectId: "project-1",
+          statusChange: {
+            activity: NO_THREAD_ACTIVITY,
+            latestAttentionAt: 100,
+            runtime: {
+              displayStatus: "active",
+              hostReconnectGraceExpiresAt: null,
+            },
+            status: "active",
+            updatedAt: 200,
+          },
+        },
+        changes: ["status-changed"],
+      });
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        changes: ["status-changed"],
+      });
+      visibility.setVisible(true);
+
+      expect(
+        queryClient.getQueryData<{
+          projects: { threads: (typeof idleRow)[] }[];
+        }>(sidebarNavigationKey)?.projects[0]?.threads[0],
+      ).toBe(idleRow);
       expect(
         queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
       ).toBe(true);

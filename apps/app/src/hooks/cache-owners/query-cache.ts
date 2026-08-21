@@ -712,11 +712,11 @@ export function updateCachedThreadListPendingInteractionState(
 }
 
 /**
- * Writes the row fields a lifecycle transition rewrites into every cached
- * thread list and the sidebar bootstrap. Status never changes list
- * membership (lists filter on project, parent, archive state), so a row that
- * is not cached needs nothing: the query that will load it reads the current
- * status.
+ * Writes the row fields a lifecycle transition rewrites (status, runtime,
+ * activity, attention and update times) into every cached thread list and
+ * the sidebar bootstrap. Status never changes list membership (lists filter
+ * on project, parent, archive state), so a row that is not cached needs
+ * nothing: the query that will load it reads the current status.
  */
 export function updateCachedThreadListStatusState(
   queryClient: QueryClient,

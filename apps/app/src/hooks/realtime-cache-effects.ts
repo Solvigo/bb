@@ -111,17 +111,33 @@ function mergeEventTypes(
   return Array.from(new Set([...current, ...next]));
 }
 
-function mergeThreadChangeMetadata(
-  current: ThreadChangeMetadata | undefined,
-  next: ThreadChangeMetadata,
-): ThreadChangeMetadata {
+interface MergeThreadChangeMetadataArgs {
+  current: ThreadChangeMetadata | undefined;
+  next: ThreadChangeMetadata;
+  /**
+   * The message carries `status-changed`. Its row snapshot (or the lack of
+   * one) supersedes any earlier snapshot merged while the document was
+   * hidden: a later bare `status-changed` (stop, command failure, host
+   * interruption) must make the flush refetch, not patch the row to the
+   * earlier, now-stale status.
+   */
+  statusChanged: boolean;
+}
+
+function mergeThreadChangeMetadata({
+  current,
+  next,
+  statusChanged,
+}: MergeThreadChangeMetadataArgs): ThreadChangeMetadata {
   const eventTypes = mergeEventTypes(current?.eventTypes, next.eventTypes);
   const backgroundActivityChanged =
     next.backgroundActivityChanged ?? current?.backgroundActivityChanged;
   const hasPendingInteraction =
     next.hasPendingInteraction ?? current?.hasPendingInteraction;
   const projectId = next.projectId ?? current?.projectId;
-  const statusChange = next.statusChange ?? current?.statusChange;
+  const statusChange = statusChanged
+    ? next.statusChange
+    : (next.statusChange ?? current?.statusChange);
   const metadata: ThreadChangeMetadata = {};
   if (eventTypes) {
     metadata.eventTypes = eventTypes;
@@ -227,13 +243,15 @@ function recordThreadChange(
       state,
       threadId: message.id,
     });
-    if (message.metadata) {
+    const statusChanged = message.changes.includes("status-changed");
+    if (message.metadata || statusChanged) {
       state.metadataByThreadId.set(
         message.id,
-        mergeThreadChangeMetadata(
-          state.metadataByThreadId.get(message.id),
-          message.metadata,
-        ),
+        mergeThreadChangeMetadata({
+          current: state.metadataByThreadId.get(message.id),
+          next: message.metadata ?? {},
+          statusChanged,
+        }),
       );
     }
     return;

@@ -9,12 +9,14 @@ import {
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { emitPluginThreadLifecycleOutcome } from "../plugins/plugin-thread-events.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 
 interface ApplyLoggedThreadLifecycleEventDeps {
   db: DbConnection;
   hub: Pick<NotificationHub, "getDaemonSessionIdForHost" | "notifyThread">;
   logger: ServerLogger;
+  providerRegistry: ProviderRegistryService;
 }
 
 interface ApplyLoggedThreadLifecycleEventTransactionDeps {

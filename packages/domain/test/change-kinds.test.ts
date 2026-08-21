@@ -41,6 +41,13 @@ const maximalThreadMetadata: ThreadChangeMetadata = {
   statusChange: {
     status: "active",
     runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+    activity: {
+      activeBackgroundAgentCount: 1,
+      activeBackgroundCommandCount: 1,
+      activeGoalCount: 1,
+      activePlanModeCount: 1,
+      activeWorkflowCount: 1,
+    },
     latestAttentionAt: 1_000,
     updatedAt: 2_000,
   },
@@ -135,6 +142,13 @@ describe("lenient changed-message schema parity", () => {
           runtime: {
             displayStatus: "teleporting",
             hostReconnectGraceExpiresAt: null,
+          },
+          activity: {
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activeGoalCount: 0,
+            activePlanModeCount: 0,
+            activeWorkflowCount: 0,
           },
           latestAttentionAt: 1_000,
           updatedAt: 2_000,
