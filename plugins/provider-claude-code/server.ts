@@ -1,8 +1,11 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+// Import-free data: the server loads this file with only the SDK root
+// specifier resolvable, so nothing here may pull in the bridge modules.
 import {
-  CLAUDE_CODE_ACTIVE_CATALOG,
+  CLAUDE_CODE_ACTIVE_CATALOG_DATA,
+  CLAUDE_XHIGH_CAPABLE_REASONING_EFFORT_DATA,
   DEFAULT_CLAUDE_CODE_MODEL,
-} from "./src/model-catalog.js";
+} from "./src/model-catalog-data.js";
 
 /**
  * First-party Claude Code provider plugin. The declaration is the only source
@@ -78,16 +81,11 @@ export default function plugin(bb: BbPluginApi) {
     // spawned with inherited BB_* variables stripped, so it is declared.
     experimental_env: { passthrough: ["BB_CLAUDE_CODE_EXECUTABLE"] },
     experimental_models: {
-      fallback: CLAUDE_CODE_ACTIVE_CATALOG.map((entry) => ({
+      fallback: CLAUDE_CODE_ACTIVE_CATALOG_DATA.map((entry) => ({
         id: entry.model,
         displayName: entry.displayName,
         description: entry.description,
-        supportedReasoningEfforts: entry.supportedReasoningEfforts.map(
-          (effort) => ({
-            reasoningEffort: effort.reasoningEffort,
-            description: effort.description,
-          }),
-        ),
+        supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORT_DATA,
         defaultReasoningEffort: entry.defaultReasoningEffort,
         isDefault: entry.model === DEFAULT_CLAUDE_CODE_MODEL,
       })),
