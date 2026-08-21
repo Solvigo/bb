@@ -1,12 +1,15 @@
-import { SugarHigh, tokenize } from "sugar-high";
-import { c, css, go, java, python, rust } from "sugar-high/presets";
+import type { LanguageName } from "sugar-high";
+import { SugarHigh, tokenize } from "sugar-high/core";
+import { lang, languages } from "sugar-high/lang";
 
 /**
- * Fenced-code tokenization for the native renderer. `sugar-high` targets
- * JS/TS and ships presets for the other languages agents emit most often; a
- * language without a preset falls through to the core highlighter, which
- * still tokenizes identifiers, strings, and comments. Mirrors the web's
- * `markdown-code-highlight.ts`, but returns a span model instead of HTML.
+ * Fenced-code tokenization for the native renderer. `sugar-high` ships
+ * tokenizer configs for the languages agents emit most often and resolves
+ * the fence aliases it knows (`sh`/`bash`/`zsh` -> shell, `py` -> python, ...);
+ * a language it cannot resolve falls through to the core JavaScript
+ * tokenizer, which still tokenizes identifiers, strings, and comments.
+ * Mirrors the web's `markdown-code-highlight.ts`, but returns a span model
+ * instead of HTML.
  */
 
 export type CodeTokenType =
@@ -30,27 +33,23 @@ export interface CodeSpan {
 /** One source line as spans (no trailing newline). */
 export type CodeLine = CodeSpan[];
 
-type Preset = typeof rust;
-
-const PRESET_BY_LANGUAGE: Record<string, Preset> = {
-  rust,
-  rs: rust,
-  python,
-  py: python,
-  go,
-  c,
-  "c++": c,
-  cpp: c,
-  cc: c,
-  h: c,
-  hpp: c,
-  java,
-  kotlin: java,
-  kt: java,
-  css,
-  scss: css,
-  less: css,
+/** Fence aliases agents emit that sugar-high's `lang()` does not resolve. */
+const EXTRA_LANGUAGE_ALIASES: Record<string, LanguageName> = {
+  console: "shell",
+  shellscript: "shell",
+  h: "c",
+  hpp: "cpp",
+  hh: "cpp",
+  hxx: "cpp",
+  less: "css",
 };
+
+function tokenizerConfigFor(language: string) {
+  const resolved = lang(language) ?? EXTRA_LANGUAGE_ALIASES[language];
+  return resolved === undefined
+    ? undefined
+    : languages.find(({ id }) => id === resolved)?.config;
+}
 
 /**
  * Beyond this size a block renders as plain monospace text: a single RN
@@ -59,12 +58,8 @@ const PRESET_BY_LANGUAGE: Record<string, Preset> = {
  */
 export const CODE_HIGHLIGHT_CHAR_LIMIT = 20_000;
 
-const TOKEN_TYPE_NAMES: readonly string[] = SugarHigh.TokenTypes as unknown as
-  | string[]
-  | readonly string[];
-
 function tokenTypeName(index: number): CodeTokenType {
-  const name = TOKEN_TYPE_NAMES[index];
+  const name: string | undefined = SugarHigh.TokenTypes[index];
   switch (name) {
     case "identifier":
     case "keyword":
@@ -130,10 +125,10 @@ export function tokenizeCodeLines(
   ) {
     return plainLines(code);
   }
-  const preset = language === null ? undefined : PRESET_BY_LANGUAGE[language];
+  const config = language === null ? undefined : tokenizerConfigFor(language);
   let tokens: Array<[number, string]>;
   try {
-    tokens = tokenize(code, preset);
+    tokens = tokenize(code, config);
   } catch {
     return plainLines(code);
   }

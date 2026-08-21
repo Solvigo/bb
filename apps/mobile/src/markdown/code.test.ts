@@ -45,10 +45,25 @@ describe("tokenizeCodeLines", () => {
     ]);
   });
 
+  it.each(["sh", "bash", "zsh", "shell", "console"])(
+    "lexes a `#` comment in a %s fence as a comment, not JS punctuation",
+    (language) => {
+      const lines = tokenizeCodeLines(
+        "# install the plugin\nbb plugin install ./plugins/monokai",
+        language,
+      );
+      expect(lines[0]).toEqual([
+        { text: "# install the plugin", type: "comment" },
+      ]);
+      // The JS lexer reads `/plugins/monokai` as a regex literal (string).
+      expect(lines[1]!.some((span) => span.type === "string")).toBe(false);
+    },
+  );
+
   it("renders an unknown language through the core tokenizer", () => {
-    const lines = tokenizeCodeLines('echo "hi" # c', "bash");
+    const lines = tokenizeCodeLines('puts "hi" # c', "ruby");
     expect(lines).toHaveLength(1);
-    expect(lines[0]!.map((span) => span.text).join("")).toBe('echo "hi" # c');
+    expect(lines[0]!.map((span) => span.text).join("")).toBe('puts "hi" # c');
     expect(lines[0]!.some((span) => span.type === "string")).toBe(true);
   });
 });
