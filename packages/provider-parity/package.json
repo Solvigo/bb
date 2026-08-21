@@ -19,7 +19,6 @@
     "rerecord": "node --conditions=source --import tsx src/rerecord.ts"
   },
   "dependencies": {
-    "@bb/agent-runtime": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/thread-view": "workspace:*"

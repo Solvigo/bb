@@ -3,14 +3,14 @@
  * and the real timeline projection, plus the per-cell runner the CLI and the
  * self-suite share. The harness itself lives in
  * `@bb/provider-bridge-protocol/testing/parity`; this package exists because
- * the assembler (`@bb/agent-runtime`) and the projection (`@bb/thread-view`)
- * both depend on the protocol package and cannot be imported from it.
+ * the projection (`@bb/thread-view`) depends on the protocol package and
+ * cannot be imported from it, and because the CLI needs a home of its own.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ThreadEvent } from "@bb/domain";
-import { createBridgeDeltaEventCollector } from "@bb/agent-runtime/test/bridge-delta-assembly";
+import { createBridgeDeltaEventCollector } from "@bb/provider-bridge-protocol/testing";
 import {
   assembleRecordedEvents,
   compareParity,

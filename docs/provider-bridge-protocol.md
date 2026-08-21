@@ -489,7 +489,10 @@ pins and compares against that file when it exists, while `pnpm parity`
 still paces a pre-migration leg from the recorded lane (and the current leg
 from the current one). `pnpm parity --dump-dir <dir>` writes both legs'
 normalized event and row lists per cell, for allowlist entries that must
-name a list index.
+name a list index. Re-recorded lanes pass through `redact.mjs` before they
+are written. The committed current lanes are the v3 bridges' output for the
+v2 recordings: the stack's assembler reads only v3, so every replayable cell
+carries one, and they assemble to the same pinned counts as the recordings.
 
 The conformance kit runs the same recordings as its recorded-traffic
 scenario set: `replayRecordedCells` replays a bridge's cells and

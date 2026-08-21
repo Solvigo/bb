@@ -5,7 +5,7 @@ import {
   RECORDED_CONFORMANCE_CELLS,
 } from "@bb/provider-bridge-protocol/conformance";
 import { replayRecordedCells } from "@bb/provider-bridge-protocol/testing";
-import { createBridgeDeltaEventCollector } from "@bb/agent-runtime/test/bridge-delta-assembly";
+import { createBridgeDeltaEventCollector } from "@bb/provider-bridge-protocol/testing";
 
 /**
  * Recorded-traffic conformance for the codex bridge: every committed recording

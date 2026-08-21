@@ -25,8 +25,10 @@
  * Bridge request ids are rewritten to the recorded ones, matched by method
  * and order, so the untouched runtime responses still name a request.
  */
-import { writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join, resolve } from "node:path";
 import type { BridgeRecordingDirection } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   CURRENT_BRIDGE_LANE_FILE,
@@ -45,6 +47,25 @@ import {
 import { loadParityLeg, type ParityLeg } from "./leg.js";
 
 const BRIDGE_TO_RUNTIME: BridgeRecordingDirection = "bridge→runtime";
+
+const REDACT_SCRIPT = resolve(
+  new URL("../../../scripts/provider-recordings/redact.mjs", import.meta.url).pathname,
+);
+
+/** Run `scripts/provider-recordings/redact.mjs` over one file, in place. */
+function redactInPlace(file: string): void {
+  const inDir = mkdtempSync(join(tmpdir(), "bb-rerecord-redact-in-"));
+  const outDir = mkdtempSync(join(tmpdir(), "bb-rerecord-redact-out-"));
+  try {
+    const staged = join(inDir, basename(file));
+    writeFileSync(staged, readFileSync(file));
+    execFileSync(process.execPath, [REDACT_SCRIPT, inDir, outDir], { stdio: ["ignore", "ignore", "inherit"] });
+    writeFileSync(file, readFileSync(join(outDir, basename(file))));
+  } finally {
+    rmSync(inDir, { recursive: true, force: true });
+    rmSync(outDir, { recursive: true, force: true });
+  }
+}
 
 interface CliArgs {
   planRoot: string | null;
@@ -206,11 +227,17 @@ async function rerecordCell(
       line,
     });
   });
+  const target = join(cell.dir, CURRENT_BRIDGE_LANE_FILE);
   writeFileSync(
-    join(cell.dir, CURRENT_BRIDGE_LANE_FILE),
+    target,
     entries.map((entry) => JSON.stringify(entry)).join("\n") +
       (entries.length > 0 ? "\n" : ""),
   );
+  // The lane is bridge output from this machine: a bridge error can quote
+  // the replay child's command line, with this checkout's paths in it. Pass
+  // it through the recordings' redactor so a committed lane is clean by
+  // construction, and fail loudly if a secret shape survives.
+  redactInPlace(target);
   return `OK ${cellKey(cell)}: ${entries.length} bridge→runtime lines (${run.events.length} events)`;
 }
 
