@@ -53,10 +53,8 @@ import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { buildPluginProviderRegistration } from "../providers/plugin-provider-registration.js";
 import type { ProviderInstallRank } from "../providers/provider-registry.js";
 import { BUNDLED_PLUGINS } from "./builtin-registry.js";
-import {
-  readPluginSettingsValuesSync,
-  type PluginSettingDescriptors,
-} from "./plugin-settings.js";
+import { readPluginSettingsValuesSync } from "./plugin-settings.js";
+import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -1287,7 +1285,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
    * install time. This is the provider picker's order absent a user setting.
    */
   function providerInstallRank(row: InstalledPluginRow): ProviderInstallRank {
-    const name = builtinName(row);
+    const name = row.sourceKind === "builtin" ? row.sourceBuiltinName : null;
     const bundledIndex =
       name === null
         ? -1

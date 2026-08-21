@@ -82,7 +82,7 @@ export function sameProviderOptions(
   return canonicalJson(left) === canonicalJson(right);
 }
 
-function sameExecutionSettings(args: SameExecutionSettingsArgs): boolean {
+export function sameExecutionSettings(args: SameExecutionSettingsArgs): boolean {
   return (
     args.left.model === args.right.model &&
     args.left.serviceTier === args.right.serviceTier &&

@@ -4,7 +4,7 @@ import {
   type PromptTextMention,
 } from "@bb/domain";
 
-export interface PromptModeInput {
+interface PromptModeInput {
   mentionRanges: readonly PromptTextMention[];
   /**
    * The selected provider's declared `strings.planModeCopy`, or undefined

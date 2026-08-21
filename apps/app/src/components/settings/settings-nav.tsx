@@ -33,7 +33,7 @@ export const SETTINGS_NAV_SECTIONS = [
   label: string;
 }[];
 
-export type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
+type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
 
 export type SettingsSectionId = SettingsNavSection["id"];
 
