@@ -309,6 +309,9 @@ export function buildClaudeTurnParams(
       input: args.input,
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
     }),
+    ...(providerOptions.claudeCodePermissionMode !== undefined
+      ? { claudeCodePermissionMode: providerOptions.claudeCodePermissionMode }
+      : {}),
     ...(args.options.model ? { model: args.options.model } : {}),
     ...(args.options.reasoningLevel
       ? { reasoningLevel: args.options.reasoningLevel }

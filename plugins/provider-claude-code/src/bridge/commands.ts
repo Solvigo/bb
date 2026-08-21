@@ -81,6 +81,10 @@ export const claudeTurnStartParamsSchema = z.object({
   threadId: z.string(),
   providerThreadId: z.string().nullable(),
   input: z.array(z.unknown()),
+  // `/plan` on a turn: the live session enters Plan mode before the prompt
+  // is pushed. Absent means "keep the session's current mode"; leaving Plan
+  // mode is owned by the plan-approval flow.
+  claudeCodePermissionMode: z.literal("plan").optional(),
   model: z.string().optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean().optional(),
@@ -95,6 +99,7 @@ export const claudeTurnSteerParamsSchema = z.object({
   providerThreadId: z.string().nullable(),
   expectedTurnId: z.string(),
   input: z.array(z.unknown()),
+  claudeCodePermissionMode: z.literal("plan").optional(),
   model: z.string().optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean().optional(),

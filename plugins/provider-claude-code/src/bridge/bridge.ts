@@ -1665,13 +1665,38 @@ function createForwardUserQuestionRequest(
 }
 
 /**
+ * Enter Plan mode on a live session when a turn or steer carries `/plan`.
+ *
+ * The runtime never rebuilds a bridge session for an execution-option change
+ * (the bridge reconciles options itself), so a `/plan` sent to an already
+ * loaded session arrives here as a per-turn flag rather than as a session
+ * constructed in Plan mode. Without this switch the prompt ran under the
+ * session's original mode and Claude executed the task instead of planning
+ * it. A refused control request fails the turn: running it in the wrong mode
+ * is the one outcome the user did not ask for.
+ */
+async function enterRequestedPlanMode(
+  threadSession: ThreadSession,
+  params: TurnStartParams | TurnSteerParams,
+): Promise<void> {
+  if (
+    params.claudeCodePermissionMode !== "plan" ||
+    threadSession.permissionMode === "plan"
+  ) {
+    return;
+  }
+  await threadSession.session.setPermissionMode("plan");
+  threadSession.permissionMode = "plan";
+}
+
+/**
  * Leave Plan mode once the user approves a plan.
  *
  * `/plan` overrides the session permission mode for the life of the session:
- * `turn/start` carries no mode, so nothing restores the user's preset on a
- * later turn. Without this the agent keeps Plan mode's gating after the plan
- * is approved, and a full-access thread is asked to approve every edit it
- * already allowed.
+ * a turn only ever enters Plan mode (enterRequestedPlanMode), so nothing
+ * restores the user's preset on a later turn. Without this the agent keeps
+ * Plan mode's gating after the plan is approved, and a full-access thread is
+ * asked to approve every edit it already allowed.
  */
 function restoreApprovedPlanPermissionMode(threadSession: ThreadSession): void {
   if (
@@ -2245,6 +2270,7 @@ async function runTurnStart(
       params.threadId,
       withTurnLiveSessionSettings(threadSession.liveSettings, params),
     );
+    await enterRequestedPlanMode(threadSession, params);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
@@ -2317,6 +2343,7 @@ async function runTurnSteer(
       params.threadId,
       withTurnLiveSessionSettings(threadSession.liveSettings, params),
     );
+    await enterRequestedPlanMode(threadSession, params);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
