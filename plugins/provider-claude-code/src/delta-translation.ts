@@ -93,6 +93,7 @@ import {
   classifyClaudeToolUse,
   stripClaudeAgentOutputMetadata,
   type ClaudeClassifiedTool,
+  type ClaudeInjectedTool,
 } from "./tool-classification.js";
 import {
   hasCompletionBlockingClaudeTasks,
@@ -565,6 +566,17 @@ function createThreadState(): ClaudeThreadDialectState {
 
 export function createClaudeDeltaTranslator() {
   const statesByThreadId = new Map<string, ClaudeThreadDialectState>();
+  /**
+   * The bb-injected tools of the session, by bare name. A call to
+   * `mcp__bb-bridge__<name>` is a bb tool (`server: "bb"`) and reads the way
+   * its definition says. One translator lives per session, so the set is
+   * session-wide.
+   */
+  let injectedToolsByName = new Map<string, ClaudeInjectedTool>();
+
+  function configureInjectedTools(tools: readonly ClaudeInjectedTool[]): void {
+    injectedToolsByName = new Map(tools.map((tool) => [tool.name, tool]));
+  }
 
   function stateFor(context: ClaudeDeltaTranslationContext | undefined) {
     const key = context?.threadId ?? "";
@@ -1040,6 +1052,7 @@ export function createClaudeDeltaTranslator() {
         toolName: toolUse.name,
         toolUseId: toolUse.id,
         input: toolUse.input,
+        injectedTools: injectedToolsByName,
       });
       state.startedTools.set(toolUse.id, classified);
       deltas.push({
@@ -1534,6 +1547,7 @@ export function createClaudeDeltaTranslator() {
   return {
     acceptInput,
     buildSessionSettlementDeltas,
+    configureInjectedTools,
     hasOpenTurn,
     setClaudeModelContextWindowHint,
     translate,

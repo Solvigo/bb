@@ -287,6 +287,90 @@ describe("claude item presentation", () => {
     ]);
   });
 
+  it("emits a bb-injected tool call as server:bb with the definition's presentation", () => {
+    const translator = createClaudeDeltaTranslator();
+    translator.configureInjectedTools([
+      {
+        name: "bb_workflow_result",
+        presentation: {
+          label: {
+            pending: "Reading workflow result",
+            completed: "Read workflow result",
+          },
+          icon: { glyph: "Workflow" },
+          suppress: true,
+        },
+      },
+      { name: "bb_thread_list" },
+    ]);
+    const deltas = translator.translate(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "bb-1",
+              name: "mcp__bb-bridge__bb_workflow_result",
+              input: { runId: "wfr_1" },
+            },
+            {
+              type: "tool_use",
+              id: "bb-2",
+              name: "mcp__bb-bridge__bb_thread_list",
+              input: {},
+            },
+            {
+              type: "tool_use",
+              id: "bb-3",
+              name: "mcp__bb-bridge__not_in_session",
+              input: {},
+            },
+          ],
+        },
+        session_id: "sess-1",
+      },
+      { threadId: "t" },
+    );
+    const opens = deltas.filter((delta) => delta.kind === "item.open");
+    expect(opens).toEqual([
+      expect.objectContaining({
+        item: {
+          type: "tool",
+          tool: "bb_workflow_result",
+          server: "bb",
+          args: { runId: "wfr_1" },
+        },
+        presentation: {
+          label: {
+            pending: "Reading workflow result",
+            completed: "Read workflow result",
+          },
+          icon: { glyph: "Workflow" },
+          suppress: true,
+        },
+      }),
+      // A definition without a presentation (a server from before the field
+      // existed) presents generically under bb's glyph.
+      expect.objectContaining({
+        item: { type: "tool", tool: "bb_thread_list", server: "bb", args: {} },
+        presentation: {
+          label: {
+            pending: "Running bb_thread_list",
+            completed: "Ran bb_thread_list",
+          },
+          icon: { glyph: "Toolbox" },
+        },
+      }),
+      // bb's server prefix names the origin even for a tool the session was
+      // not constructed with.
+      expect.objectContaining({
+        item: { type: "tool", tool: "not_in_session", server: "bb", args: {} },
+      }),
+    ]);
+  });
+
   it("presents an unknown tool generically, without suppression", () => {
     const harness = createClaudeDeltaHarness();
     const events = harness.translate(

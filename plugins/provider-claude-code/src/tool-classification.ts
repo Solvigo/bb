@@ -19,6 +19,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
+  bbToolPresentation,
   builtinToolPresentation,
   commandPresentation,
   delegationPresentation,
@@ -46,6 +47,25 @@ export interface ClaudeClassifiedTool {
    */
   planSteps?: ThreadEventPlanStep[];
 }
+
+/**
+ * A bb-injected tool the session was constructed with (Q31). The definition
+ * carries its presentation once the server resolved one; a definition from
+ * before the field existed presents generically.
+ */
+export interface ClaudeInjectedTool {
+  name: string;
+  presentation?: DeltaPresentation;
+}
+
+/**
+ * The MCP server the bridge serves bb's injected tools through; Claude names
+ * their calls `mcp__bb-bridge__<tool>`.
+ */
+export const BB_BRIDGE_MCP_SERVER_NAME = "bb-bridge";
+
+/** The `server` a bb-injected tool call carries on the wire (Q31). */
+const BB_TOOL_SERVER = "bb";
 
 // ---------------------------------------------------------------------------
 // Argument schemas (one-off, dialect-local)
@@ -340,10 +360,34 @@ function classifyDelegation(
   };
 }
 
+/**
+ * A call to a bb-injected tool: `server: "bb"` names its origin and the
+ * definition the server handed the bridge says how the row reads, so no
+ * tool-name table is needed anywhere downstream.
+ */
+function bbTool(
+  tool: string,
+  args: unknown,
+  injected: ClaudeInjectedTool | undefined,
+): ClaudeClassifiedTool {
+  const toolArguments = toOptionalRecord(args);
+  return {
+    shape: {
+      type: "tool",
+      tool,
+      server: BB_TOOL_SERVER,
+      ...(toolArguments ? { args: toolArguments } : {}),
+    },
+    presentation: injected?.presentation ?? bbToolPresentation(tool),
+  };
+}
+
 export function classifyClaudeToolUse(args: {
   toolName: string;
   toolUseId: string;
   input: unknown;
+  /** The session's bb-injected tools, by bare name. */
+  injectedTools: ReadonlyMap<string, ClaudeInjectedTool>;
 }): ClaudeClassifiedTool {
   const { toolName, toolUseId, input } = args;
   switch (toolName) {
@@ -445,9 +489,13 @@ export function classifyClaudeToolUse(args: {
     }
     default: {
       const mcp = parseClaudeMcpToolName(toolName);
-      return mcp === null
-        ? genericTool(toolName, input)
-        : mcpTool(toolName, mcp.server, mcp.tool, input);
+      if (mcp === null) {
+        return genericTool(toolName, input);
+      }
+      if (mcp.server === BB_BRIDGE_MCP_SERVER_NAME) {
+        return bbTool(mcp.tool, input, args.injectedTools.get(mcp.tool));
+      }
+      return mcpTool(toolName, mcp.server, mcp.tool, input);
     }
   }
 }
