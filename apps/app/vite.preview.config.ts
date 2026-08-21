@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { defineConfig } from "vite";
 import { loadViteDevConfig } from "@bb/config/vite-dev";
 import { sharedViteConfig } from "./vite.config.js";
@@ -54,37 +56,35 @@ function labelInjector() {
   const markup = `<div id="bb-carve-preview-label" data-carve-label="${carveLabel}" style="${style}">${carveLabel}</div>`;
   return {
     name: "bb:carve-preview-label",
-    configurePreviewServer(server: { middlewares: { use: (fn: unknown) => void } }) {
+    configurePreviewServer(server: {
+      middlewares: { use: (fn: (req: any, res: any, next: () => void) => void) => void };
+      config: { build: { outDir: string }; root: string };
+    }) {
       if (carveLabel === "") return;
-      server.middlewares.use((req: any, res: any, next: () => void) => {
-        // Only the document. Assets, /api and /ws are untouched — a rewritten payload anywhere else
-        // would be this scaffolding changing what is being judged.
-        const accept = String(req.headers?.accept ?? "");
-        if (!accept.includes("text/html")) return next();
-        const write = res.write.bind(res);
-        const end = res.end.bind(res);
-        let buffered = "";
-        res.write = (chunk: any, ...rest: unknown[]) => {
-          if (chunk && String(res.getHeader?.("content-type") ?? "").includes("text/html")) {
-            buffered += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-            return true;
-          }
-          return write(chunk, ...(rest as []));
-        };
-        res.end = (chunk: any, ...rest: unknown[]) => {
-          if (chunk && String(res.getHeader?.("content-type") ?? "").includes("text/html")) {
-            buffered += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-          }
-          if (buffered !== "") {
-            const body = buffered.includes("</body>")
-              ? buffered.replace("</body>", `${markup}</body>`)
-              : buffered + markup;
-            res.setHeader("content-length", Buffer.byteLength(body));
-            return end(body, ...(rest as []));
-          }
-          return end(chunk, ...(rest as []));
-        };
-        next();
+      const distDir = resolve(server.config.root, server.config.build.outDir);
+      // SERVE THE DOCUMENT OURSELVES rather than rewriting somebody else's stream. The first cut
+      // hooked res.write/res.end around the static handler and injected NOTHING — sirv had already
+      // written the body its own way. Reading index.html and answering is deterministic: no other
+      // handler's internals to be wrong about. It is also the SPA fallback, so a deep link like
+      // /tower/decisions gets the document (and the label) exactly as / does.
+      server.middlewares.use((req, res, next) => {
+        const url = String(req.url ?? "/").split("?")[0] ?? "/";
+        // Never the api, never the socket, never a real file: this must change the DOCUMENT and
+        // nothing else, or the scaffolding is altering what is being judged.
+        if (url.startsWith("/api") || url.startsWith("/ws")) return next();
+        if (/\.[a-zA-Z0-9]+$/.test(url)) return next();
+        if (!String(req.headers?.accept ?? "").includes("text/html")) return next();
+        let html: string;
+        try {
+          html = readFileSync(join(distDir, "index.html"), "utf8");
+        } catch {
+          return next();
+        }
+        const body = html.includes("</body>") ? html.replace("</body>", `${markup}</body>`) : html + markup;
+        res.setHeader("content-type", "text/html; charset=utf-8");
+        res.setHeader("cache-control", "no-store");
+        res.setHeader("content-length", Buffer.byteLength(body));
+        res.end(body);
       });
     },
   };
