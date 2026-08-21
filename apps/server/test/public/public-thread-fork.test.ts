@@ -756,9 +756,11 @@ describe("fork branch point and inherited history", () => {
     });
   });
 
-  it("inherits every completed turn, and nothing of a running one, at the tip", async () => {
+  it("clones the tip of an idle source and inherits every completed turn", async () => {
     await withTestHarness(async (harness) => {
-      const { sourceThread } = seedConversationForkSource(harness);
+      const { sourceThread } = seedConversationForkSource(harness, {
+        runningThirdTurn: false,
+      });
 
       const response = await postFork(harness, {
         sourceThreadId: sourceThread.id,
@@ -770,6 +772,33 @@ describe("fork branch point and inherited history", () => {
       const start = await waitForForkStart(harness, fork.id);
       expect(start.fork).toEqual({
         sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
+      });
+      expect(await readConversationTexts(harness, fork.id)).toEqual([
+        "Reply only with ok.",
+        "ok",
+        "Reply only with the word second.",
+        "second",
+      ]);
+    });
+  });
+
+  it("branches a mid-turn source at its last completed turn's checkpoint", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedConversationForkSource(harness);
+
+      // Turn 3 is still running: the session tip already holds its prompt,
+      // so a tip clone would know a message the inherited timeline lacks.
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "reuse",
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const start = await waitForForkStart(harness, fork.id);
+      expect(start.fork).toEqual({
+        sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
+        sourceProviderCheckpointId: "checkpoint-after-turn-2",
       });
       expect(await readConversationTexts(harness, fork.id)).toEqual([
         "Reply only with ok.",
@@ -845,58 +874,83 @@ describe("fork branch point and inherited history", () => {
     });
   });
 
-  it("lets a tip-only provider fork at its latest turn but not earlier", async () => {
-    await withTestHarness(
+  const TIP_ONLY_PROVIDER_HARNESS = {
+    customAcpAgents: [
       {
-        customAcpAgents: [
-          {
-            id: "test-agent",
-            displayName: "Test Agent",
-            command: "test-agent",
-            args: ["acp"],
-            env: {},
-            supportsManualCompaction: false,
-          },
-        ],
+        id: "test-agent",
+        displayName: "Test Agent",
+        command: "test-agent",
+        args: ["acp"],
+        env: {},
+        supportsManualCompaction: false,
       },
-      async (harness) => {
-        const { sourceThread } = seedConversationForkSource(harness, {
-          providerId: "acp-test-agent",
-          runningThirdTurn: false,
-        });
+    ],
+  };
 
-        const earlier = await postFork(harness, {
-          sourceThreadId: sourceThread.id,
-          sourceSeqEnd: 5,
-          workspace: "reuse",
-        });
-        expect(earlier.status).toBe(400);
-        expect(await readJson(earlier)).toMatchObject({
-          code: "fork_source_session_unavailable",
-          message:
-            "Provider acp-test-agent can only fork at the end of a session, not from an earlier point in it",
-        });
+  it("clones the tip of a mid-turn source when the provider cannot branch at a checkpoint", async () => {
+    await withTestHarness(TIP_ONLY_PROVIDER_HARNESS, async (harness) => {
+      const { sourceThread } = seedConversationForkSource(harness, {
+        providerId: "acp-test-agent",
+      });
 
-        // Sequence 10 sits in turn 2, the source's latest turn: the whole
-        // session is exactly the requested history.
-        const tip = await postFork(harness, {
-          sourceThreadId: sourceThread.id,
-          sourceSeqEnd: 10,
-          workspace: "reuse",
-        });
-        expect(tip.status).toBe(201);
-        const fork = threadResponseSchema.parse(await readJson(tip));
-        const start = await waitForForkStart(harness, fork.id);
-        expect(start.fork).toEqual({
-          sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
-        });
-        expect(await readConversationTexts(harness, fork.id)).toEqual([
-          "Reply only with ok.",
-          "ok",
-          "Reply only with the word second.",
-          "second",
-        ]);
-      },
-    );
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "reuse",
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const start = await waitForForkStart(harness, fork.id);
+      expect(start.fork).toEqual({
+        sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
+      });
+      expect(await readConversationTexts(harness, fork.id)).toEqual([
+        "Reply only with ok.",
+        "ok",
+        "Reply only with the word second.",
+        "second",
+      ]);
+    });
+  });
+
+  it("lets a tip-only provider fork at its latest turn but not earlier", async () => {
+    await withTestHarness(TIP_ONLY_PROVIDER_HARNESS, async (harness) => {
+      const { sourceThread } = seedConversationForkSource(harness, {
+        providerId: "acp-test-agent",
+        runningThirdTurn: false,
+      });
+
+      const earlier = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        sourceSeqEnd: 5,
+        workspace: "reuse",
+      });
+      expect(earlier.status).toBe(400);
+      expect(await readJson(earlier)).toMatchObject({
+        code: "fork_source_session_unavailable",
+        message:
+          "Provider acp-test-agent can only fork at the end of a session, not from an earlier point in it",
+      });
+
+      // Sequence 10 sits in turn 2, the source's latest turn: the whole
+      // session is exactly the requested history.
+      const tip = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        sourceSeqEnd: 10,
+        workspace: "reuse",
+      });
+      expect(tip.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(tip));
+      const start = await waitForForkStart(harness, fork.id);
+      expect(start.fork).toEqual({
+        sourceProviderThreadId: HISTORY_PROVIDER_THREAD_ID,
+      });
+      expect(await readConversationTexts(harness, fork.id)).toEqual([
+        "Reply only with ok.",
+        "ok",
+        "Reply only with the word second.",
+        "second",
+      ]);
+    });
   });
 });

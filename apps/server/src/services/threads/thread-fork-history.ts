@@ -6,7 +6,7 @@ import {
   listStoredTurnCompletedRowsByTurnIds,
   type StoredEventRow,
 } from "@bb/db";
-import type { Thread, ThreadEventType } from "@bb/domain";
+import type { Thread, ThreadEvent, ThreadEventType } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
@@ -35,6 +35,56 @@ function forkPointUnavailable(message: string): never {
   throw new ApiError(400, "fork_source_session_unavailable", message);
 }
 
+interface StoredTurnCompletion {
+  event: Extract<ThreadEvent, { type: "turn/completed" }>;
+  sequence: number;
+}
+
+function readTurnCompletion(
+  deps: Pick<AppDeps, "db">,
+  args: { threadId: string; turnId: string },
+): StoredTurnCompletion | null {
+  const row = listStoredTurnCompletedRowsByTurnIds(deps.db, {
+    threadId: args.threadId,
+    turnIds: [args.turnId],
+  }).at(-1);
+  if (row === undefined) {
+    return null;
+  }
+  const event = parseStoredEvent(row);
+  if (event.type !== "turn/completed") {
+    throw new Error(`Expected turn/completed event #${row.sequence}`);
+  }
+  return { event, sequence: row.sequence };
+}
+
+/**
+ * The descriptor that re-creates a completed turn's session through the
+ * checkpoint its completion recorded, or null when that turn left no session
+ * or checkpoint to branch from.
+ */
+function resolveCheckpointForkDescriptor(args: {
+  completion: StoredTurnCompletion;
+  providerId: string;
+  turnId: string;
+}): ThreadForkDescriptor | null {
+  if (args.completion.event.providerThreadId === null) {
+    return null;
+  }
+  const sourceProviderCheckpointId = resolveTurnProviderCheckpointId({
+    providerCheckpointId: args.completion.event.providerCheckpointId,
+    providerId: args.providerId,
+    turnId: args.turnId,
+  });
+  if (sourceProviderCheckpointId === null) {
+    return null;
+  }
+  return {
+    sourceProviderThreadId: args.completion.event.providerThreadId,
+    sourceProviderCheckpointId,
+  };
+}
+
 /**
  * Resolve the branch point for `sourceSeqEnd`. The anchor is the root turn
  * that contains the sequence, or the last root turn before it when the
@@ -59,20 +109,16 @@ function resolveAnchoredForkPoint(
       `Cannot fork at sequence ${args.sourceSeqEnd}: no turn has started at or before it`,
     );
   }
-  const completionRow = listStoredTurnCompletedRowsByTurnIds(deps.db, {
+  const completion = readTurnCompletion(deps, {
     threadId: args.sourceThread.id,
-    turnIds: [anchor.turnId],
-  }).at(-1);
-  if (completionRow === undefined) {
+    turnId: anchor.turnId,
+  });
+  if (completion === null) {
     forkPointUnavailable(
       `Cannot fork at sequence ${args.sourceSeqEnd}: the turn containing it has not completed`,
     );
   }
-  const completion = parseStoredEvent(completionRow);
-  if (completion.type !== "turn/completed") {
-    throw new Error(`Expected turn/completed event #${completionRow.sequence}`);
-  }
-  if (completion.providerThreadId === null) {
+  if (completion.event.providerThreadId === null) {
     forkPointUnavailable(
       `Cannot fork at sequence ${args.sourceSeqEnd}: the turn containing it has no provider session`,
     );
@@ -90,37 +136,40 @@ function resolveAnchoredForkPoint(
       );
     }
     return {
-      descriptor: { sourceProviderThreadId: completion.providerThreadId },
-      historyEndSequence: completionRow.sequence,
+      descriptor: {
+        sourceProviderThreadId: completion.event.providerThreadId,
+      },
+      historyEndSequence: completion.sequence,
       sourceThreadId: args.sourceThread.id,
     };
   }
-  const sourceProviderCheckpointId = resolveTurnProviderCheckpointId({
-    providerCheckpointId: completion.providerCheckpointId,
+  const descriptor = resolveCheckpointForkDescriptor({
+    completion,
     providerId: args.sourceThread.providerId,
     turnId: anchor.turnId,
   });
-  if (sourceProviderCheckpointId === null) {
+  if (descriptor === null) {
     forkPointUnavailable(
       `Cannot fork at sequence ${args.sourceSeqEnd}: the turn containing it recorded no provider checkpoint`,
     );
   }
   return {
-    descriptor: {
-      sourceProviderThreadId: completion.providerThreadId,
-      sourceProviderCheckpointId,
-    },
-    historyEndSequence: completionRow.sequence,
+    descriptor,
+    historyEndSequence: completion.sequence,
     sourceThreadId: args.sourceThread.id,
   };
 }
 
 /**
  * Resolve where a fork of `sourceThread` branches. Without `sourceSeqEnd` the
- * fork clones the session tip and inherits every completed root turn. Returns
- * null when the source has no provider session to clone; throws
- * `fork_source_session_unavailable` when `sourceSeqEnd` names a point the
- * provider cannot branch from.
+ * fork inherits every completed root turn and clones the session tip. When
+ * the source is mid-turn, its session tip already holds the running turn's
+ * prompt and partial output, which the inherited timeline stops short of; a
+ * provider that can branch at a checkpoint then clones through the last
+ * completed turn instead, so model context and timeline describe the same
+ * conversation. Returns null when the source has no provider session to
+ * clone; throws `fork_source_session_unavailable` when `sourceSeqEnd` names a
+ * point the provider cannot branch from.
  */
 export function resolveThreadForkPoint(
   deps: Pick<AppDeps, "db" | "providerRegistry">,
@@ -142,11 +191,36 @@ export function resolveThreadForkPoint(
   const lastCompletedTurn = findLastCompletedRootStoredTurn(deps.db, {
     threadId: args.sourceThread.id,
   });
-  return {
+  const tip: ThreadForkPoint = {
     descriptor: { sourceProviderThreadId },
     historyEndSequence: lastCompletedTurn?.completedSequence ?? null,
     sourceThreadId: args.sourceThread.id,
   };
+  if (
+    lastCompletedTurn === null ||
+    !deps.providerRegistry.supportsSessionRewind(args.sourceThread.providerId)
+  ) {
+    return tip;
+  }
+  const latestRootTurn = findLastRootStoredTurnStarted(deps.db, {
+    threadId: args.sourceThread.id,
+  });
+  if (latestRootTurn?.turnId === lastCompletedTurn.turnId) {
+    return tip;
+  }
+  const completion = readTurnCompletion(deps, {
+    threadId: args.sourceThread.id,
+    turnId: lastCompletedTurn.turnId,
+  });
+  const descriptor =
+    completion === null
+      ? null
+      : resolveCheckpointForkDescriptor({
+          completion,
+          providerId: args.sourceThread.providerId,
+          turnId: lastCompletedTurn.turnId,
+        });
+  return descriptor === null ? tip : { ...tip, descriptor };
 }
 
 /**
@@ -180,7 +254,10 @@ function parseAcceptedClientRequestId(row: StoredEventRow): string {
  * Only turns that completed inside the window come along, so the fork never
  * shows a turn that is still running; a `client/turn/requested` comes along
  * only when the window also holds its acceptance, so a message the source had
- * merely queued does not show as pending in the fork.
+ * merely queued does not show as pending in the fork. The rows are read into
+ * memory because each copy is re-parsed to index search segments; the filter
+ * here only drops the few rows of turns and requests still open at the
+ * window's end.
  */
 function selectInheritedForkEventRows(
   deps: Pick<AppDeps, "db">,
@@ -221,7 +298,7 @@ function selectInheritedForkEventRows(
  * owns and resumes, and the fork owns only the session its own
  * `thread/identity` will name. The event payloads keep the source session id,
  * so a later rewind or nested fork anchored on an inherited turn still finds
- * the session that recorded its checkpoint. Returns the number of copied rows.
+ * the session that recorded its checkpoint.
  */
 export function copyForkSourceHistory(
   deps: Pick<AppDeps, "db" | "hub">,
@@ -230,7 +307,7 @@ export function copyForkSourceHistory(
     historyEndSequence: number;
     sourceThreadId: string;
   },
-): number {
+): void {
   const rows = selectInheritedForkEventRows(deps, {
     historyEndSequence: args.historyEndSequence,
     sourceThreadId: args.sourceThreadId,
