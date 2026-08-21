@@ -151,6 +151,7 @@ async function scriptedEchoDispatchLaunch(
       options.scripted === undefined
         ? {}
         : { scripted: JSON.parse(JSON.stringify(options.scripted)) },
+    envPassthrough: [],
     capabilities: {
       experimental_providerInstallation: false,
       supportsServiceTier: false,
