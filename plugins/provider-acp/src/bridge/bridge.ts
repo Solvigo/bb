@@ -1385,6 +1385,10 @@ function handlePermissionRequest(
           session.bbThreadId,
           toolCall.toolCallId,
         ),
+        injectedTool: session.translator.getInjectedToolBinding(
+          session.bbThreadId,
+          toolCall.toolCallId,
+        ),
       }
     : undefined;
 

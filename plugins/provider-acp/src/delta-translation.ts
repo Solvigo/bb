@@ -842,8 +842,17 @@ export function createAcpDeltaTranslator() {
     return mergedToolCalls.get(callKey({ threadId }, toolCallId));
   }
 
+  /** The bb tool an unsettled call is bound to (Q31), for its permission. */
+  function getInjectedToolBinding(
+    threadId: string,
+    toolCallId: string,
+  ): AcpInjectedTool | undefined {
+    return injectedToolBindings.get(callKey({ threadId }, toolCallId));
+  }
+
   return {
     configureInjectedTools,
+    getInjectedToolBinding,
     getMergedToolCall,
     noteInjectedToolCall,
     translateAcpEvent,
