@@ -30,6 +30,7 @@ import { join, resolve } from "node:path";
 import type { BridgeRecordingDirection } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   CURRENT_BRIDGE_LANE_FILE,
+  PARITY_INITIALIZE_ID,
   replayRecording,
   readBridgeRecording,
 } from "@bb/provider-bridge-protocol/testing/parity";
@@ -174,6 +175,10 @@ async function rerecordCell(
   run.lines.forEach((rawLine, index) => {
     let line = rawLine;
     const message = parseWireLine(rawLine);
+    if (message?.id === PARITY_INITIALIZE_ID) {
+      // The harness's own handshake, not part of the recording.
+      return;
+    }
     if (message?.method !== undefined && message.id !== undefined) {
       const recordedId = recordedRequestIds.get(message.method)?.shift();
       if (recordedId !== undefined && recordedId !== message.id) {

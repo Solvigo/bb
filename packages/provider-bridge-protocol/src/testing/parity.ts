@@ -517,6 +517,9 @@ function methodOfRecordedBridgeRequest(
 
 const REPLAY_CHILD_PATH = fileURLToPath(new URL("./replay-provider-child.mjs", import.meta.url));
 
+/** The id of the harness's own `initialize` request; never part of a recording. */
+export const PARITY_INITIALIZE_ID = "parity-initialize";
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
@@ -583,7 +586,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  const initializeId = "parity-initialize";
+  const initializeId = PARITY_INITIALIZE_ID;
   const startedAt = Date.now();
   const lines: string[] = [];
   const lineTimes: number[] = [];
