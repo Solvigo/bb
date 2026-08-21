@@ -306,6 +306,23 @@ function streamKeyString(args: {
   ].join(SEP);
 }
 
+/**
+ * Grammar v3 item shapes (`fileRead`, `search`, `delegation`, `planSteps`,
+ * `extension`) are accepted by the protocol schema so v3 bridges validate,
+ * but this assembler does not build their canonical items yet. WS1a (generic
+ * assembler) implements them; until then a bridge that emits one fails loudly
+ * here instead of silently dropping or mis-shaping the item. Every existing
+ * v2 stream is untouched — no shipped bridge emits these shapes.
+ */
+export class UnsupportedDeltaShapeError extends Error {
+  constructor(shapeType: string, site: string) {
+    super(
+      `thread/delta item shape "${shapeType}" is not assembled yet (${site}): grammar v3 shapes are accepted by the protocol but implemented by WS1a`,
+    );
+    this.name = "UnsupportedDeltaShapeError";
+  }
+}
+
 function trimOldestEntries<T>(map: Map<string, T>, max: number): void {
   while (map.size > max) {
     const oldest = map.keys().next();
@@ -697,6 +714,14 @@ export function createDeltaAssembler(
       case "imageView":
       case "backgroundTask":
         return item.type === shape.type;
+      // Unsupported until WS1a (generic assembler): see
+      // UnsupportedDeltaShapeError.
+      case "fileRead":
+      case "search":
+      case "delegation":
+      case "planSteps":
+      case "extension":
+        throw new UnsupportedDeltaShapeError(shape.type, "shapeMatchesItem");
     }
   }
 
@@ -846,6 +871,14 @@ export function createDeltaAssembler(
         );
       case "backgroundTask":
         return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
+      // Unsupported until WS1a (generic assembler): see
+      // UnsupportedDeltaShapeError.
+      case "fileRead":
+      case "search":
+      case "delegation":
+      case "planSteps":
+      case "extension":
+        throw new UnsupportedDeltaShapeError(shape.type, "buildOpenedItem");
     }
   }
 
@@ -1017,6 +1050,17 @@ export function createDeltaAssembler(
       case "imageView":
         // Status-less canonical items: the terminal shape is the whole item.
         return buildOpenedItem(bbItemId, shape, parentToolCallId);
+      // Unsupported until WS1a (generic assembler): see
+      // UnsupportedDeltaShapeError.
+      case "fileRead":
+      case "search":
+      case "delegation":
+      case "planSteps":
+      case "extension":
+        throw new UnsupportedDeltaShapeError(
+          shape.type,
+          "buildClosedItemFromShape",
+        );
     }
   }
 
@@ -1358,6 +1402,14 @@ export function createDeltaAssembler(
           mintItemId();
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
         let event: ThreadEvent;
+        if (delta.snapshot?.type === "delegation") {
+          // Unsupported until WS1a: a background-delegation snapshot becomes
+          // `item/delegation/progress` once the generic assembler lands.
+          throw new UnsupportedDeltaShapeError(
+            delta.snapshot.type,
+            "item.progress snapshot",
+          );
+        }
         if (delta.snapshot !== undefined) {
           // Background-task snapshot progress is structurally thread-scoped by
           // the domain grammar; it needs no open turn.
@@ -1970,6 +2022,17 @@ export function createDeltaAssembler(
           rateLimits: delta.rateLimits,
         });
         return;
+      }
+
+      case "extension.state": {
+        // Unsupported until WS1a: plugin-declared thread state has no
+        // canonical event yet (the extension-state event and its latest-
+        // snapshot-wins fold land with the generic assembler). Loud, not
+        // silent — see UnsupportedDeltaShapeError.
+        throw new UnsupportedDeltaShapeError(
+          `extension.state:${delta.extensionKind}`,
+          "extension.state",
+        );
       }
 
       case "session.reset": {
