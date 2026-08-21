@@ -30,18 +30,36 @@ import type {
   ClientTurnRequestId,
   ThreadEvent,
   ThreadEventItem,
+  ThreadEventItemPresentation,
   ThreadEventItemStatus,
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
+  BridgeGrammarVersions,
   DeltaFileChange,
   DeltaItemKey,
   DeltaItemShape,
   DeltaNoTurnFallback,
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
-import { THREAD_DELTA_KEY_SEPARATOR } from "@bb/provider-bridge-protocol";
+import {
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_KEY_SEPARATOR,
+} from "@bb/provider-bridge-protocol";
+
+/**
+ * The `thread/delta` grammar range this assembler speaks, reported to every
+ * bridge in the `initialize` params so the two sides negotiate a version
+ * (see `negotiateGrammarVersion` in the protocol). Stays `[2, 2]` while the
+ * v3 shapes throw `UnsupportedDeltaShapeError` below; WS1a widens it to
+ * `[2, 3]` when it implements them, and the same commit is what lets a
+ * `[2, 3]` bridge start emitting v3.
+ */
+export const ASSEMBLER_GRAMMAR_VERSIONS: BridgeGrammarVersions = [
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+];
 import {
   buildEditDiff,
   toOptionalRecord,
@@ -321,6 +339,29 @@ export class UnsupportedDeltaShapeError extends Error {
     );
     this.name = "UnsupportedDeltaShapeError";
   }
+}
+
+/**
+ * Grammar v3 presentation rides the lifecycle delta, not the shape, and is
+ * persisted on the canonical item so the row renders after the plugin is
+ * gone. `userMessage` is bb-authored and carries none.
+ */
+function withPresentation<TItem extends ThreadEventItem>(
+  item: TItem,
+  presentation: ThreadEventItemPresentation | undefined,
+): TItem {
+  if (presentation === undefined || item.type === "userMessage") {
+    return item;
+  }
+  return { ...item, presentation };
+}
+
+function presentationOf(
+  item: ThreadEventItem | undefined,
+): ThreadEventItemPresentation | undefined {
+  return item !== undefined && "presentation" in item
+    ? item.presentation
+    : undefined;
 }
 
 function trimOldestEntries<T>(map: Map<string, T>, max: number): void {
@@ -1236,7 +1277,10 @@ export function createDeltaAssembler(
           registerItemId(state, delta.key.providerItemId, bbItemId);
         }
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
-        const item = buildOpenedItem(bbItemId, delta.item, parentToolCallId);
+        const item = withPresentation(
+          buildOpenedItem(bbItemId, delta.item, parentToolCallId),
+          delta.presentation,
+        );
         state.openItemsByKey.set(keyStr, {
           bbItemId,
           item,
@@ -1315,7 +1359,10 @@ export function createDeltaAssembler(
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: turnScope(turnId),
-            item: completeStartedItem(open.item, closeFields, parentToolCallId),
+            item: withPresentation(
+              completeStartedItem(open.item, closeFields, parentToolCallId),
+              presentationOf(open.item),
+            ),
           });
         }
         const bbItemId =
@@ -1327,11 +1374,17 @@ export function createDeltaAssembler(
         if (delta.key.providerItemId !== undefined) {
           registerItemId(state, delta.key.providerItemId, bbItemId);
         }
-        const item = buildClosedItemFromShape(
-          bbItemId,
-          delta.item,
-          closeFields,
-          parentToolCallId ?? open?.item.parentToolCallId,
+        // Close-echo for presentation: the close's value wins; when the close
+        // carries none the opened item's survives onto the completed item.
+        const presentation = delta.presentation ?? presentationOf(open?.item);
+        const item = withPresentation(
+          buildClosedItemFromShape(
+            bbItemId,
+            delta.item,
+            closeFields,
+            parentToolCallId ?? open?.item.parentToolCallId,
+          ),
+          presentation,
         );
         state.openItemsByKey.delete(keyStr);
         state.commandSnapshotsByKey.delete(keyStr);
@@ -1348,10 +1401,13 @@ export function createDeltaAssembler(
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: threadScope(),
-            item: buildBackgroundTaskItem(
-              bbItemId,
-              delta.item,
-              parentToolCallId ?? open?.item.parentToolCallId,
+            item: withPresentation(
+              buildBackgroundTaskItem(
+                bbItemId,
+                delta.item,
+                parentToolCallId ?? open?.item.parentToolCallId,
+              ),
+              presentation,
             ),
           });
           return;
