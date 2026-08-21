@@ -43,6 +43,8 @@ interface FixtureExpectation {
   tools: Record<string, number>;
   /** Started items that carried a presentation, by item type. */
   presented: Record<string, number>;
+  /** Settled plan-steps snapshots (close-only items: TodoWrite, the task-list fold). */
+  planSnapshots: number;
   unhandled: number;
   turns: { completed: number; failed: number; interrupted: number };
 }
@@ -208,14 +210,19 @@ function projection(run: SessionRun): FixtureExpectation {
   }
   const turns = { completed: 0, failed: 0, interrupted: 0 };
   let unhandled = 0;
+  let planSnapshots = 0;
   for (const event of run.events) {
     if (event.type === "provider/unhandled") unhandled += 1;
     if (event.type === "turn/completed") turns[event.status] += 1;
+    if (event.type === "item/completed" && event.item.type === "planSteps") {
+      planSnapshots += 1;
+    }
   }
   return {
     items: sortedCounts(items),
     tools: sortedCounts(tools),
     presented: sortedCounts(presented),
+    planSnapshots,
     unhandled,
     turns,
   };
@@ -271,6 +278,19 @@ describe("claude transcript fixtures", () => {
           expect(child?.parentToolCallId, childToolUseId).toBe(parentItemId);
         }
       }
+    });
+
+    it("attaches a presentation to every started item", () => {
+      const missing = startedItems(run.events).filter(
+        (item) =>
+          // Text items are assembled from stream deltas, which carry none;
+          // background tasks get theirs in the next layer.
+          item.type !== "agentMessage" &&
+          item.type !== "reasoning" &&
+          item.type !== "backgroundTask" &&
+          !("presentation" in item && item.presentation !== undefined),
+      );
+      expect(missing.map((item) => `${item.type}:${item.id}`)).toEqual([]);
     });
 
     it("settles every turn it opens and leaves no item open", () => {

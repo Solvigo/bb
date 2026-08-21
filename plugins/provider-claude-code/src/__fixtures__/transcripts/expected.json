@@ -3,12 +3,14 @@
     "items": {
       "backgroundTask": 3,
       "commandExecution": 116,
-      "toolCall": 3
+      "delegation": 3
     },
-    "tools": {
-      "Agent": 3
+    "tools": {},
+    "presented": {
+      "commandExecution": 116,
+      "delegation": 3
     },
-    "presented": {},
+    "planSnapshots": 0,
     "unhandled": 6,
     "turns": {
       "completed": 1,
@@ -23,11 +25,16 @@
       "toolCall": 3
     },
     "tools": {
-      "mcp__bb-bridge__bb_workflow_run": 1,
+      "bb-bridge:bb_workflow_run": 1,
       "Skill": 1,
       "ToolSearch": 1
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 7,
+      "fileChange": 2,
+      "toolCall": 3
+    },
+    "planSnapshots": 0,
     "unhandled": 0,
     "turns": {
       "completed": 2,
@@ -45,7 +52,12 @@
       "TaskStop": 1,
       "Workflow": 1
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 7,
+      "fileChange": 2,
+      "toolCall": 2
+    },
+    "planSnapshots": 0,
     "unhandled": 0,
     "turns": {
       "completed": 2,
@@ -57,14 +69,18 @@
     "items": {
       "backgroundTask": 1,
       "commandExecution": 34,
+      "delegation": 1,
       "fileChange": 6,
-      "toolCall": 8
+      "fileRead": 7
     },
-    "tools": {
-      "Agent": 1,
-      "Read": 7
+    "tools": {},
+    "presented": {
+      "commandExecution": 34,
+      "delegation": 1,
+      "fileChange": 6,
+      "fileRead": 7
     },
-    "presented": {},
+    "planSnapshots": 0,
     "unhandled": 1,
     "turns": {
       "completed": 1,
@@ -83,7 +99,12 @@
       "ExitPlanMode": 1,
       "ToolSearch": 1
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 1,
+      "fileChange": 1,
+      "toolCall": 3
+    },
+    "planSnapshots": 0,
     "unhandled": 0,
     "turns": {
       "completed": 2,
@@ -100,7 +121,11 @@
       "ScheduleWakeup": 2,
       "Workflow": 1
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 7,
+      "toolCall": 3
+    },
+    "planSnapshots": 0,
     "unhandled": 1,
     "turns": {
       "completed": 2,
@@ -112,13 +137,19 @@
     "items": {
       "commandExecution": 3,
       "fileChange": 5,
-      "toolCall": 4
+      "fileRead": 3,
+      "toolCall": 1
     },
     "tools": {
-      "Read": 3,
       "SendMessage": 1
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 3,
+      "fileChange": 5,
+      "fileRead": 3,
+      "toolCall": 1
+    },
+    "planSnapshots": 0,
     "unhandled": 0,
     "turns": {
       "completed": 1,
@@ -134,7 +165,11 @@
     "tools": {
       "TaskOutput": 2
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 15,
+      "toolCall": 2
+    },
+    "planSnapshots": 0,
     "unhandled": 0,
     "turns": {
       "completed": 1,
@@ -152,7 +187,11 @@
       "TaskUpdate": 14,
       "ToolSearch": 1
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 33,
+      "toolCall": 28
+    },
+    "planSnapshots": 19,
     "unhandled": 0,
     "turns": {
       "completed": 1,
@@ -163,14 +202,20 @@
   "web-fetch-reads.ndjson": {
     "items": {
       "commandExecution": 20,
-      "toolCall": 6,
+      "fileRead": 5,
+      "toolCall": 1,
       "webFetch": 4
     },
     "tools": {
-      "Read": 5,
       "ToolSearch": 1
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 20,
+      "fileRead": 5,
+      "toolCall": 1,
+      "webFetch": 4
+    },
+    "planSnapshots": 0,
     "unhandled": 0,
     "turns": {
       "completed": 1,
@@ -186,7 +231,11 @@
     "tools": {
       "ToolSearch": 1
     },
-    "presented": {},
+    "presented": {
+      "toolCall": 1,
+      "webSearch": 3
+    },
+    "planSnapshots": 0,
     "unhandled": 0,
     "turns": {
       "completed": 2,
@@ -206,7 +255,11 @@
       "ToolSearch": 2,
       "Workflow": 1
     },
-    "presented": {},
+    "presented": {
+      "commandExecution": 29,
+      "toolCall": 6
+    },
+    "planSnapshots": 0,
     "unhandled": 15,
     "turns": {
       "completed": 16,
