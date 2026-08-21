@@ -572,3 +572,83 @@ describe("claude item presentation", () => {
     }
   });
 });
+
+describe("claude background-task presentation", () => {
+  function taskStarted(
+    taskType: string,
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      type: "system",
+      subtype: "task_started",
+      task_id: `task-${taskType}`,
+      tool_use_id: `call-${taskType}`,
+      description: "Survey the build",
+      task_type: taskType,
+      session_id: "sess-1",
+      ...extra,
+    };
+  }
+
+  it("presents workflows, background commands and background subagents on open and close", () => {
+    const harness = createClaudeDeltaHarness();
+    const presentations = new Map<string, unknown>();
+    for (const [taskType, extra] of [
+      ["local_workflow", { workflow_name: "review-changes" }],
+      ["local_bash", {}],
+      ["local_agent", { subagent_type: "Explore" }],
+    ] as const) {
+      const opened = harness.translate(taskStarted(taskType, extra));
+      const started = startedItems(opened)[0];
+      presentations.set(
+        `${taskType}:open`,
+        started !== undefined && "presentation" in started
+          ? started.presentation
+          : undefined,
+      );
+      const closed = harness.translate({
+        type: "system",
+        subtype: "task_notification",
+        task_id: `task-${taskType}`,
+        tool_use_id: `call-${taskType}`,
+        status: "completed",
+        output_file: "",
+        summary: "done",
+        session_id: "sess-1",
+      });
+      const completed = closed.find(
+        (event) => event.type === "item/backgroundTask/completed",
+      );
+      presentations.set(
+        `${taskType}:close`,
+        completed?.type === "item/backgroundTask/completed"
+          ? completed.item.presentation
+          : undefined,
+      );
+    }
+    expect(presentations.get("local_workflow:open")).toEqual({
+      label: { pending: "Running workflow", completed: "Workflow finished" },
+      icon: { glyph: "Workflow" },
+      title: "review-changes",
+    });
+    expect(presentations.get("local_workflow:close")).toEqual(
+      presentations.get("local_workflow:open"),
+    );
+    expect(presentations.get("local_bash:open")).toEqual({
+      label: {
+        pending: "Running background command",
+        completed: "Background command finished",
+      },
+      icon: { glyph: "Terminal" },
+      title: "Survey the build",
+    });
+    expect(presentations.get("local_agent:close")).toEqual({
+      label: {
+        pending: "Running background agent",
+        completed: "Background agent finished",
+      },
+      icon: { glyph: "UserRound" },
+      title: "Survey the build",
+    });
+  });
+});

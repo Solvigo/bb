@@ -393,3 +393,55 @@ export function mcpToolPresentation(args: {
     args.server,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Background tasks (the SDK task family)
+// ---------------------------------------------------------------------------
+
+/**
+ * A provider background task row — a dynamic workflow (the Workflow tool), a
+ * backgrounded shell command, or a backgrounded sub-agent — stays the core
+ * `backgroundTask` kind (the genericity rule) and says how it reads. The
+ * label names the work; the task's own status carries how it ended.
+ */
+export function backgroundTaskPresentation(args: {
+  taskType: string;
+  description: string;
+  workflowName: string | undefined;
+}): DeltaPresentation {
+  switch (args.taskType) {
+    case "local_workflow":
+      return withTitle(
+        {
+          label: {
+            pending: "Running workflow",
+            completed: "Workflow finished",
+          },
+          icon: { glyph: "Workflow" },
+        },
+        presentationTitle(args.workflowName ?? args.description),
+      );
+    case "local_bash":
+      return withTitle(
+        {
+          label: {
+            pending: "Running background command",
+            completed: "Background command finished",
+          },
+          icon: { glyph: "Terminal" },
+        },
+        presentationTitle(args.description),
+      );
+    default:
+      return withTitle(
+        {
+          label: {
+            pending: "Running background agent",
+            completed: "Background agent finished",
+          },
+          icon: { glyph: "UserRound" },
+        },
+        presentationTitle(args.description),
+      );
+  }
+}

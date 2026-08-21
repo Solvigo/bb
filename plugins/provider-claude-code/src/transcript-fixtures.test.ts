@@ -283,11 +283,9 @@ describe("claude transcript fixtures", () => {
     it("attaches a presentation to every started item", () => {
       const missing = startedItems(run.events).filter(
         (item) =>
-          // Text items are assembled from stream deltas, which carry none;
-          // background tasks get theirs in the next layer.
+          // Text items are assembled from stream deltas, which carry none.
           item.type !== "agentMessage" &&
           item.type !== "reasoning" &&
-          item.type !== "backgroundTask" &&
           !("presentation" in item && item.presentation !== undefined),
       );
       expect(missing.map((item) => `${item.type}:${item.id}`)).toEqual([]);
