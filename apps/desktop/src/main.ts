@@ -80,6 +80,7 @@ import {
   createConnectServerSync,
   type ConnectAccountServer,
   type ConnectServerSync,
+  type ConnectServerSyncSkipReason,
 } from "./connect-server-sync.js";
 import {
   createCredentialCookieSource,
@@ -319,6 +320,8 @@ let enrollingDesktopMachine: Promise<void> | null = null;
 let connectSessionRenewal: ConnectSessionRenewal | null = null;
 let serverTargetGeneration = 0;
 let connectAccountServers: ConnectAccountServer[] = [];
+/** Why the last Connect sync listed nothing; null after a successful sync. */
+let connectServerSyncSkipReason: ConnectServerSyncSkipReason | null = null;
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
@@ -638,7 +641,7 @@ function listMenuConnectServers(): ConnectServerRef[] {
   return servers;
 }
 
-function buildMenuServerItems(): Array<{
+function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
   checked: boolean;
   id: string;
   name: string;
@@ -651,7 +654,7 @@ function buildMenuServerItems(): Array<{
       name: BUILTIN_SERVER_NAME,
     },
   ];
-  for (const server of listMenuConnectServers()) {
+  for (const server of connectServers) {
     items.push({
       checked:
         target.kind === "connect" && target.server.handle === server.handle,
@@ -671,8 +674,13 @@ function buildMenuServerItems(): Array<{
 }
 
 function installCurrentApplicationMenu(): void {
+  const connectServers = listMenuConnectServers();
   installApplicationMenu({
     accelerators: currentApplicationMenuAccelerators,
+    // Only explain an empty Connect list; a persisted selection that is still
+    // listed needs no note beneath it.
+    connectServersSkipReason:
+      connectServers.length === 0 ? connectServerSyncSkipReason : null,
     isMac: process.platform === "darwin",
     createNewWindow() {
       void createApplicationWindow({
@@ -759,7 +767,7 @@ function installCurrentApplicationMenu(): void {
       connectServerSync?.onListRequested();
     },
     serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
-    servers: buildMenuServerItems(),
+    servers: buildMenuServerItems(connectServers),
   });
 }
 
@@ -2127,8 +2135,14 @@ async function runDesktopApp(): Promise<void> {
     onUnauthorized() {
       void clearCachedConnectCredential();
     },
+    onSkipped(reason) {
+      connectServerSyncSkipReason = reason;
+      // Electron menus are immutable once built: rebuild so the reason shows.
+      refreshApplicationMenu();
+    },
     onServers(servers) {
       connectAccountServers = servers;
+      connectServerSyncSkipReason = null;
       const selected = serverTargetStore?.getConnectServer() ?? null;
       const synced = servers.find(
         (server) => server.handle === selected?.handle,
