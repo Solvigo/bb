@@ -11,5 +11,11 @@
     "noUncheckedIndexedAccess": true,
     "types": ["node"]
   },
-  "include": ["host.ts", "server.ts", "src", "provider-bridge.conformance.test.ts", "vitest.config.ts"]
+  "include": [
+    "host.ts",
+    "server.ts",
+    "src",
+    "provider-bridge.conformance.test.ts",
+    "vitest.config.ts"
+  ]
 }

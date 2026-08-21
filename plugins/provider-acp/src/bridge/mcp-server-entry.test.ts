@@ -82,10 +82,7 @@ function agentMessageTexts(): string[] {
       continue;
     }
     for (const delta of line.params?.deltas ?? []) {
-      if (
-        delta.kind === "item.textDelta" &&
-        delta.channel === "agentMessage"
-      ) {
+      if (delta.kind === "item.textDelta" && delta.channel === "agentMessage") {
         texts.push(String(delta.text));
       }
     }
