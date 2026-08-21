@@ -29,6 +29,7 @@ import type {
   DeltaFileChange,
   DeltaItemShape,
   DeltaNoTurnFallback,
+  DeltaPresentation,
   ThreadDelta,
   ThreadEventItemStatus,
   ThreadEventPlanStep,
@@ -49,6 +50,13 @@ import {
   acpUpdateNotificationParamsSchema,
   acpWarningNotificationParamsSchema,
 } from "./bridge-protocol.js";
+import {
+  COMPACTION_PRESENTATION,
+  commandPresentation,
+  fileChangePresentation,
+  toolKindPresentation,
+  type AcpFileChangeVerb,
+} from "./presentation.js";
 import {
   classifyAcpToolCall as classifyAcpToolCallOperation,
   type AcpToolCallOperation,
@@ -141,26 +149,66 @@ function buildAcpFileChanges(
   return path === undefined ? [] : [{ path, kind: operation.changeKind }];
 }
 
+/** A tool call's item shape plus the presentation that rides its lifecycle. */
+interface AcpClassifiedToolCall {
+  item: DeltaItemShape;
+  presentation: DeltaPresentation;
+}
+
+/** The verb a set of file changes reads as: all adds, all deletes, else edits. */
+function fileChangeVerb(
+  changes: readonly DeltaFileChange[],
+): AcpFileChangeVerb {
+  if (changes.every((change) => change.kind === "add")) {
+    return "add";
+  }
+  if (changes.every((change) => change.kind === "delete")) {
+    return "delete";
+  }
+  return "update";
+}
+
+function fileChangeItem(changes: DeltaFileChange[]): AcpClassifiedToolCall {
+  return {
+    item: { type: "fileChange", changes },
+    presentation: fileChangePresentation({
+      verb: fileChangeVerb(changes),
+      paths: changes.map((change) => change.path),
+    }),
+  };
+}
+
 /**
- * Classify a (merged) tool_call event into its parsed item shape. The
- * command/file-change/generic decision is the shared classifier's — the
- * permission mapping (`interactions.ts`) uses the same one, so an approval
- * row and its timeline item can never disagree (#1803).
+ * Classify a (merged) tool_call event into its parsed item shape and its
+ * presentation. The command/file-change/generic decision is the shared
+ * classifier's — the permission mapping (`interactions.ts`) uses the same
+ * one, so an approval row and its timeline item can never disagree (#1803).
  */
-function classifyAcpToolCall(event: AcpToolCallUpdateEvent): DeltaItemShape {
+function classifyAcpToolCall(
+  event: AcpToolCallUpdateEvent,
+): AcpClassifiedToolCall {
   const operation = classifyAcpToolCallOperation(event);
   if (operation.kind === "command") {
-    return { type: "command", command: operation.command, cwd: "" };
+    return {
+      item: { type: "command", command: operation.command, cwd: "" },
+      presentation: commandPresentation(operation.command),
+    };
   }
   if (operation.kind === "file_change") {
     const changes = buildAcpFileChanges(event, operation);
     if (changes.length > 0) {
-      return { type: "fileChange", changes };
+      return fileChangeItem(changes);
     }
   }
   return {
-    type: "tool",
-    tool: toOptionalString(event.title) ?? event.kind ?? "tool",
+    item: {
+      type: "tool",
+      tool: toOptionalString(event.title) ?? event.kind ?? "tool",
+    },
+    presentation: toolKindPresentation({
+      kind: event.kind,
+      title: toOptionalString(event.title),
+    }),
   };
 }
 
@@ -359,6 +407,7 @@ export function createAcpDeltaTranslator() {
   function toolCallClose(args: AcpCloseArgs): ThreadDelta {
     const outputText = extractAcpToolCallOutputText(args.event);
     const terminal = args.status === "completed" || args.status === "failed";
+    const classified = classifyAcpToolCall(args.event);
     return {
       kind: "item.close",
       key: {
@@ -369,7 +418,8 @@ export function createAcpDeltaTranslator() {
         ? {}
         : { resultText: outputText, aggregatedOutput: outputText }),
       ...(terminal ? { exitCode: args.status === "failed" ? 1 : 0 } : {}),
-      item: classifyAcpToolCall(args.event),
+      item: classified.item,
+      presentation: classified.presentation,
       ...(args.noTurnFallback ? { noTurnFallback: args.noTurnFallback } : {}),
     };
   }
@@ -477,6 +527,7 @@ export function createAcpDeltaTranslator() {
           callKey(context, parsed.data.toolCallId),
           parsed.data,
         );
+        const classified = classifyAcpToolCall(parsed.data);
         return [
           ...flush,
           {
@@ -484,7 +535,8 @@ export function createAcpDeltaTranslator() {
             key: {
               providerItemId: parsed.data.toolCallId,
             },
-            item: classifyAcpToolCall(parsed.data),
+            item: classified.item,
+            presentation: classified.presentation,
             noTurnFallback: noTurnFallbackFor(rawEvent),
           },
         ];
@@ -512,7 +564,7 @@ export function createAcpDeltaTranslator() {
         }
         mergedToolCalls.set(key, merged);
         const progressText = extractAcpToolCallOutputText(parsed.data);
-        if (progressText && classifyAcpToolCall(merged).type === "tool") {
+        if (progressText && classifyAcpToolCall(merged).item.type === "tool") {
           return [
             {
               kind: "item.progress",
@@ -675,6 +727,7 @@ export function createAcpDeltaTranslator() {
             kind: "item.open",
             key: { channel: "compaction" },
             item: { type: "compaction" },
+            presentation: COMPACTION_PRESENTATION,
           },
         ];
       }
@@ -744,6 +797,10 @@ export function createAcpDeltaTranslator() {
                 },
               ],
             },
+            presentation: fileChangePresentation({
+              verb: params.data.kind,
+              paths: [params.data.path],
+            }),
             noTurnFallback: noTurnFallbackFor(rawEvent),
           },
         ];

@@ -12,7 +12,10 @@ import {
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
 } from "./bridge-protocol.js";
-import { createAcpDeltaTranslator } from "./delta-translation.js";
+import {
+  createAcpDeltaTranslator,
+  type AcpDeltaTranslator,
+} from "./delta-translation.js";
 
 /**
  * ACP translation equivalence for the narrow-grammar path.
@@ -512,6 +515,11 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
           cwd: "",
           status: "pending",
           approvalStatus: null,
+          presentation: {
+            label: { pending: "Running command", completed: "Ran command" },
+            icon: { glyph: "Terminal" },
+            title: "pnpm test",
+          },
         },
       },
     ]);
@@ -544,6 +552,11 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
           approvalStatus: null,
           aggregatedOutput: "1 passed",
           exitCode: 0,
+          presentation: {
+            label: { pending: "Running command", completed: "Ran command" },
+            icon: { glyph: "Terminal" },
+            title: "pnpm test",
+          },
         },
       },
     ]);
@@ -649,6 +662,11 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
           changes: [{ path: "/workspace/a.ts", kind: "update" }],
           status: "pending",
           approvalStatus: null,
+          presentation: {
+            label: { pending: "Editing file", completed: "Edited file" },
+            icon: { glyph: "EditFile" },
+            title: "a.ts",
+          },
         },
       },
     ]);
@@ -820,5 +838,165 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     ).toMatchObject([
       { type: "provider/unhandled", rawType: "acp/update:totally_new_update" },
     ]);
+  });
+});
+
+/**
+ * Grammar v3: every item the bridge opens or closes carries its presentation
+ * (docs/provider-plugin-api.md §3), asserted on the deltas themselves so a
+ * new lifecycle site cannot ship without one.
+ */
+describe("acp delta translation (presentation)", () => {
+  function itemDeltas(
+    deltas: ReturnType<AcpDeltaTranslator["translateAcpEvent"]>,
+  ) {
+    return deltas.filter(
+      (delta) => delta.kind === "item.open" || delta.kind === "item.close",
+    );
+  }
+
+  it("attaches a presentation to every item.open and item.close", () => {
+    const translator = createAcpDeltaTranslator();
+    const context = { threadId: THREAD_ID };
+    const translate = (event: ProviderRuntimeEvent) =>
+      translator.translateAcpEvent(event, context);
+
+    translate(turnStartedEvent());
+    const lifecycle = [
+      ...translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-exec",
+          title: "`pnpm test`",
+          kind: "execute",
+          status: "pending",
+          rawInput: { command: "pnpm test" },
+        }),
+      ),
+      ...translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-read",
+          title: "Read File",
+          kind: "read",
+          status: "in_progress",
+        }),
+      ),
+      ...translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-mcp",
+          title: "MCP: tool",
+          kind: "other",
+          status: "completed",
+        }),
+      ),
+      ...translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-exec",
+          status: "completed",
+        }),
+      ),
+      ...translate(fsWriteEvent("/tmp/new.ts")),
+      // Turn end settles the still-open read.
+      ...translate(turnCompletedEvent("end_turn")),
+      ...translate({
+        jsonrpc: "2.0",
+        method: ACP_COMPACTION_STARTED_METHOD,
+        params: { threadId: THREAD_ID },
+      }),
+    ];
+
+    const items = itemDeltas(lifecycle);
+    expect(items.map((delta) => delta.kind)).toEqual([
+      "item.open",
+      "item.open",
+      "item.close",
+      "item.close",
+      "item.close",
+      "item.close",
+      "item.open",
+    ]);
+    for (const delta of items) {
+      expect(delta.presentation).toBeDefined();
+    }
+    expect(items.map((delta) => delta.presentation)).toEqual([
+      {
+        label: { pending: "Running command", completed: "Ran command" },
+        icon: { glyph: "Terminal" },
+        title: "pnpm test",
+      },
+      {
+        label: { pending: "Reading file", completed: "Read file" },
+        icon: { glyph: "FileText" },
+        title: "Read File",
+      },
+      {
+        label: { pending: "Running tool", completed: "Ran tool" },
+        icon: { glyph: "Toolbox" },
+        title: "MCP: tool",
+      },
+      {
+        label: { pending: "Running command", completed: "Ran command" },
+        icon: { glyph: "Terminal" },
+        title: "pnpm test",
+      },
+      {
+        label: { pending: "Writing file", completed: "Wrote file" },
+        icon: { glyph: "EditFile" },
+        title: "new.ts",
+      },
+      {
+        label: { pending: "Reading file", completed: "Read file" },
+        icon: { glyph: "FileText" },
+        title: "Read File",
+      },
+      {
+        label: {
+          pending: "Compacting context",
+          completed: "Compacted context",
+        },
+        icon: { glyph: "Archive" },
+      },
+    ]);
+  });
+
+  it("strips the agent's code ticks from a command headline and names deleted files", () => {
+    const translator = createAcpDeltaTranslator();
+    const context = { threadId: THREAD_ID };
+    translator.translateAcpEvent(turnStartedEvent(), context);
+    const [command] = itemDeltas(
+      translator.translateAcpEvent(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-title",
+          title: "`touch approved.txt`",
+          kind: "execute",
+          status: "pending",
+        }),
+        context,
+      ),
+    );
+    expect(command?.presentation?.title).toBe("touch approved.txt");
+
+    const [deletion] = itemDeltas(
+      translator.translateAcpEvent(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-delete",
+          title: "Delete old.ts",
+          kind: "delete",
+          status: "completed",
+          locations: [{ path: "/workspace/old.ts" }],
+        }),
+        context,
+      ),
+    );
+    expect(deletion?.presentation).toEqual({
+      label: { pending: "Deleting file", completed: "Deleted file" },
+      icon: { glyph: "Trash2" },
+      title: "old.ts",
+    });
   });
 });
