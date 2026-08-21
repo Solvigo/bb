@@ -10,6 +10,7 @@ import type {
   PermissionMode,
 } from "./src/rpc-types";
 import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/rpc-types";
+import { experimental_useProviders } from "@get-bb/plugin-sdk/app";
 import { RUN_STATE_PRESENTATION } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
@@ -666,6 +667,12 @@ function AgentAutomationDefinition({
     setModel(execution.model);
     setPermissionMode(execution.permissionMode);
   }, [execution.model, execution.permissionMode, execution.prompt]);
+  // The host's provider directory names the provider; the local formatter
+  // only covers an id the directory no longer lists (a removed plugin).
+  const { providers } = experimental_useProviders();
+  const providerLabel =
+    providers.find((provider) => provider.id === execution.providerId)
+      ?.displayName ?? formatAutomationProviderLabel(execution.providerId);
   const trimmedPrompt = prompt.trim();
   const dirty =
     prompt !== execution.prompt ||
@@ -778,7 +785,7 @@ function AgentAutomationDefinition({
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <AutomationSelector
             label="Provider and model"
-            accessibleLabel={`Provider and model: ${formatAutomationProviderLabel(execution.providerId)}, ${modelOptions.find((option) => option.value === model)?.label ?? model}`}
+            accessibleLabel={`Provider and model: ${providerLabel}, ${modelOptions.find((option) => option.value === model)?.label ?? model}`}
             value={model}
             options={modelOptions}
             disabled={pending || options === null}
@@ -823,11 +830,11 @@ function AgentAutomationDefinition({
                 execution.model,
                 execution.providerId,
               )}
-              accessibleValue={`${formatAutomationProviderLabel(execution.providerId)}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
+              accessibleValue={`${providerLabel}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
               leading={
                 <AutomationProviderIcon providerId={execution.providerId} />
               }
-              title={`${formatAutomationProviderLabel(execution.providerId)}: ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
+              title={`${providerLabel}: ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
             />
           ),
         },
