@@ -5,9 +5,11 @@ import { lang, languages } from "sugar-high/lang";
 /**
  * Fenced-code tokenization for the native renderer. `sugar-high` ships
  * tokenizer configs for the languages agents emit most often and resolves
- * the fence aliases it knows (`sh`/`bash`/`zsh` -> shell, `py` -> python, ...);
- * a language it cannot resolve falls through to the core JavaScript
- * tokenizer, which still tokenizes identifiers, strings, and comments.
+ * the fence aliases it knows (`sh`/`bash`/`zsh` -> shell, `py` -> python, ...).
+ * A fence with no language, or one it cannot resolve, uses the JavaScript
+ * tokenizer, exactly like sugar-high's own `highlight()`; `sugar-high/core`'s
+ * bare `tokenize(code, undefined)` is a generic lexer with no keywords or
+ * comments, so it is never called without a config.
  * Mirrors the web's `markdown-code-highlight.ts`, but returns a span model
  * instead of HTML.
  */
@@ -44,11 +46,12 @@ const EXTRA_LANGUAGE_ALIASES: Record<string, LanguageName> = {
   less: "css",
 };
 
-function tokenizerConfigFor(language: string) {
-  const resolved = lang(language) ?? EXTRA_LANGUAGE_ALIASES[language];
-  return resolved === undefined
-    ? undefined
-    : languages.find(({ id }) => id === resolved)?.config;
+function tokenizerConfigFor(language: string | null) {
+  const resolved =
+    language === null
+      ? "javascript"
+      : (lang(language) ?? EXTRA_LANGUAGE_ALIASES[language] ?? "javascript");
+  return languages.find(({ id }) => id === resolved)?.config;
 }
 
 /**
@@ -125,10 +128,9 @@ export function tokenizeCodeLines(
   ) {
     return plainLines(code);
   }
-  const config = language === null ? undefined : tokenizerConfigFor(language);
   let tokens: Array<[number, string]>;
   try {
-    tokens = tokenize(code, config);
+    tokens = tokenize(code, tokenizerConfigFor(language));
   } catch {
     return plainLines(code);
   }

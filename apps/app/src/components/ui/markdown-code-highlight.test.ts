@@ -24,14 +24,17 @@ describe("highlightMarkdownCode", () => {
     },
   );
 
-  it("keeps the JavaScript lexer for fences without a language", () => {
-    const html = highlightMarkdownCode({
-      code: "const a = 1 // hi",
-      language: null,
-    });
-    expect(tokens(html)).toContainEqual(["keyword", "const"]);
-    expect(tokens(html)).toContainEqual(["comment", "// hi"]);
-  });
+  it.each([null, "ruby"])(
+    "keeps the JavaScript lexer for a fence with language %j",
+    (language) => {
+      const html = highlightMarkdownCode({
+        code: "const a = 1 // hi",
+        language,
+      });
+      expect(tokens(html)).toContainEqual(["keyword", "const"]);
+      expect(tokens(html)).toContainEqual(["comment", "// hi"]);
+    },
+  );
 
   it("keeps the previously mapped aliases highlighted", () => {
     expect(

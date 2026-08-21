@@ -60,12 +60,19 @@ describe("tokenizeCodeLines", () => {
     },
   );
 
-  it("renders an unknown language through the core tokenizer", () => {
-    const lines = tokenizeCodeLines('puts "hi" # c', "ruby");
-    expect(lines).toHaveLength(1);
-    expect(lines[0]!.map((span) => span.text).join("")).toBe('puts "hi" # c');
-    expect(lines[0]!.some((span) => span.type === "string")).toBe(true);
-  });
+  it.each([null, "ruby"])(
+    "lexes a fence with language %j with the JavaScript tokenizer",
+    (language) => {
+      const lines = tokenizeCodeLines(
+        "const a = 'x' // hi\nfunction f() { return a }",
+        language,
+      );
+      expect(lines).toHaveLength(2);
+      expect(lines[0]![0]).toEqual({ text: "const", type: "keyword" });
+      expect(lines[0]!.at(-1)).toEqual({ text: "// hi", type: "comment" });
+      expect(lines[1]![0]).toEqual({ text: "function", type: "keyword" });
+    },
+  );
 });
 
 describe("codeTokenColor", () => {

@@ -9328,7 +9328,7 @@ packages:
 
   bunyan@1.8.15:
     resolution: {integrity: sha512-0tECWShh6wUysgucJcBAoYegf3JJoZWibxdqhTm7OHPeT42qdjkZ29QCMcKwbgU1kiH+auSIasNRXMLWXafXig==}
-    engines: {node: '>=0.10.0'}
+    engines: {'0': node >=0.10.0}
     hasBin: true
 
   bytes@3.1.2:
