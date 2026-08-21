@@ -129,8 +129,8 @@ only then does it earn a handshake capability.
 Everything timeline-bound rides one notification: `thread/delta
 { threadId, deltas }`. A delta is a parsed _semantic_ unit — `turn.open`,
 `turn.boundary`, `input.accepted`, `item.open`/`item.close` with a full item
-shape, streamed text (`message.delta`, `item.textDelta`), usage,
-context-window, errors/warnings, `unhandled` diagnostics, session lifecycle
+shape, streamed text (`item.textDelta`/`item.textClose`), `usage`,
+`contextWindow`, errors/warnings, `unhandled` diagnostics, session lifecycle
 (`session.reset`, `session.ended`) — never a raw provider event and never a
 finished `ThreadEvent`. The schemas in
 `@bb/provider-bridge-protocol/src/thread-delta.ts` are the source of truth
@@ -157,7 +157,29 @@ adapter) consumes the deltas and owns every timeline invariant:
   close-without-open); repeated closes for a settled provider-identified
   key are deduped and an explicit reopen reuses the same bb id.
 - **Accumulation.** Streamed text, cumulative output snapshots (diffed into
-  deltas/resets), token usage totals, and progress-event throttling.
+  deltas/resets), and progress-event throttling.
+- **One streaming dialect.** Every text stream is an item keyed like every
+  other item: by the provider's own item id when it names its message items
+  (codex), or by a bridge-chosen `key.channel` (`assistant`, `thinking-2`)
+  plus `key.parentRef` for anonymous streams (claude, pi, acp).
+  `item.textDelta { key, channel: agentMessage | reasoningText |
+reasoningSummary | plan, text }` synthesizes the channel's `item/started`
+  on first sight and accumulates; `item.textClose { key, channel, text? }`
+  settles with the provider-final `text` or, absent that, the accumulated
+  stream (a whitespace-only stream completes nothing), and releases the
+  key. A tool `item.open` releases the anonymous assistant stream in its
+  scope so later text mints a fresh item; provider-named items keep their
+  own lifecycle and may settle through `item.close` with the full terminal
+  shape like any item. `session.ended` settles a streamed item with the
+  text it received.
+- **One usage dialect.** `usage { total, last, modelContextWindow }` is
+  forwarded verbatim as `thread/tokenUsage/updated`: a provider with exact
+  cumulative totals (codex) sends both as reported, and a provider that
+  reports per turn (claude, pi) sums `last` into `total` itself
+  (`addTokenUsage` in the bridge kit), resetting where it sends
+  `session.reset`. The context meter is always the separate `contextWindow`
+  delta, which may name a vouched `providerTurnId` (codex sends one beside
+  each `usage`).
 - **Streamed-text batching.** Coalescing is assembler policy, not bridge
   policy: within a per-stream flush window (`textDeltaFlushMs`, 100ms
   default, 0 disables) consecutive streamed-text events — assistant/
@@ -293,8 +315,8 @@ it:
 Assembler-owned invariants over the assembled timeline:
 
 1. **Every item's first event is `item/started`.** The assembler synthesizes
-   the opening event for delta-first text streams (`message.delta`,
-   `item.textDelta`), so a bridge streams without bookkeeping. Output
+   the opening event for delta-first text streams (`item.textDelta`), so a
+   bridge streams without bookkeeping. Output
    deltas (`item.outputDelta`) never synthesize — a command item without
    its command would be worse than the anomaly — but still register the key
    so a later open correlates.

@@ -802,8 +802,11 @@ function sendThreadSessionResult(
   sendThreadIdentity(threadId, providerThreadId);
   // The provider id-space boundary: a new pi session was constructed for this
   // thread (start/resume/fork all announce through here), so the assembler
-  // drops the thread's assembly state — settled item keys, id maps,
-  // accumulated usage — before any of the new session's deltas.
+  // drops the thread's assembly state — settled item keys, id maps — before
+  // any of the new session's deltas, and the translator drops its own
+  // per-thread memory (the running usage total, started-tool shapes) at the
+  // same boundary.
+  piDeltaTranslator.resetThread(threadId);
   sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }

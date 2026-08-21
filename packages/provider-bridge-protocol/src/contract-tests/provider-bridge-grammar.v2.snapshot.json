@@ -20,7 +20,8 @@
       "used": "required",
       "size": "optional",
       "estimated": "required",
-      "attach": "required"
+      "attach": "required",
+      "providerTurnId": "optional"
     },
     "extension.state": {
       "kind": "required",
@@ -68,6 +69,14 @@
       "message": "optional",
       "snapshot": "optional",
       "flush": "optional",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
+    "item.textClose": {
+      "kind": "required",
+      "key": "required",
+      "channel": "required",
+      "text": "optional",
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },
@@ -184,6 +193,13 @@
       "vouchedTurn": "required",
       "onlyIfNoTurn": "optional",
       "parentRef": "optional",
+      "providerTurnId": "optional"
+    },
+    "usage": {
+      "kind": "required",
+      "total": "required",
+      "last": "required",
+      "modelContextWindow": "required",
       "providerTurnId": "optional"
     },
     "usage.exact": {

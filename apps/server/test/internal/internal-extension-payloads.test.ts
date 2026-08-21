@@ -280,7 +280,11 @@ describe("extension payload ingest validation", () => {
           "provider-nobody/goal",
         ),
         // The plugin is registered but declares no "widget" kind.
-        extensionItemEvent(thread.id, { objective: "x" }, `${PLUGIN_ID}/widget`),
+        extensionItemEvent(
+          thread.id,
+          { objective: "x" },
+          `${PLUGIN_ID}/widget`,
+        ),
         // Declared, schema-valid, but past the size cap.
         extensionItemEvent(thread.id, {
           objective: "x".repeat(EXTENSION_PAYLOAD_MAX_BYTES + 1),

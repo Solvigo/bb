@@ -100,8 +100,9 @@ function emitDeltas(threadId: string, deltas: ThreadDelta[]): void {
 
 function promptText(input: readonly PromptInput[]): string {
   return input
-    .filter((item): item is Extract<PromptInput, { type: "text" }> =>
-      item.type === "text",
+    .filter(
+      (item): item is Extract<PromptInput, { type: "text" }> =>
+        item.type === "text",
     )
     .map((item) => item.text)
     .join("");
@@ -125,11 +126,22 @@ function runEchoTurn(args: {
   }
   deltas.push(
     { kind: "turn.open" },
-    // A streamed assistant message: the assembler synthesizes item/started
-    // for the delta-first stream, and the close's `text` is the provider's
-    // final text for the completed item.
-    { kind: "message.delta", channel: "assistant", streamKey: "echo", text },
-    { kind: "message.close", channel: "assistant", streamKey: "echo", text },
+    // A streamed assistant message on an anonymous stream (the echo agent
+    // names no item ids, so the key is a bridge-chosen channel): the
+    // assembler synthesizes item/started for the delta-first stream, and the
+    // close's `text` is the provider's final text for the completed item.
+    {
+      kind: "item.textDelta",
+      key: { channel: "echo" },
+      channel: "agentMessage",
+      text,
+    },
+    {
+      kind: "item.textClose",
+      key: { channel: "echo" },
+      channel: "agentMessage",
+      text,
+    },
     { kind: "turn.boundary", status: "completed" },
   );
   emitDeltas(args.threadId, deltas);

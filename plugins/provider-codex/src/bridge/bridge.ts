@@ -546,16 +546,17 @@ function sendThreadDeltas(
     // may be thread-scoped; token usage is turn-only and, on resume,
     // duplicates the snapshot bb already persisted for that turn, so drop it
     // (#1727). The fresh session has no current or last turn yet, so the
-    // context-window delta assembles thread-scoped.
-    if (session.awaitingReplayedUsage && delta.kind === "usage.exact") {
-      outDeltas.push({
-        kind: "contextWindow",
-        used: delta.last.totalTokens,
-        size: delta.modelContextWindow,
-        estimated: false,
-        attach: "currentOrLast",
-      });
-      continue;
+    // context-window delta, stripped of its vouched turn, assembles
+    // thread-scoped.
+    if (session.awaitingReplayedUsage) {
+      if (delta.kind === "usage") {
+        continue;
+      }
+      if (delta.kind === "contextWindow") {
+        const { providerTurnId: _replayedTurnId, ...threadScoped } = delta;
+        outDeltas.push(threadScoped);
+        continue;
+      }
     }
     outDeltas.push(delta);
   }

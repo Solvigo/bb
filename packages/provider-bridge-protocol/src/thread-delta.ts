@@ -332,8 +332,11 @@ export const deltaMessageChannelSchema = z.enum(["assistant", "reasoning"]);
 export type DeltaMessageChannel = z.infer<typeof deltaMessageChannelSchema>;
 
 /**
- * Item-keyed text channels (codex): channels that synthesize a delta-first
- * `item/started` for an unknown item id.
+ * The streamed-text channels: which text item a stream feeds and which of its
+ * fields the text lands in. `agentMessage` and `plan` items have one text;
+ * a `reasoning` item has `summary` (`reasoningSummary`) and `content`
+ * (`reasoningText`). A delta for an unknown item key synthesizes the
+ * channel's `item/started`.
  */
 export const deltaTextChannelSchema = z.enum([
   "agentMessage",
@@ -529,7 +532,9 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
 
   /**
    * Streamed message text. The assembler synthesizes `item/started` on
-   * delta-first opens and accumulates the stream text.
+   * delta-first opens and accumulates the stream text. v2 only: superseded
+   * by `item.textDelta` keyed by `{ channel: streamKey, parentRef }`; deleted
+   * with the v2 paths.
    */
   z.object({
     kind: z.literal("message.delta"),
@@ -545,7 +550,8 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    * text (preferred over accumulation). `text` absent: settle with the
    * accumulated stream text (ACP-style). Silent stream release needs no
    * delta: a tool `item.open` in the same scope auto-detaches the open
-   * assistant stream so later text mints a fresh item.
+   * assistant stream so later text mints a fresh item. v2 only: superseded
+   * by `item.textClose`; deleted with the v2 paths.
    */
   z.object({
     kind: z.literal("message.close"),
@@ -557,16 +563,42 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
-   * Item-keyed streamed text (codex message/reasoning/plan deltas). The first
-   * delta for an unknown item id synthesizes the channel's `item/started`;
-   * later deltas (and deltas for an id the provider already opened or
-   * settled) reuse the mapped id.
+   * Streamed text — the one streaming dialect. Every text stream is keyed
+   * like every other item: by the provider's own item id when the provider
+   * names its message items (codex), or by a bridge-chosen `key.channel`
+   * (`"assistant"`, `"thinking-2"`) plus `key.parentRef` for providers whose
+   * streams are anonymous (claude, pi, acp). The first delta for an unknown
+   * key synthesizes the channel's `item/started`; later deltas (and deltas
+   * for a provider id already opened or settled) reuse the mapped id. The
+   * assembler accumulates the stream text per open item so `item.textClose`
+   * can settle without a provider-final text.
    */
   z.object({
     kind: z.literal("item.textDelta"),
     key: deltaItemKeySchema,
     channel: deltaTextChannelSchema,
     text: z.string(),
+    providerTurnId: providerTurnIdSchema.optional(),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
+  }),
+
+  /**
+   * Settle a text stream. `text` present: the provider's final text, preferred
+   * over the accumulated stream (and enough on its own — a close for a key
+   * nothing streamed under completes a fresh item). `text` absent: settle
+   * with the accumulated stream text, completing nothing when the stream only
+   * ever received whitespace. Either way the key is released, so later text
+   * mints a fresh item. `channel` says which item to mint for a bare close
+   * and where a provider-final `text` lands on a reasoning item. Providers
+   * that name their message items may instead settle through `item.close`
+   * with the full terminal shape (the uniform close rule) — that is the same
+   * item lifecycle, not a second streaming dialect.
+   */
+  z.object({
+    kind: z.literal("item.textClose"),
+    key: deltaItemKeySchema,
+    channel: deltaTextChannelSchema,
+    text: z.string().optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
@@ -595,7 +627,29 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
-  /** Last-turn usage; the assembler accumulates the running thread totals. */
+  /**
+   * Provider-reported usage — the one usage dialect. `total` is the running
+   * session total and `last` the most recent turn's usage; a provider that
+   * reports exact cumulative totals (codex) forwards both verbatim, and a
+   * provider that reports per-turn usage (claude, pi) sums `last` into
+   * `total` itself (`addTokenUsage` in the bridge kit), resetting at every
+   * session construction alongside `session.reset`. Emits
+   * `thread/tokenUsage/updated` only: a provider whose usage also measures
+   * the context window sends the `contextWindow` delta beside it.
+   */
+  z.object({
+    kind: z.literal("usage"),
+    total: threadEventTokenUsageBreakdownSchema,
+    last: threadEventTokenUsageBreakdownSchema,
+    modelContextWindow: z.number().nullable(),
+    providerTurnId: providerTurnIdSchema.optional(),
+  }),
+
+  /**
+   * Last-turn usage; the assembler accumulates the running thread totals.
+   * v2 only: superseded by `usage`, which carries the bridge-accumulated
+   * total; deleted with the v2 paths.
+   */
   z.object({
     kind: z.literal("usage.turn"),
     tokens: threadEventTokenUsageBreakdownSchema,
@@ -606,7 +660,8 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    * Exact provider-reported usage (codex): the provider already accumulates,
    * so the assembler fans the snapshot out verbatim to both usage events
    * (`thread/tokenUsage/updated` + `thread/contextWindowUsage/updated`, the
-   * context meter reading `last.totalTokens`).
+   * context meter reading `last.totalTokens`). v2 only: superseded by
+   * `usage` + `contextWindow`; deleted with the v2 paths.
    */
   z.object({
     kind: z.literal("usage.exact"),
@@ -618,7 +673,10 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
 
   /**
    * Context-window meter. `attach: "currentOrLast"` legalizes post-turn
-   * attachment (pi reports after `agent_end` for the turn that just closed).
+   * attachment (pi reports after `agent_end` for the turn that just closed);
+   * a `providerTurnId` scopes the reading to that vouched turn instead
+   * (codex measures the window per native turn) and `attach` is then
+   * irrelevant.
    */
   z.object({
     kind: z.literal("contextWindow"),
@@ -626,6 +684,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     size: z.number().nullable().optional(),
     estimated: z.boolean(),
     attach: deltaAttachSchema,
+    providerTurnId: providerTurnIdSchema.optional(),
   }),
 
   z.object({

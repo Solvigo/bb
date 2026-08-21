@@ -165,6 +165,8 @@ export type {
 // ---------------------------------------------------------------------------
 
 export {
+  ZERO_TOKEN_USAGE,
+  addTokenUsage,
   bashArgsSchema,
   bridgeRequestEnvelopeSchema,
   buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
