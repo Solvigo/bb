@@ -178,7 +178,11 @@ Messaging:
 
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
-  is free.
+  is free. A target that is awaiting user interaction (an open question or
+  approval) cannot take a prompt; tell then holds the message and delivers it
+  in the requested mode once the interaction settles. That outcome is not a
+  failure, so do not resend. `--json` reports `delivery` as `sent`, `queued`,
+  or `deferred`.
 
   bb thread stop [id]                      Stop work and release the agent runtime
   bb thread compact [id]                   Request compaction of an idle or errored thread's context

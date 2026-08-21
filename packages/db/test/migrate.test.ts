@@ -678,6 +678,9 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 }
 
 function dropEventToolNameColumn(db: DbConnection): void {
+  // Every rewind before 0104 also rewinds the later deferred-message table
+  // (0105).
+  db.$client.prepare("DROP TABLE IF EXISTS deferred_thread_messages").run();
   // Generated columns are omitted from table_info but included in table_xinfo.
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_xinfo(events)")

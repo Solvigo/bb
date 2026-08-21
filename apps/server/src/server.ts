@@ -30,6 +30,7 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
+import { requestDeferredThreadMessageFlush } from "./services/threads/thread-send-request.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -445,6 +446,11 @@ export function createApp(
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
+  });
+  // Messages held back while a thread awaited user interaction deliver once
+  // that interaction settles (#1650); the periodic sweep covers the rest.
+  deps.pendingInteractions.setThreadInteractionSettledListener((threadId) => {
+    requestDeferredThreadMessageFlush(deps, threadId);
   });
   // Bridge the thread lifecycle seams to this service's plugins (§4.5).
   setPluginThreadEventEmitter(pluginService.events);
