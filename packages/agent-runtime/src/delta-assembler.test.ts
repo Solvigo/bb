@@ -1547,6 +1547,338 @@ describe("delta assembler (keyed provider turns)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Grammar v3 core kinds: fileRead, search, planSteps, delegation
+// ---------------------------------------------------------------------------
+
+describe("delta assembler grammar v3 core kinds", () => {
+  function itemOf(event: ThreadEvent | undefined) {
+    switch (event?.type) {
+      case "item/started":
+      case "item/completed":
+      case "item/delegation/progress":
+      case "item/delegation/completed":
+        return event.item;
+      default:
+        return undefined;
+    }
+  }
+
+  it.each([
+    {
+      shape: { type: "fileRead", path: "src/index.ts", cmd: "cat src/index.ts" },
+      started: {
+        type: "fileRead",
+        path: "src/index.ts",
+        cmd: "cat src/index.ts",
+        status: "pending",
+      },
+    },
+    {
+      shape: {
+        type: "search",
+        mode: "content",
+        query: "TODO",
+        path: "src",
+        cmd: "rg TODO src",
+      },
+      started: {
+        type: "search",
+        mode: "content",
+        query: "TODO",
+        path: "src",
+        status: "pending",
+      },
+    },
+    {
+      shape: {
+        type: "planSteps",
+        steps: [{ step: "Read the spec", status: "completed" }],
+        explanation: "first pass",
+      },
+      started: {
+        type: "planSteps",
+        steps: [{ step: "Read the spec", status: "completed" }],
+        explanation: "first pass",
+        status: "pending",
+      },
+    },
+  ] satisfies { shape: DeltaItemShape; started: object }[])(
+    "opens $shape.type pending and settles it from the terminal shape under one id",
+    ({ shape, started }) => {
+      const assembler = createAssembler();
+      assemble(assembler, { kind: "turn.open" });
+      const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+      const [open] = assemble(assembler, {
+        kind: "item.open",
+        key: { providerItemId: "v3-1", parentRef: "agent-1" },
+        item: shape,
+      });
+      expect(open).toMatchObject({
+        type: "item/started",
+        scope: turnScope(turnId),
+      });
+      const startedItem = itemOf(open);
+      expect(startedItem).toMatchObject(started);
+      const parentId = startedItem?.parentToolCallId ?? "";
+      expect(parentId).not.toBe("");
+      expect(parentId).not.toBe("agent-1");
+
+      const [closed] = assemble(assembler, {
+        kind: "item.close",
+        key: { providerItemId: "v3-1", parentRef: "agent-1" },
+        status: "failed",
+        item: shape,
+      });
+      expect(closed?.type).toBe("item/completed");
+      expect(itemOf(closed)).toMatchObject({
+        ...started,
+        id: startedItem?.id,
+        status: "failed",
+        parentToolCallId: parentId,
+      });
+    },
+  );
+
+  it("omits optional fileRead/search fields the shape never carried", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const [read] = assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "r-1" },
+      item: { type: "fileRead", path: "README.md" },
+    });
+    expect(itemOf(read)).not.toHaveProperty("cmd");
+    const [search] = assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "s-1" },
+      item: { type: "search", mode: "list", query: "" },
+    });
+    expect(itemOf(search)).not.toHaveProperty("path");
+    expect(itemOf(search)).not.toHaveProperty("cmd");
+  });
+
+  it("settles a v3 item opened as a generic tool and re-shaped at close (dual-settle)", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "tc-1" },
+      item: { type: "tool", tool: "Read", args: { path: "a.ts" } },
+    });
+    const events = assemble(assembler, {
+      kind: "item.close",
+      key: { providerItemId: "tc-1" },
+      status: "completed",
+      item: { type: "fileRead", path: "a.ts" },
+    });
+    expect(events.map((event) => itemOf(event)?.type)).toEqual([
+      "toolCall",
+      "fileRead",
+    ]);
+    expect(new Set(events.map((event) => itemOf(event)?.id)).size).toBe(1);
+  });
+
+  it("interrupts open v3 items on session.ended with their started fields", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(
+      assembler,
+      {
+        kind: "item.open",
+        key: { providerItemId: "r-1" },
+        item: { type: "fileRead", path: "a.ts" },
+      },
+      {
+        kind: "item.open",
+        key: { providerItemId: "d-1" },
+        item: {
+          type: "delegation",
+          childRef: "child-1",
+          label: "Explore",
+          background: false,
+        },
+      },
+    );
+    const events = assemble(assembler, { kind: "session.ended" });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/completed",
+      "item/completed",
+      "turn/completed",
+    ]);
+    expect(itemOf(events[0])).toMatchObject({
+      type: "fileRead",
+      path: "a.ts",
+      status: "interrupted",
+    });
+    expect(itemOf(events[1])).toMatchObject({
+      type: "delegation",
+      childRef: "child-1",
+      status: "interrupted",
+    });
+  });
+
+  it("settles a foreground delegation through the turn-scoped item/completed", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+    assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "d-1" },
+      item: {
+        type: "delegation",
+        childRef: "child-1",
+        label: "Explore the repo",
+        background: false,
+      },
+    });
+    const [closed] = assemble(assembler, {
+      kind: "item.close",
+      key: { providerItemId: "d-1" },
+      status: "completed",
+      item: {
+        type: "delegation",
+        childRef: "child-1",
+        label: "Explore the repo",
+        background: false,
+        summary: "Found three call sites.",
+      },
+    });
+    expect(closed).toMatchObject({
+      type: "item/completed",
+      scope: turnScope(turnId),
+      item: {
+        type: "delegation",
+        status: "completed",
+        summary: "Found three call sites.",
+      },
+    });
+  });
+
+  it("routes a background delegation through thread-scoped progress and completion across turns", () => {
+    const assembler = createDeltaAssembler({
+      providerId: "claude-code",
+      entropyPrefix: "as-test",
+      textDeltaFlushMs: 0,
+      progressThrottleMs: 0,
+    });
+    const presentation = {
+      label: { pending: "Delegating", completed: "Delegated" },
+      icon: { glyph: "Bot" },
+    };
+    assemble(assembler, { kind: "turn.open" });
+    const spawningTurnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+    const shape: DeltaItemShape = {
+      type: "delegation",
+      childRef: "agent-7",
+      label: "Audit the tests",
+      background: true,
+    };
+    const [started] = assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "d-bg" },
+      item: shape,
+      presentation,
+    });
+    expect(started).toMatchObject({
+      type: "item/started",
+      scope: turnScope(spawningTurnId),
+      item: { type: "delegation", status: "pending", presentation },
+    });
+    const delegationId = itemOf(started)?.id;
+
+    // The spawning turn settles; the delegation is thread-attached and
+    // survives it.
+    const boundary = assemble(assembler, {
+      kind: "turn.boundary",
+      status: "completed",
+    });
+    expect(boundary.map((event) => event.type)).toEqual(["turn/completed"]);
+
+    // Progress with no turn open: thread-scoped, pending, keeps the open
+    // item's presentation and id.
+    const [progress] = assemble(assembler, {
+      kind: "item.progress",
+      key: { providerItemId: "d-bg" },
+      snapshot: { ...shape, summary: "Halfway through." },
+    });
+    expect(progress).toMatchObject({
+      type: "item/delegation/progress",
+      scope: threadScope(),
+      item: {
+        id: delegationId,
+        status: "pending",
+        summary: "Halfway through.",
+        presentation,
+      },
+    });
+
+    // Terminal state turns later, still with no turn open: the close needs
+    // none. A bare terminal shape keeps the opened item's summary.
+    const [completed] = assemble(assembler, {
+      kind: "item.close",
+      key: { providerItemId: "d-bg" },
+      status: "completed",
+      item: shape,
+    });
+    expect(completed).toMatchObject({
+      type: "item/delegation/completed",
+      scope: threadScope(),
+      item: {
+        id: delegationId,
+        status: "completed",
+        background: true,
+        presentation,
+      },
+    });
+    expect(itemOf(completed)).not.toHaveProperty("summary");
+  });
+
+  it("a background delegation close without an open builds the bare terminal item", () => {
+    const assembler = createAssembler();
+    const events = assemble(assembler, {
+      kind: "item.close",
+      key: { providerItemId: "d-late" },
+      status: "failed",
+      item: {
+        type: "delegation",
+        childRef: "agent-9",
+        label: "Late child",
+        background: true,
+        summary: "Crashed.",
+      },
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "item/delegation/completed",
+        scope: threadScope(),
+        item: expect.objectContaining({
+          type: "delegation",
+          status: "failed",
+          summary: "Crashed.",
+        }),
+      }),
+    ]);
+  });
+
+  it("session.ended leaves background delegations open like background tasks", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "d-bg" },
+      item: {
+        type: "delegation",
+        childRef: "agent-7",
+        label: "Long audit",
+        background: true,
+      },
+    });
+    const events = assemble(assembler, { kind: "session.ended" });
+    expect(events.map((event) => event.type)).toEqual(["turn/completed"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Background tasks, central progress throttling, model fallback (claude cut)
 // ---------------------------------------------------------------------------
 

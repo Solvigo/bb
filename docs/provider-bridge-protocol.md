@@ -209,9 +209,16 @@ validate unchanged. A bridge that emits any of it reports
 authRequired | restartRecommended | staleTurn | rateLimited, message,
 retryable }`. The runtime acts on the kind and never matches error text.
 
-The assembler refuses v3 shapes with `UnsupportedDeltaShapeError` until the
-generic assembler lands; the schemas accept them so bridges can be written
-and conformance-tested against the contract first.
+The assembler builds every v3 core kind: `fileRead`, `search` and
+`planSteps` open pending and settle from the terminal shape like `command`;
+a foreground `delegation` settles through the turn-scoped `item/completed`,
+and a `background: true` delegation is thread-attached like a background
+task — its `item.progress` snapshots and its `item.close` ride the
+thread-scoped `item/delegation/progress` and `item/delegation/completed`
+events, need no open turn, and survive turn settlement and `session.ended`.
+The assembler reports `grammarVersions: [2, 3]`. Extension kinds are still
+refused with `UnsupportedDeltaShapeError` until the server validates their
+payloads at ingest.
 
 ## Identifiers
 

@@ -69,7 +69,7 @@ describe("handshake version gate", () => {
     const requests = adapter.buildPostInitializeRequests?.() ?? [];
     expect(requests[0]?.plan).toMatchObject({
       method: "initialize",
-      params: { grammarVersions: [2, 2] },
+      params: { grammarVersions: [2, 3] },
     });
     // A bridge that only speaks a future grammar would connect and then have
     // every thread/delta refused — the same silent-timeline failure as a
@@ -77,13 +77,19 @@ describe("handshake version gate", () => {
     expect(() =>
       requests[0]?.onResult({
         protocolVersion: 2,
-        capabilities: { grammarVersions: [3, 4] },
+        capabilities: { grammarVersions: [4, 5] },
       }),
     ).toThrowError(
-      /grammar versions 3-4.*assembles versions 2-2.*fake-bridge/s,
+      /grammar versions 4-5.*assembles versions 2-3.*fake-bridge/s,
     );
-    // An overlapping range (a v3-capable bridge talking to a v2 runtime) and
-    // an older bridge that omits the field both negotiate.
+    // An overlapping range (a v3-only bridge, a v2-v3 bridge) and an older
+    // bridge that omits the field all negotiate.
+    expect(() =>
+      requests[0]?.onResult({
+        protocolVersion: 2,
+        capabilities: { grammarVersions: [3, 3] },
+      }),
+    ).not.toThrow();
     expect(() =>
       requests[0]?.onResult({
         protocolVersion: 2,

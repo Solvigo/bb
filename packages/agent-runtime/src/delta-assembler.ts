@@ -45,20 +45,21 @@ import type {
 } from "@bb/provider-bridge-protocol";
 import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_KEY_SEPARATOR,
 } from "@bb/provider-bridge-protocol";
 
 /**
  * The `thread/delta` grammar range this assembler speaks, reported to every
  * bridge in the `initialize` params so the two sides negotiate a version
- * (see `negotiateGrammarVersion` in the protocol). Stays `[2, 2]` while the
- * v3 shapes throw `UnsupportedDeltaShapeError` below; WS1a widens it to
- * `[2, 3]` when it implements them, and the same commit is what lets a
- * `[2, 3]` bridge start emitting v3.
+ * (see `negotiateGrammarVersion` in the protocol). `[2, 3]`: every v2 dialect
+ * still assembles, and the v3 core kinds (`fileRead`, `search`, `delegation`,
+ * `planSteps`), `presentation`, and extension kinds are constructed below, so
+ * a `[2, 3]` bridge negotiates 3 and may emit them.
  */
 export const ASSEMBLER_GRAMMAR_VERSIONS: BridgeGrammarVersions = [
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
 ];
 import {
   buildEditDiff,
@@ -82,12 +83,12 @@ const UNSTAMPED_THREAD_ID = "" as UnstampedThreadId;
 // Cumulative-text diffing (absorbed from the pi bridge's diff-cumulative-text)
 // ---------------------------------------------------------------------------
 
-interface DiffCumulativeTextArgs {
+export interface DiffCumulativeTextArgs {
   nextText: string;
   previousText?: string;
 }
 
-interface DiffCumulativeTextResult {
+export interface DiffCumulativeTextResult {
   delta: string;
   nextText: string;
   reset: boolean;
@@ -245,7 +246,7 @@ interface ThreadAssemblyState {
   pendingTextByStream: Map<string, PendingTextState>;
 }
 
-interface CreateDeltaAssemblerOptions {
+export interface CreateDeltaAssemblerOptions {
   /** Provider id stamped onto provider/unhandled events. */
   providerId: string;
   /**
@@ -278,7 +279,7 @@ interface CreateDeltaAssemblerOptions {
   now?: () => number;
 }
 
-interface AssembleDeltasArgs {
+export interface AssembleDeltasArgs {
   threadId: string;
   deltas: readonly ThreadDelta[];
 }
@@ -325,17 +326,17 @@ function streamKeyString(args: {
 }
 
 /**
- * Grammar v3 item shapes (`fileRead`, `search`, `delegation`, `planSteps`,
- * `extension`) are accepted by the protocol schema so v3 bridges validate,
- * but this assembler does not build their canonical items yet. WS1a (generic
- * assembler) implements them; until then a bridge that emits one fails loudly
- * here instead of silently dropping or mis-shaping the item. Every existing
- * v2 stream is untouched — no shipped bridge emits these shapes.
+ * Grammar v3 extension kinds (the `extension` item shape and
+ * `extension.state`) are accepted by the protocol schema so v3 bridges
+ * validate, but this assembler does not build their canonical events yet:
+ * that lands with the server's ingest validation of extension payloads, so a
+ * bridge that emits one fails loudly here instead of persisting an
+ * unvalidated payload. Every core kind, v2 and v3, assembles.
  */
 export class UnsupportedDeltaShapeError extends Error {
   constructor(shapeType: string, site: string) {
     super(
-      `thread/delta item shape "${shapeType}" is not assembled yet (${site}): grammar v3 shapes are accepted by the protocol but implemented by WS1a`,
+      `thread/delta item shape "${shapeType}" is not assembled yet (${site}): extension kinds are accepted by the protocol but not assembled until ingest validation lands`,
     );
     this.name = "UnsupportedDeltaShapeError";
   }
@@ -754,13 +755,13 @@ export function createDeltaAssembler(
       case "webFetch":
       case "imageView":
       case "backgroundTask":
-        return item.type === shape.type;
-      // Unsupported until WS1a (generic assembler): see
-      // UnsupportedDeltaShapeError.
       case "fileRead":
       case "search":
       case "delegation":
       case "planSteps":
+        return item.type === shape.type;
+      // Unsupported until WS1a layer 3 (extension kinds): see
+      // UnsupportedDeltaShapeError.
       case "extension":
         throw new UnsupportedDeltaShapeError(shape.type, "shapeMatchesItem");
     }
@@ -799,6 +800,127 @@ export function createDeltaAssembler(
       },
       parentToolCallId,
     );
+  }
+
+  /**
+   * Grammar v3 status-bearing core kinds. One builder per kind serves open
+   * (`status: "pending"`), close (the terminal status) and close-echo: the
+   * shape carries every field but the status, exactly like `command`.
+   */
+  function buildFileReadItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "fileRead" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+  ): Extract<ThreadEventItem, { type: "fileRead" }> {
+    return withParentToolCallId(
+      {
+        type: "fileRead",
+        id: bbItemId,
+        path: shape.path,
+        ...(shape.cmd === undefined ? {} : { cmd: shape.cmd }),
+        status,
+      },
+      parentToolCallId,
+    );
+  }
+
+  function buildSearchItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "search" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+  ): Extract<ThreadEventItem, { type: "search" }> {
+    return withParentToolCallId(
+      {
+        type: "search",
+        id: bbItemId,
+        mode: shape.mode,
+        query: shape.query,
+        ...(shape.path === undefined ? {} : { path: shape.path }),
+        ...(shape.cmd === undefined ? {} : { cmd: shape.cmd }),
+        status,
+      },
+      parentToolCallId,
+    );
+  }
+
+  /**
+   * A delegation's `summary` is the child's terminal summary: the close's
+   * shape carries it, and a close without one keeps what the open (or the
+   * last progress snapshot) said, so a bare terminal snapshot never erases
+   * the summary a provider reported earlier.
+   */
+  function buildDelegationItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "delegation" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+    fallbackSummary?: string,
+  ): Extract<ThreadEventItem, { type: "delegation" }> {
+    const summary = shape.summary ?? fallbackSummary;
+    return withParentToolCallId(
+      {
+        type: "delegation",
+        id: bbItemId,
+        childRef: shape.childRef,
+        label: shape.label,
+        status,
+        background: shape.background,
+        ...(summary === undefined ? {} : { summary }),
+      },
+      parentToolCallId,
+    );
+  }
+
+  function buildPlanStepsItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "planSteps" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+  ): Extract<ThreadEventItem, { type: "planSteps" }> {
+    return withParentToolCallId(
+      {
+        type: "planSteps",
+        id: bbItemId,
+        steps: shape.steps,
+        ...(shape.explanation === undefined
+          ? {}
+          : { explanation: shape.explanation }),
+        status,
+      },
+      parentToolCallId,
+    );
+  }
+
+  /**
+   * Work that outlives its turn: background tasks, and delegations the bridge
+   * marked `background`. Their progress and terminal state ride the
+   * thread-scoped `item/<kind>/progress|completed` events, and turn
+   * settlement never clears or completes them.
+   */
+  function isThreadAttachedShape(shape: DeltaItemShape): boolean {
+    switch (shape.type) {
+      case "backgroundTask":
+        return true;
+      case "delegation":
+        return shape.background;
+      case "command":
+      case "fileChange":
+      case "tool":
+      case "compaction":
+      case "agentMessage":
+      case "reasoning":
+      case "plan":
+      case "webSearch":
+      case "webFetch":
+      case "imageView":
+      case "fileRead":
+      case "search":
+      case "planSteps":
+      case "extension":
+        return false;
+    }
   }
 
   function buildOpenedItem(
@@ -912,12 +1034,21 @@ export function createDeltaAssembler(
         );
       case "backgroundTask":
         return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
-      // Unsupported until WS1a (generic assembler): see
-      // UnsupportedDeltaShapeError.
       case "fileRead":
+        return buildFileReadItem(bbItemId, shape, "pending", parentToolCallId);
       case "search":
+        return buildSearchItem(bbItemId, shape, "pending", parentToolCallId);
       case "delegation":
+        return buildDelegationItem(
+          bbItemId,
+          shape,
+          "pending",
+          parentToolCallId,
+        );
       case "planSteps":
+        return buildPlanStepsItem(bbItemId, shape, "pending", parentToolCallId);
+      // Unsupported until WS1a layer 3 (extension kinds): see
+      // UnsupportedDeltaShapeError.
       case "extension":
         throw new UnsupportedDeltaShapeError(shape.type, "buildOpenedItem");
     }
@@ -929,6 +1060,8 @@ export function createDeltaAssembler(
     resultText?: string;
     approvalStatus?: "denied";
     status: ThreadEventItemStatus;
+    /** The opened delegation's last known summary (close-echo fallback). */
+    delegationSummary?: string;
   }
 
   /** Close-echo: started-item fields survive onto the completed item. */
@@ -989,6 +1122,14 @@ export function createDeltaAssembler(
           { type: "contextCompaction", id: started.id },
           parent,
         );
+      case "fileRead":
+        return buildFileReadItem(started.id, started, close.status, parent);
+      case "search":
+        return buildSearchItem(started.id, started, close.status, parent);
+      case "delegation":
+        return buildDelegationItem(started.id, started, close.status, parent);
+      case "planSteps":
+        return buildPlanStepsItem(started.id, started, close.status, parent);
       default:
         // Message-ish started items never travel item.close; settle generically.
         return started;
@@ -1085,18 +1226,38 @@ export function createDeltaAssembler(
         );
       case "backgroundTask":
         return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
+      case "fileRead":
+        return buildFileReadItem(
+          bbItemId,
+          shape,
+          close.status,
+          parentToolCallId,
+        );
+      case "search":
+        return buildSearchItem(bbItemId, shape, close.status, parentToolCallId);
+      case "delegation":
+        return buildDelegationItem(
+          bbItemId,
+          shape,
+          close.status,
+          parentToolCallId,
+          close.delegationSummary,
+        );
+      case "planSteps":
+        return buildPlanStepsItem(
+          bbItemId,
+          shape,
+          close.status,
+          parentToolCallId,
+        );
       case "agentMessage":
       case "reasoning":
       case "plan":
       case "imageView":
         // Status-less canonical items: the terminal shape is the whole item.
         return buildOpenedItem(bbItemId, shape, parentToolCallId);
-      // Unsupported until WS1a (generic assembler): see
+      // Unsupported until WS1a layer 3 (extension kinds): see
       // UnsupportedDeltaShapeError.
-      case "fileRead":
-      case "search":
-      case "delegation":
-      case "planSteps":
       case "extension":
         throw new UnsupportedDeltaShapeError(
           shape.type,
@@ -1284,7 +1445,7 @@ export function createDeltaAssembler(
         state.openItemsByKey.set(keyStr, {
           bbItemId,
           item,
-          threadAttached: delta.item.type === "backgroundTask",
+          threadAttached: isThreadAttachedShape(delta.item),
         });
         // The open seeds the progress throttle window: a provider's first
         // progress right after the open is already inside the interval.
@@ -1300,10 +1461,11 @@ export function createDeltaAssembler(
       }
 
       case "item.close": {
-        // A background-task close is structurally thread-scoped
-        // (item/backgroundTask/completed) and needs no open turn — terminal
-        // task state can arrive turns after the spawning turn settled.
-        const threadScoped = delta.item.type === "backgroundTask";
+        // A background-task or background-delegation close is structurally
+        // thread-scoped (item/backgroundTask/completed,
+        // item/delegation/completed) and needs no open turn — terminal state
+        // can arrive turns after the spawning turn settled.
+        const threadScoped = isThreadAttachedShape(delta.item);
         const turnId = threadScoped
           ? undefined
           : delta.providerTurnId !== undefined
@@ -1331,6 +1493,8 @@ export function createDeltaAssembler(
         }
         const open = state.openItemsByKey.get(keyStr);
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
+        const openDelegationSummary =
+          open?.item.type === "delegation" ? open.item.summary : undefined;
         const closeFields: CloseFields = {
           status: delta.status,
           ...(delta.resultText === undefined
@@ -1343,6 +1507,9 @@ export function createDeltaAssembler(
           ...(delta.approvalStatus === undefined
             ? {}
             : { approvalStatus: delta.approvalStatus }),
+          ...(openDelegationSummary === undefined
+            ? {}
+            : { delegationSummary: openDelegationSummary }),
         };
         // Uniform close rule: the delta's `item` is ALWAYS the full terminal
         // shape and the completed item is built from it. An open item under
@@ -1395,20 +1562,25 @@ export function createDeltaAssembler(
         if (delta.key.providerItemId !== undefined) {
           rememberSettledKey(state, keyStr);
         }
-        if (delta.item.type === "backgroundTask") {
+        // Thread-attached work settles on its own thread-scoped terminal
+        // event; `item` is already the full terminal item for it.
+        if (item.type === "backgroundTask") {
           events.push({
             type: "item/backgroundTask/completed",
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: threadScope(),
-            item: withPresentation(
-              buildBackgroundTaskItem(
-                bbItemId,
-                delta.item,
-                parentToolCallId ?? open?.item.parentToolCallId,
-              ),
-              presentation,
-            ),
+            item,
+          });
+          return;
+        }
+        if (item.type === "delegation" && item.background) {
+          events.push({
+            type: "item/delegation/completed",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: threadScope(),
+            item,
           });
           return;
         }
@@ -1459,14 +1631,27 @@ export function createDeltaAssembler(
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
         let event: ThreadEvent;
         if (delta.snapshot?.type === "delegation") {
-          // Unsupported until WS1a: a background-delegation snapshot becomes
-          // `item/delegation/progress` once the generic assembler lands.
-          throw new UnsupportedDeltaShapeError(
-            delta.snapshot.type,
-            "item.progress snapshot",
-          );
-        }
-        if (delta.snapshot !== undefined) {
+          // A background-delegation snapshot is structurally thread-scoped
+          // (item/delegation/progress) like a background task's; the child
+          // is still running, so the item stays pending and keeps the last
+          // summary the provider reported.
+          event = {
+            type: "item/delegation/progress",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: threadScope(),
+            item: withPresentation(
+              buildDelegationItem(
+                bbItemId,
+                delta.snapshot,
+                "pending",
+                parentToolCallId ?? open?.item.parentToolCallId,
+                open?.item.type === "delegation" ? open.item.summary : undefined,
+              ),
+              presentationOf(open?.item),
+            ),
+          };
+        } else if (delta.snapshot !== undefined) {
           // Background-task snapshot progress is structurally thread-scoped by
           // the domain grammar; it needs no open turn.
           event = {
