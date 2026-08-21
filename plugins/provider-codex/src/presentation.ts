@@ -251,6 +251,41 @@ export function dynamicToolPresentation(tool: string): DeltaPresentation {
 }
 
 // ---------------------------------------------------------------------------
+// Extension items
+// ---------------------------------------------------------------------------
+
+/**
+ * The macOS permission profile a codex approval asked for, as its own row
+ * beside the approval: what was requested goes in the detail, since bb's
+ * permission layer cannot grant it and the approval itself never shows it.
+ */
+export function macOsPermissionPresentation(
+  requested: readonly string[],
+): DeltaPresentation {
+  const presentation: DeltaPresentation = {
+    label: {
+      pending: "Requesting macOS permissions",
+      completed: "Requested macOS permissions",
+    },
+    icon: { glyph: "Lock" },
+  };
+  const detail =
+    requested.length === 0
+      ? "No macOS capability was requested."
+      : `Requested: ${requested.join(", ")}. bb cannot grant macOS permissions; the approval covers the command only.`;
+  return { ...presentation, detail: presentationDetail(detail) };
+}
+
+/** Row details are capped by the persisted presentation schema. */
+const DETAIL_MAX_LENGTH = 280;
+
+export function presentationDetail(text: string): string {
+  return text.length > DETAIL_MAX_LENGTH
+    ? `${text.slice(0, DETAIL_MAX_LENGTH - 1)}…`
+    : text;
+}
+
+// ---------------------------------------------------------------------------
 // Sub-agents (collab tool calls and subAgentActivity)
 // ---------------------------------------------------------------------------
 

@@ -356,17 +356,19 @@ describe("codex thread lifecycle translation", () => {
     ).toEqual([]);
   });
 
-  it("maps native thread goal notifications", () => {
+  it("maps native thread goal notifications to the codex goal state", () => {
     const harness = createHarness();
 
     expect(
       harness.translate(codexEvent("thread/goal/cleared", { threadId: "t1" })),
     ).toEqual([
       {
-        type: "thread/goal/cleared",
+        type: "thread/extensionState/updated",
         threadId: "",
         providerThreadId: "",
         scope: threadScope(),
+        kind: "provider-codex/goal",
+        payload: null,
       },
     ]);
     expect(
@@ -388,15 +390,18 @@ describe("codex thread lifecycle translation", () => {
       ),
     ).toEqual([
       {
-        type: "thread/goal/updated",
+        type: "thread/extensionState/updated",
         threadId: "",
         providerThreadId: "",
         scope: threadScope(),
-        objective: "Finish the task",
-        status: "active",
-        tokenBudget: null,
-        tokensUsed: 0,
-        timeUsedSeconds: 0,
+        kind: "provider-codex/goal",
+        payload: {
+          objective: "Finish the task",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 0,
+          timeUsedSeconds: 0,
+        },
       },
     ]);
   });

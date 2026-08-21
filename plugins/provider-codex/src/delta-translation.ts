@@ -58,6 +58,10 @@ import {
   webFetchPresentation,
   webSearchPresentation,
 } from "./presentation.js";
+import {
+  CODEX_GOAL_EXTENSION_KIND,
+  type CodexGoalState,
+} from "./extension-kinds.js";
 import { codexVisibilityMetadata } from "./visibility.js";
 
 function assertNever(value: never): never {
@@ -949,19 +953,32 @@ export function translateCodexEventToDeltas(
           providerTurnId: handledEvent.params.turnId,
         },
       ];
-    case "thread/goal/updated":
+    case "thread/goal/updated": {
+      // Codex's Goal is codex vocabulary: a `provider-codex/goal` thread
+      // state snapshot (latest wins), not a core event.
+      const goal: CodexGoalState = {
+        objective: handledEvent.params.goal.objective,
+        status: handledEvent.params.goal.status,
+        tokenBudget: handledEvent.params.goal.tokenBudget,
+        tokensUsed: handledEvent.params.goal.tokensUsed,
+        timeUsedSeconds: handledEvent.params.goal.timeUsedSeconds,
+      };
       return [
         {
-          kind: "thread.goal",
-          objective: handledEvent.params.goal.objective,
-          status: handledEvent.params.goal.status,
-          tokenBudget: handledEvent.params.goal.tokenBudget,
-          tokensUsed: handledEvent.params.goal.tokensUsed,
-          timeUsedSeconds: handledEvent.params.goal.timeUsedSeconds,
+          kind: "extension.state",
+          extensionKind: CODEX_GOAL_EXTENSION_KIND,
+          payload: goal,
         },
       ];
+    }
     case "thread/goal/cleared":
-      return [{ kind: "thread.goalCleared" }];
+      return [
+        {
+          kind: "extension.state",
+          extensionKind: CODEX_GOAL_EXTENSION_KIND,
+          payload: null,
+        },
+      ];
     case "item/started":
     case "item/completed": {
       const translation = translateCodexItemShape(

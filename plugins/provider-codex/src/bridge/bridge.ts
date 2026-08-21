@@ -78,10 +78,17 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
+  CODEX_MACOS_PERMISSION_EXTENSION_KIND,
+  summarizeCodexMacOsPermissions,
+} from "../extension-kinds.js";
+import {
   buildCodexInteractiveResponse,
   decodeCodexInteractiveRequest,
+  extractCodexMacOsPermissionRequest,
+  type CodexMacOsPermissionRequest,
 } from "../interactive-requests.js";
 import { parseModelsResponse } from "../models.js";
+import { macOsPermissionPresentation } from "../presentation.js";
 import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
@@ -720,6 +727,21 @@ function handleChildRequest(
     return;
   }
 
+  // A macOS permission profile on a command approval is codex vocabulary
+  // bb's permission layer cannot grant: it goes on the timeline as its own
+  // row (`provider-codex/macos-permission`) and the approval proceeds for
+  // the command itself.
+  const macOsPermission = extractCodexMacOsPermissionRequest({
+    id: 0,
+    method,
+    params,
+  });
+  if (macOsPermission !== null) {
+    sendThreadDeltas(session, [
+      buildMacOsPermissionItemDelta(macOsPermission),
+    ]);
+  }
+
   let decoded: DecodedInteractiveRequest | null;
   try {
     decoded = decodeCodexInteractiveRequest({ id: 0, method, params });
@@ -758,6 +780,32 @@ function handleChildRequest(
         error instanceof Error ? error.message : String(error),
       );
     });
+}
+
+/**
+ * The `provider-codex/macos-permission` row for a command approval that asked
+ * for macOS capabilities. Keyed by the approval's codex item id under its own
+ * channel, so a re-asked approval for the same command reuses the row.
+ */
+function buildMacOsPermissionItemDelta(
+  request: CodexMacOsPermissionRequest,
+): ThreadDelta {
+  return {
+    kind: "item.close",
+    key: {
+      providerItemId: `${request.item.approvalItemId}:macos-permission`,
+    },
+    status: "completed",
+    item: {
+      type: "extension",
+      kind: CODEX_MACOS_PERMISSION_EXTENSION_KIND,
+      payload: request.item,
+    },
+    presentation: macOsPermissionPresentation(
+      summarizeCodexMacOsPermissions(request.item.permissions),
+    ),
+    providerTurnId: request.turnId,
+  };
 }
 
 function handleChildExit(
