@@ -789,7 +789,7 @@ describe("claude tool-result translation (delta path)", () => {
     );
   });
 
-  it("preserves structured TaskCreate tool results", () => {
+  it("closes a task-list call with its text result and folds the structured result into the plan", () => {
     const harness = createClaudeDeltaHarness();
 
     harness.translate({
@@ -812,6 +812,8 @@ describe("claude tool-result translation (delta path)", () => {
       session_id: "sess-1",
     });
 
+    // The SDK carries the structured result on the message envelope; the
+    // block's content is the friendly text every tool row shows.
     const events = harness.translate({
       type: "user",
       message: {
@@ -820,17 +822,14 @@ describe("claude tool-result translation (delta path)", () => {
           {
             type: "tool_result",
             tool_use_id: "task-create-1",
-            tool_name: "TaskCreate",
-            content: {
-              task: {
-                id: "task-1",
-                subject: "Add task support",
-              },
-            },
+            content: "Task #task-1 created successfully: Add task support",
           },
         ],
       },
       session_id: "sess-1",
+      tool_use_result: {
+        task: { id: "task-1", subject: "Add task support" },
+      },
     });
 
     expect(events).toContainEqual(
@@ -840,81 +839,24 @@ describe("claude tool-result translation (delta path)", () => {
           type: "toolCall",
           id: harness.itemId("task-create-1"),
           tool: "TaskCreate",
-          result: {
-            task: {
-              id: "task-1",
-              subject: "Add task support",
-            },
-          },
+          result: "Task #task-1 created successfully: Add task support",
           status: "completed",
         }),
       }),
     );
-  });
-
-  it("preserves structured TaskUpdate tool results", () => {
-    const harness = createClaudeDeltaHarness();
-
-    harness.translate({
-      type: "assistant",
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "tool_use",
-            id: "task-update-1",
-            name: "TaskUpdate",
-            input: {
-              taskId: "task-1",
-              status: "in_progress",
-            },
-          },
-        ],
-      },
-      session_id: "sess-1",
-    });
-
-    const events = harness.translate({
-      type: "user",
-      message: {
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: "task-update-1",
-            tool_name: "TaskUpdate",
-            content: {
-              success: true,
-              taskId: "task-1",
-              updatedFields: ["status"],
-            },
-          },
-        ],
-      },
-      session_id: "sess-1",
-    });
-
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
         item: expect.objectContaining({
-          type: "toolCall",
-          id: harness.itemId("task-update-1"),
-          tool: "TaskUpdate",
-          result: {
-            success: true,
-            taskId: "task-1",
-            updatedFields: ["status"],
-          },
-          status: "completed",
+          type: "planSteps",
+          steps: [{ step: "Add task support", status: "pending" }],
         }),
       }),
     );
   });
 
-  it("preserves structured TaskList tool results", () => {
+  it("folds a task-list result carried as JSON text when the envelope has none", () => {
     const harness = createClaudeDeltaHarness();
-
     harness.translate({
       type: "assistant",
       message: {
@@ -930,7 +872,6 @@ describe("claude tool-result translation (delta path)", () => {
       },
       session_id: "sess-1",
     });
-
     const events = harness.translate({
       type: "user",
       message: {
@@ -939,157 +880,20 @@ describe("claude tool-result translation (delta path)", () => {
           {
             type: "tool_result",
             tool_use_id: "task-list-1",
-            tool_name: "TaskList",
-            content: {
-              tasks: [
-                {
-                  id: "task-1",
-                  subject: "Add task support",
-                  status: "pending",
-                  blockedBy: [],
-                },
-              ],
-            },
-          },
-        ],
-      },
-      session_id: "sess-1",
-    });
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "toolCall",
-          id: harness.itemId("task-list-1"),
-          tool: "TaskList",
-          result: {
-            tasks: [
-              {
-                id: "task-1",
-                subject: "Add task support",
-                status: "pending",
-                blockedBy: [],
-              },
-            ],
-          },
-          status: "completed",
-        }),
-      }),
-    );
-  });
-
-  it("preserves structured TaskGet tool results", () => {
-    const harness = createClaudeDeltaHarness();
-
-    harness.translate({
-      type: "assistant",
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "tool_use",
-            id: "task-get-1",
-            name: "TaskGet",
-            input: {
-              taskId: "task-1",
-            },
-          },
-        ],
-      },
-      session_id: "sess-1",
-    });
-
-    const events = harness.translate({
-      type: "user",
-      message: {
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: "task-get-1",
-            tool_name: "TaskGet",
-            content: {
-              task: {
-                id: "task-1",
-                subject: "Add task support",
-                description: "Track Claude Task tools",
-                status: "completed",
-                blocks: [],
-                blockedBy: [],
-              },
-            },
-          },
-        ],
-      },
-      session_id: "sess-1",
-    });
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "toolCall",
-          id: harness.itemId("task-get-1"),
-          tool: "TaskGet",
-          result: {
-            task: {
-              id: "task-1",
-              subject: "Add task support",
-              description: "Track Claude Task tools",
-              status: "completed",
-              blocks: [],
-              blockedBy: [],
-            },
-          },
-          status: "completed",
-        }),
-      }),
-    );
-  });
-
-  it("preserves structured Task results without a matching started item", () => {
-    const harness = createClaudeDeltaHarness();
-
-    harness.translate({
-      type: "assistant",
-      message: { role: "assistant", content: [{ type: "text", text: "x" }] },
-      session_id: "sess-1",
-    });
-
-    const events = harness.translate({
-      type: "user",
-      message: {
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: "task-update-late",
-            tool_name: "TaskUpdate",
             content: JSON.stringify({
-              success: true,
-              taskId: "task-1",
-              updatedFields: ["status"],
+              tasks: [{ id: "1", subject: "Review", status: "in_progress" }],
             }),
           },
         ],
       },
       session_id: "sess-1",
     });
-
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
         item: expect.objectContaining({
-          type: "toolCall",
-          id: harness.itemId("task-update-late"),
-          tool: "TaskUpdate",
-          result: {
-            success: true,
-            taskId: "task-1",
-            updatedFields: ["status"],
-          },
-          status: "completed",
+          type: "planSteps",
+          steps: [{ step: "Review", status: "active" }],
         }),
       }),
     );

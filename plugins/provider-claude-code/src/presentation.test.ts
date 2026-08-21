@@ -128,7 +128,7 @@ describe("claude item presentation", () => {
       expect.objectContaining({
         type: "toolCall",
         tool: "TaskCreate",
-        result: { task: { id: "1", subject: "Ship the bridge" } },
+        result: "Task #1 created successfully: Ship the bridge",
         presentation: expect.objectContaining({
           suppress: true,
           title: "Ship the bridge",

@@ -45,9 +45,6 @@ import {
   type ThreadEventTokenUsageBreakdown,
   ZERO_TOKEN_USAGE,
   addTokenUsage,
-  claudeTaskToolNameSchema,
-  claudeTaskToolOutputSchema,
-  type ClaudeTaskToolOutput,
   errorEnvelopeSchema,
   extractResultText,
   jsonRpcEnvelopeSchema,
@@ -77,7 +74,6 @@ import {
   type ClaudeAssistantMessage,
   type ClaudeRateLimitEvent,
   type ClaudeResultMessage,
-  type ClaudeToolUseResult,
 } from "./schemas.js";
 import { buildClaudeProviderErrorInfo } from "./error-info.js";
 import {
@@ -138,54 +134,18 @@ function thinkingStreamChannel(contentIndex: number): string {
   return `thinking-${contentIndex}`;
 }
 
-// ---------------------------------------------------------------------------
-// Task-tool results (structured output riding the terminal tool shape)
-// ---------------------------------------------------------------------------
-
 /** Provider-anonymous key for the plan-steps snapshots of a thread. */
 const PLAN_STEPS_CHANNEL = "planSteps";
 
-function parseClaudeTaskToolOutputValue(
-  value: unknown,
-): ClaudeTaskToolOutput | null {
-  const parsed = claudeTaskToolOutputSchema.safeParse(value);
-  if (parsed.success) return parsed.data;
-  if (typeof value !== "string") return null;
-  try {
-    const json: unknown = JSON.parse(value);
-    const parsedJson = claudeTaskToolOutputSchema.safeParse(json);
-    return parsedJson.success ? parsedJson.data : null;
-  } catch {
-    return null;
-  }
-}
-
-function parseClaudeTaskToolOutput(args: {
-  content: unknown;
-  outputText: string | undefined;
-  toolUseResult: ClaudeToolUseResult | unknown;
-}): ClaudeTaskToolOutput | null {
-  return (
-    parseClaudeTaskToolOutputValue(args.content) ??
-    parseClaudeTaskToolOutputValue(args.toolUseResult) ??
-    parseClaudeTaskToolOutputValue(args.outputText)
-  );
-}
-
 /**
- * The full terminal shape for a tool result. Task-tool results parse into
- * structured output riding the terminal tool shape; a delegation's result is
- * the child's summary (without Claude's internal metadata lines); every other
- * shape closes as it opened and plain results ride the generic close fields.
+ * The full terminal shape for a tool result. A delegation's result is the
+ * child's summary (without Claude's internal metadata lines); every other
+ * shape closes as it opened and the result rides the generic close fields.
  */
 function terminalToolShape(
   shape: DeltaItemShape,
-  taskToolResult: ClaudeTaskToolOutput | null,
   outputText: string | undefined,
 ): DeltaItemShape {
-  if (shape.type === "tool" && taskToolResult !== null) {
-    return { ...shape, result: taskToolResult };
-  }
   if (shape.type === "delegation" && outputText !== undefined) {
     const summary = stripClaudeAgentOutputMetadata(outputText);
     return summary.length > 0 ? { ...shape, summary } : shape;
@@ -1143,8 +1103,9 @@ export function createClaudeDeltaTranslator() {
       : {};
     // The SDK puts the tool's structured result on the user-message envelope
     // (`tool_use_result`), one message per result. The task-list tools are
-    // the only ones whose structured form the bridge reads: the created
-    // task's id, a patch's success flag, a listing's tasks.
+    // the only ones whose structured form the bridge reads — for the plan
+    // fold: the created task's id, a patch's success flag, a listing's
+    // tasks. The item itself carries the text result like any tool.
     const envelopeToolUseResult =
       toolResults.length === 1
         ? (toOptionalRecord(parsedMessage.data)?.tool_use_result ?? undefined)
@@ -1164,15 +1125,6 @@ export function createClaudeDeltaTranslator() {
         : extractResultText(result.content);
       const resultToolName =
         startedShape?.type === "tool" ? startedShape.tool : result.toolName;
-      const taskToolResult =
-        resultToolName !== undefined &&
-        claudeTaskToolNameSchema.safeParse(resultToolName).success
-          ? parseClaudeTaskToolOutput({
-              content: result.content,
-              outputText,
-              toolUseResult: result.toolUseResult ?? envelopeToolUseResult,
-            })
-          : null;
       const base = started ?? classifyClaudeToolResultFallback(result.toolName);
       const status = result.isError ? "failed" : "completed";
       deltas.push({
@@ -1180,7 +1132,7 @@ export function createClaudeDeltaTranslator() {
         key: { providerItemId: result.toolUseId, ...parentRefField },
         status,
         ...terminalCloseFields(base.shape, outputText, result.isError),
-        item: terminalToolShape(base.shape, taskToolResult, outputText),
+        item: terminalToolShape(base.shape, outputText),
         presentation: base.presentation,
       });
       // A settled task-list call re-emits the folded list as a plan snapshot.
@@ -1189,7 +1141,7 @@ export function createClaudeDeltaTranslator() {
           state: state.taskPlan,
           toolName: resultToolName,
           input: startedShape?.type === "tool" ? startedShape.args : undefined,
-          output: taskToolResult ?? outputText,
+          output: envelopeToolUseResult ?? result.toolUseResult ?? outputText,
           failed: result.isError,
         });
         if (planSteps !== null) {
