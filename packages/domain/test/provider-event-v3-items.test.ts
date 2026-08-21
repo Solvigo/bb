@@ -140,10 +140,17 @@ describe("grammar v3 item variants", () => {
     expect(
       threadEventItemPresentationSchema.safeParse({
         ...presentation,
-        icon: { asset: "./icons/tool.svg" },
         tint: { light: "#112233", dark: "#ddeeff" },
       }).success,
     ).toBe(true);
+    // Persisted icons are host glyphs only: a plugin-relative asset path
+    // cannot survive the plugin's removal (see item-presentation.ts).
+    expect(
+      threadEventItemPresentationSchema.safeParse({
+        ...presentation,
+        icon: { asset: "./icons/tool.svg" },
+      }).success,
+    ).toBe(false);
   });
 
   it("scopes delegation progress and completion to the thread like background tasks", () => {

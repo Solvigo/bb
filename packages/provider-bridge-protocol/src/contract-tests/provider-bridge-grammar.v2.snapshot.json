@@ -240,8 +240,7 @@
     "extension": {
       "type": "required",
       "kind": "required",
-      "payload": "required",
-      "presentation": "required"
+      "payload": "required"
     },
     "fileChange": {
       "type": "required",

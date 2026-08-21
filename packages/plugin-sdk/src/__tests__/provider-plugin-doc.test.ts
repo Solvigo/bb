@@ -158,13 +158,11 @@ const DELEGATION_FIELDS = {
 >;
 
 /** §3 presentation block → `threadEventItemPresentationSchema`. */
-type PresentationIcon = ThreadEventItemPresentation["icon"];
 type PresentationPath =
   | "presentation"
   | keyof ThreadEventItemPresentation
   | `label.${keyof ThreadEventItemPresentation["label"]}`
-  | `icon.${keyof Extract<PresentationIcon, { glyph: string }>}`
-  | `icon.${keyof Extract<PresentationIcon, { asset: string }>}`
+  | `icon.${keyof ThreadEventItemPresentation["icon"]}`
   | `tint.${keyof NonNullable<ThreadEventItemPresentation["tint"]>}`;
 
 const PRESENTATION_FIELDS = {
@@ -174,7 +172,9 @@ const PRESENTATION_FIELDS = {
   completed: "label.completed",
   icon: "icon",
   glyph: "icon.glyph",
-  asset: "icon.asset",
+  asset: {
+    gap: "WS3 (projection + renderers): a durable, content-addressed asset icon; persisted presentation is glyph-only until then (item-presentation.ts)",
+  },
   title: "title",
   detail: "detail",
   suppress: "suppress",

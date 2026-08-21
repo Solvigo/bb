@@ -28,14 +28,20 @@ export type ThreadEventItemPresentationLabel = z.infer<
 >;
 
 /**
- * A named host glyph (`{ glyph: "FileText" }`) or a plugin-relative asset
- * path (`{ asset: "./icons/tool.svg" }`) — the same two forms the plugin
- * branding and provider declaration icons use.
+ * A named host glyph (`{ glyph: "FileText" }`), the same vocabulary the
+ * plugin branding and provider declaration icons use for glyphs.
+ *
+ * Deliberately glyph-only while the presentation is persisted per row: a
+ * plugin-relative asset path (`"./icons/tool.svg"`) names a file that is
+ * gone after the plugin is uninstalled and may change after an upgrade, so
+ * a stored path could not keep the "renders after the plugin is gone"
+ * promise this schema exists for. A durable, content-addressed asset form
+ * (hash-named through the plugin asset route) is WS3's to add beside the
+ * glyph; until then a bridge picks the closest host glyph.
  */
-export const threadEventItemPresentationIconSchema = z.union([
-  z.object({ glyph: z.string().min(1) }),
-  z.object({ asset: z.string().min(1) }),
-]);
+export const threadEventItemPresentationIconSchema = z.object({
+  glyph: z.string().min(1),
+});
 export type ThreadEventItemPresentationIcon = z.infer<
   typeof threadEventItemPresentationIconSchema
 >;

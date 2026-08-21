@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   BRIDGE_NOTIFICATION_METHODS,
   bridgeCapabilitiesSchema,
+  initializeParamsSchema,
   initializeResultSchema,
+  negotiateGrammarVersion,
   providerRecoveryNotificationSchema,
 } from "./index.js";
 import {
@@ -43,12 +45,6 @@ describe("thread delta grammar v3", () => {
         steps: [{ step: "Fix bug", status: "active" }, { step: "Test" }],
         explanation: "Two steps",
       },
-      {
-        type: "extension",
-        kind: "codex/goal",
-        payload: { objective: "Ship it" },
-        presentation,
-      },
     ];
     for (const item of shapes) {
       expect(
@@ -70,6 +66,39 @@ describe("thread delta grammar v3", () => {
         `expected item.close ${item.type} to parse`,
       ).toBe(true);
     }
+  });
+
+  it("requires the delta-level presentation for extension shapes, on open and close", () => {
+    // Presentation lives in one place (the lifecycle delta); the extension
+    // shape carries none of its own and cannot render without one.
+    const item = {
+      type: "extension",
+      kind: "codex/goal",
+      payload: { objective: "Ship it" },
+    };
+    for (const delta of [
+      { kind: "item.open", key: { providerItemId: "tc-1" }, item },
+      {
+        kind: "item.close",
+        key: { providerItemId: "tc-1" },
+        status: "completed",
+        item,
+      },
+    ]) {
+      const missing = threadDeltaSchema.safeParse(delta);
+      expect(missing.success, `expected ${delta.kind} to be rejected`).toBe(
+        false,
+      );
+      expect(missing.error?.issues[0]?.path).toEqual(["presentation"]);
+      expect(
+        threadDeltaSchema.safeParse({ ...delta, presentation }).success,
+        `expected ${delta.kind} with presentation to parse`,
+      ).toBe(true);
+    }
+    // A shape-level presentation is not a second home for it.
+    expect(
+      deltaItemShapeSchema.parse({ ...item, presentation }),
+    ).not.toHaveProperty("presentation");
   });
 
   it("keeps v2 deltas valid: presentation is optional on open and close", () => {
@@ -117,21 +146,13 @@ describe("thread delta grammar v3", () => {
         background: false,
       }).success,
     ).toBe(false);
-    // extension presentation is mandatory and the kind is namespaced.
-    expect(
-      deltaItemShapeSchema.safeParse({
-        type: "extension",
-        kind: "codex/goal",
-        payload: {},
-      }).success,
-    ).toBe(false);
+    // the extension kind is namespaced.
     for (const kind of ["goal", "Codex/goal", "codex/goal/x", "codex/"]) {
       expect(
         deltaItemShapeSchema.safeParse({
           type: "extension",
           kind,
           payload: {},
-          presentation,
         }).success,
         `expected extension kind ${JSON.stringify(kind)} to be rejected`,
       ).toBe(false);
@@ -142,7 +163,6 @@ describe("thread delta grammar v3", () => {
         type: "extension",
         kind: "codex/goal",
         payload: { when: new Date() },
-        presentation,
       }).success,
     ).toBe(false);
   });
@@ -227,6 +247,21 @@ describe("handshake v3 capabilities", () => {
     });
     expect(parsed.grammarVersions).toEqual([2, 3]);
     expect(parsed.steerMode).toBe("inject");
+  });
+
+  it("negotiates the highest common grammar version in both directions", () => {
+    // An older runtime's params omit the range and read as its protocol
+    // version, so a wider bridge stays on v2.
+    const params = initializeParamsSchema.parse({
+      protocolVersion: 2,
+      client: { name: "bb", version: "1.0.0" },
+    });
+    expect(params.grammarVersions).toEqual([2, 2]);
+    expect(negotiateGrammarVersion(params.grammarVersions, [2, 3])).toBe(2);
+    expect(negotiateGrammarVersion([2, 3], [2, 3])).toBe(3);
+    expect(negotiateGrammarVersion([2, 3], [3, 5])).toBe(3);
+    expect(negotiateGrammarVersion([2, 2], [3, 4])).toBeNull();
+    expect(negotiateGrammarVersion([3, 4], [2, 2])).toBeNull();
   });
 
   it("rejects a descending range, non-integers, and unknown steer modes", () => {

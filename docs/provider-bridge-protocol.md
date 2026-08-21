@@ -189,13 +189,18 @@ validate unchanged. A bridge that emits any of it reports
   codex `spawnAgent`/`wait`, the Claude `Agent` tool, and backgrounded
   agents, replacing `thread/openWork`), and `planSteps` (a structured plan
   snapshot as an item, beside the turn-level `turn.plan`).
-- **`presentation`** on `item.open` and `item.close`: `label {pending,
-completed}`, `icon {glyph} | {asset}`, `title?`, `detail?` (≤ 280 chars),
-  `suppress?`, `tint?`. The assembler persists it on the canonical item, so
+- **`presentation`** on `item.open` and `item.close`, the one place it
+  travels: `label {pending, completed}`, `icon {glyph}` (host glyphs only —
+  a plugin-relative asset path cannot outlive the plugin, and a durable
+  content-addressed form is later work), `title?`, `detail?` (≤ 280 chars),
+  `suppress?`, `tint?`. The assembler persists it on the canonical item (the
+  close's value wins, the open's survives when the close carries none), so
   the row renders after the plugin is gone and mobile renders every kind
-  without plugin code. Optional until the v2 paths are deleted.
+  without plugin code. Optional for core shapes until the v2 paths are
+  deleted; required when the shape is `extension`.
 - **Extension kinds** `"<pluginId>/<name>"`: the `extension` item shape
-  (opaque JSON `payload`, mandatory `presentation`) and the thread-scoped
+  (opaque JSON `payload`; its lifecycle delta must carry a `presentation`)
+  and the thread-scoped
   `extension.state` delta (latest snapshot wins per kind). Only the namespace
   is validated on the wire; the server validates payloads against the
   plugin's declared schemas at ingest.

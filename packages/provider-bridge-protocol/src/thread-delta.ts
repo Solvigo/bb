@@ -244,14 +244,16 @@ export type DeltaPlanStepsShape = z.infer<typeof deltaPlanStepsShapeSchema>;
  * item schema for `kind` at ingest and rejects the event on mismatch; until
  * that lands the assembler refuses extension shapes (see delta-assembler.ts).
  *
- * `presentation` is REQUIRED: an extension item has no core renderer, so the
- * declarative base is the only thing every client can show.
+ * The shape carries no presentation of its own: presentation lives in ONE
+ * place, the `item.open`/`item.close` delta's `presentation` field, and for
+ * an extension shape that field is REQUIRED (enforced by the delta schema
+ * below) — an extension item has no core renderer, so the declarative base
+ * is the only thing every client can show.
  */
 export const deltaExtensionShapeSchema = z.object({
   type: z.literal("extension"),
   kind: extensionKindSchema,
   payload: jsonValueSchema,
-  presentation: deltaPresentationSchema,
 });
 export type DeltaExtensionShape = z.infer<typeof deltaExtensionShapeSchema>;
 
@@ -370,6 +372,24 @@ export const deltaNoTurnFallbackSchema = z.object({
 });
 export type DeltaNoTurnFallback = z.infer<typeof deltaNoTurnFallbackSchema>;
 
+/**
+ * Presentation lives in one place — the lifecycle delta — and an `extension`
+ * shape cannot render without it, so the delta schema makes it mandatory
+ * there rather than duplicating the field inside the shape.
+ */
+function requireExtensionPresentation(
+  delta: { item: DeltaItemShape; presentation?: DeltaPresentation },
+  ctx: z.RefinementCtx,
+): void {
+  if (delta.item.type === "extension" && delta.presentation === undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message: "extension items require a presentation on item.open/item.close",
+      path: ["presentation"],
+    });
+  }
+}
+
 export const threadDeltaSchema = z.discriminatedUnion("kind", [
   /**
    * The provider consumed an input (immediate or steered). The assembler owns
@@ -420,20 +440,22 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    * `providerItemId` reuses its minted bb id (an explicit open reopens the
    * same item, codex's settle/reopen rule).
    */
-  z.object({
-    kind: z.literal("item.open"),
-    key: deltaItemKeySchema,
-    item: deltaItemShapeSchema,
-    /**
-     * Grammar v3: how the row reads, persisted with the opened item. Optional
-     * while v2 deltas are accepted; `extension` shapes carry their own
-     * mandatory presentation inside the shape.
-     */
-    presentation: deltaPresentationSchema.optional(),
-    attach: deltaAttachSchema.optional(),
-    providerTurnId: providerTurnIdSchema.optional(),
-    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
-  }),
+  z
+    .object({
+      kind: z.literal("item.open"),
+      key: deltaItemKeySchema,
+      item: deltaItemShapeSchema,
+      /**
+       * Grammar v3: how the row reads, persisted with the opened item. The
+       * one place presentation travels. Optional for core shapes while v2
+       * deltas are accepted; REQUIRED for `extension` shapes.
+       */
+      presentation: deltaPresentationSchema.optional(),
+      attach: deltaAttachSchema.optional(),
+      providerTurnId: providerTurnIdSchema.optional(),
+      noTurnFallback: deltaNoTurnFallbackSchema.optional(),
+    })
+    .superRefine(requireExtensionPresentation),
 
   /**
    * The item settled. `item` is REQUIRED and always carries the full terminal
@@ -448,25 +470,28 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    * for a settled id is dropped and an explicit `item.open` reopens the id
    * (codex retries the terminal notification after approvals).
    */
-  z.object({
-    kind: z.literal("item.close"),
-    key: deltaItemKeySchema,
-    status: threadEventItemStatusSchema,
-    resultText: z.string().optional(),
-    exitCode: z.number().optional(),
-    aggregatedOutput: z.string().optional(),
-    /** Terminal approval verdict (codex declined → denied). Default null. */
-    approvalStatus: z.literal("denied").optional(),
-    item: deltaItemShapeSchema,
-    /**
-     * Grammar v3: the terminal presentation. Like `item`, the close carries
-     * the full terminal form; when absent the opened item's presentation
-     * survives onto the completed item (close-echo).
-     */
-    presentation: deltaPresentationSchema.optional(),
-    providerTurnId: providerTurnIdSchema.optional(),
-    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
-  }),
+  z
+    .object({
+      kind: z.literal("item.close"),
+      key: deltaItemKeySchema,
+      status: threadEventItemStatusSchema,
+      resultText: z.string().optional(),
+      exitCode: z.number().optional(),
+      aggregatedOutput: z.string().optional(),
+      /** Terminal approval verdict (codex declined → denied). Default null. */
+      approvalStatus: z.literal("denied").optional(),
+      item: deltaItemShapeSchema,
+      /**
+       * Grammar v3: the terminal presentation. Like `item`, the close carries
+       * the full terminal form; when absent the opened item's presentation
+       * survives onto the completed item (close-echo). REQUIRED for an
+       * `extension` shape, which has nothing to echo without it.
+       */
+      presentation: deltaPresentationSchema.optional(),
+      providerTurnId: providerTurnIdSchema.optional(),
+      noTurnFallback: deltaNoTurnFallbackSchema.optional(),
+    })
+    .superRefine(requireExtensionPresentation),
 
   /**
    * The provider's plan for the open turn (ACP `plan` updates, codex
