@@ -21,18 +21,20 @@ import { ApiError } from "../../errors.js";
 const IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
 const FILE_LIMIT_BYTES = 25 * 1024 * 1024;
 
-// HEIC/HEIF (the iPhone camera default) is stored and served verbatim, but
-// nothing downstream can decode it: Chromium (web app and Electron shell) has
-// no HEVC decoder, and no provider image input accepts it, so the composer
-// showed a broken thumbnail while the model silently received nothing. bb
-// ships no transcoder, so refuse the upload with a reason instead.
-const HEIF_MIME_TYPES = new Set([
+// HEIC/HEIF (the iPhone camera default) used to be stored and served verbatim
+// as a localImage, but nothing downstream can decode it: Chromium (web app and
+// Electron shell) has no HEVC decoder, and no provider image input accepts it,
+// so the composer showed a broken thumbnail while the model silently received
+// nothing. bb ships no transcoder, so refuse the image upload with a reason.
+// Only the image MIME types are refused: the same bytes sent with a non-image
+// MIME type still store as a plain localFile, which an agent can convert on
+// the host.
+const HEIF_IMAGE_MIME_TYPES = new Set([
   "image/heic",
   "image/heic-sequence",
   "image/heif",
   "image/heif-sequence",
 ]);
-const HEIF_EXTENSIONS = new Set([".heic", ".heif"]);
 
 type PromptAttachmentInput = Extract<
   PromptInput,
@@ -150,12 +152,9 @@ export async function validatePromptAttachmentReferences(
   }
 }
 
-function isHeifAttachment(file: File): boolean {
+function isHeifImageUpload(file: File): boolean {
   const mimeType = (file.type.split(";")[0] ?? "").trim().toLowerCase();
-  return (
-    HEIF_MIME_TYPES.has(mimeType) ||
-    HEIF_EXTENSIONS.has(extname(file.name).toLowerCase())
-  );
+  return HEIF_IMAGE_MIME_TYPES.has(mimeType);
 }
 
 export async function storeAttachment(
@@ -163,7 +162,7 @@ export async function storeAttachment(
   projectId: string,
   file: File,
 ): Promise<UploadedPromptAttachment> {
-  if (isHeifAttachment(file)) {
+  if (isHeifImageUpload(file)) {
     throw new ApiError(
       400,
       "invalid_request",

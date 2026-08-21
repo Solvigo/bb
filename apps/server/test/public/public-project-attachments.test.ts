@@ -139,7 +139,7 @@ describe("public project attachments", () => {
     });
   });
 
-  it("rejects HEIC/HEIF uploads instead of storing an image nothing can render", async () => {
+  it("rejects HEIC/HEIF image uploads instead of storing an image nothing can render", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-project-attachment-heic",
@@ -158,23 +158,41 @@ describe("public project attachments", () => {
           "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.",
       };
 
-      // Chromium labels a dropped or pasted .heic file `image/heic`.
-      const byMimeType = await upload(
+      // Chromium labels a dropped or pasted .heic file `image/heic`, and the
+      // CLI infers the same from the extension.
+      const heic = await upload(
         harness.app,
         project.id,
         new File([heicBytes], "IMG_0001.heic", { type: "image/heic" }),
       );
-      expect(byMimeType.status).toBe(400);
-      await expect(readJson(byMimeType)).resolves.toEqual(rejected);
+      expect(heic.status).toBe(400);
+      await expect(readJson(heic)).resolves.toEqual(rejected);
 
-      // Some platforms hand over the file with no MIME type at all.
-      const byExtension = await upload(
+      const heif = await upload(
         harness.app,
         project.id,
-        new File([heicBytes], "IMG_0002.HEIF"),
+        new File([heicBytes], "IMG_0002.HEIF", {
+          type: "Image/HEIF; charset=binary",
+        }),
       );
-      expect(byExtension.status).toBe(400);
-      await expect(readJson(byExtension)).resolves.toEqual(rejected);
+      expect(heif.status).toBe(400);
+      await expect(readJson(heif)).resolves.toEqual(rejected);
+
+      // Only the image classification is broken. The same bytes sent as a
+      // non-image (`bb project attachment upload photo.heic --mime-type
+      // application/octet-stream`) still store as a plain file chip that an
+      // agent can convert on the host.
+      const asFile = await upload(
+        harness.app,
+        project.id,
+        new File([heicBytes], "IMG_0003.heic", {
+          type: "application/octet-stream",
+        }),
+      );
+      expect(asFile.status).toBe(201);
+      expect(
+        uploadedPromptAttachmentSchema.parse(await readJson(asFile)),
+      ).toMatchObject({ type: "localFile", name: "IMG_0003.heic" });
 
       const stillAcceptsOtherImages = await upload(
         harness.app,
