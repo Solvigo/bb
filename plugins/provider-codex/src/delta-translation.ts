@@ -21,6 +21,7 @@ import {
   type ProviderRateLimitWindow,
   providerRawEventSchema,
   type DeltaItemShape,
+  type DeltaPresentation,
   type ProviderRawEvent,
   type ThreadDelta,
   type ThreadEventItemStatus,
@@ -42,6 +43,20 @@ import {
   type CodexRateLimitSnapshotUpdate,
   type CodexTurnStatus,
 } from "./schemas.js";
+import {
+  AGENT_MESSAGE_PRESENTATION,
+  COMPACTION_PRESENTATION,
+  PLAN_PRESENTATION,
+  REASONING_PRESENTATION,
+  collabAgentPresentation,
+  commandPresentation,
+  dynamicToolPresentation,
+  fileChangePresentation,
+  imageViewPresentation,
+  mcpToolPresentation,
+  webFetchPresentation,
+  webSearchPresentation,
+} from "./presentation.js";
 import { codexVisibilityMetadata } from "./visibility.js";
 
 function assertNever(value: never): never {
@@ -208,6 +223,8 @@ type CodexItemTranslationResult =
   | {
       kind: "translated";
       shape: DeltaItemShape;
+      /** How the row reads (grammar v3); restated on every open and close. */
+      presentation: DeltaPresentation;
       status: ThreadEventItemStatus;
       approvalDenied: boolean;
     }
@@ -472,9 +489,14 @@ function normalizeCodexUrl(args: CodexUrlArgs): string | null {
   return url ?? null;
 }
 
+interface CodexWebItemTranslation {
+  shape: DeltaItemShape;
+  presentation: DeltaPresentation;
+}
+
 function normalizeCodexWebItemShape(
   item: Extract<CodexHandledThreadItem, { type: "webSearch" }>,
-): DeltaItemShape | null {
+): CodexWebItemTranslation | null {
   if (!item.action) {
     return null;
   }
@@ -489,21 +511,30 @@ function normalizeCodexWebItemShape(
       if (!queries) {
         return null;
       }
-      return { type: "webSearch", queries };
+      return {
+        shape: { type: "webSearch", queries },
+        presentation: webSearchPresentation(queries),
+      };
     }
     case "openPage": {
       const url = normalizeCodexUrl({ actionUrl: item.action.url });
       if (!url) {
         return null;
       }
-      return { type: "webFetch", url, pattern: null };
+      return {
+        shape: { type: "webFetch", url, pattern: null },
+        presentation: webFetchPresentation(url),
+      };
     }
     case "findInPage": {
       const url = normalizeCodexUrl({ actionUrl: item.action.url });
       if (!url) {
         return null;
       }
-      return { type: "webFetch", url, pattern: item.action.pattern ?? null };
+      return {
+        shape: { type: "webFetch", url, pattern: item.action.pattern ?? null },
+        presentation: webFetchPresentation(url),
+      };
     }
     case "other":
       return null;
@@ -543,6 +574,7 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
       return {
         kind: "translated",
         shape: { type: "agentMessage", text: parsedItem.text },
+        presentation: AGENT_MESSAGE_PRESENTATION,
         status: "completed",
         approvalDenied: false,
       };
@@ -567,6 +599,7 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
             ? {}
             : { durationMs: parsedItem.durationMs }),
         },
+        presentation: commandPresentation(parsedItem.command),
         ...toolStatusFields(parsedItem.status),
       };
     case "fileChange":
@@ -583,6 +616,9 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
             ...(change.diff ? { diff: change.diff } : {}),
           })),
         },
+        presentation: fileChangePresentation(
+          parsedItem.changes.map((change) => change.path),
+        ),
         ...toolStatusFields(parsedItem.status),
       };
     case "mcpToolCall":
@@ -603,6 +639,11 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
             ? {}
             : { durationMs: parsedItem.durationMs }),
         },
+        presentation: mcpToolPresentation({
+          server: parsedItem.server,
+          tool: parsedItem.tool,
+          args: parsedItem.arguments,
+        }),
         ...toolStatusFields(parsedItem.status),
       };
     case "dynamicToolCall": {
@@ -623,6 +664,7 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
             ? {}
             : { durationMs: parsedItem.durationMs }),
         },
+        presentation: dynamicToolPresentation(parsedItem.tool),
         ...toolStatusFields(parsedItem.status),
       };
     }
@@ -643,6 +685,10 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
           },
           result: parsedItem.agentsStates,
         },
+        presentation: collabAgentPresentation({
+          tool: parsedItem.tool,
+          prompt: parsedItem.prompt,
+        }),
         ...toolStatusFields(parsedItem.status),
       };
     case "subAgentActivity":
@@ -653,11 +699,12 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
       if (shouldIgnoreCodexWebItem(parsedItem)) {
         return { kind: "ignored" };
       }
-      const shape = normalizeCodexWebItemShape(parsedItem);
-      return shape
+      const translation = normalizeCodexWebItemShape(parsedItem);
+      return translation
         ? {
             kind: "translated",
-            shape,
+            shape: translation.shape,
+            presentation: translation.presentation,
             status: "completed",
             approvalDenied: false,
           }
@@ -667,6 +714,7 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
       return {
         kind: "translated",
         shape: { type: "imageView", path: parsedItem.path },
+        presentation: imageViewPresentation(parsedItem.path),
         status: "completed",
         approvalDenied: false,
       };
@@ -678,6 +726,7 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
           summary: parsedItem.summary,
           content: parsedItem.content,
         },
+        presentation: REASONING_PRESENTATION,
         status: "completed",
         approvalDenied: false,
       };
@@ -685,6 +734,7 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
       return {
         kind: "translated",
         shape: { type: "plan", text: parsedItem.text },
+        presentation: PLAN_PRESENTATION,
         status: "completed",
         approvalDenied: false,
       };
@@ -692,6 +742,7 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
       return {
         kind: "translated",
         shape: { type: "compaction" },
+        presentation: COMPACTION_PRESENTATION,
         status: "completed",
         approvalDenied: false,
       };
@@ -824,6 +875,7 @@ export function translateCodexEventToDeltas(
             kind: "item.open",
             key,
             item: translation.shape,
+            presentation: translation.presentation,
             providerTurnId: handledEvent.params.turnId,
           },
         ];
@@ -835,6 +887,7 @@ export function translateCodexEventToDeltas(
           status: translation.status,
           ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
           item: translation.shape,
+          presentation: translation.presentation,
           providerTurnId: handledEvent.params.turnId,
         },
       ];

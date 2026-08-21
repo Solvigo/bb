@@ -42,6 +42,7 @@ import {
   type CodexThreadPermissionSettings,
 } from "./session-params.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
+import { subAgentPresentation } from "./presentation.js";
 
 // Raw shell output recovery is a two-phase flow:
 // 1. `rawResponseItem/completed` for shell `function_call` and
@@ -1471,6 +1472,7 @@ function buildCodexSubAgentOpenDelta(
         : {}),
     },
     item: buildSubAgentToolShape(tracked, false),
+    presentation: subAgentPresentation(tracked.agentPath),
     providerTurnId: tracked.parentTurnId,
   };
 }
@@ -1489,6 +1491,7 @@ function buildCodexSubAgentCloseDelta(args: {
     },
     status: args.status,
     item: buildSubAgentToolShape(args.tracked, true),
+    presentation: subAgentPresentation(args.tracked.agentPath),
     providerTurnId: args.tracked.parentTurnId,
   };
 }

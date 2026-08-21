@@ -5,6 +5,12 @@ import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing"
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
 import {
+  AGENT_MESSAGE_PRESENTATION,
+  COMPACTION_PRESENTATION,
+  PLAN_PRESENTATION,
+  REASONING_PRESENTATION,
+} from "./presentation.js";
+import {
   createCodexEventTranslator,
   type CodexEventTranslator,
 } from "./translator.js";
@@ -29,6 +35,28 @@ import {
 const THREAD_ID = "t-codex-translation";
 const ENTROPY = "cx-test";
 const ITEM_ID_PATTERN = /^cx-test-i\d+$/;
+
+const IMAGE_PRESENTATION = {
+  label: { pending: "Viewing image", completed: "Viewed image" },
+  icon: { glyph: "Eye" },
+  title: "image.png",
+};
+
+function webSearchPresentation(query: string) {
+  return {
+    label: { pending: "Searching the web", completed: "Searched the web" },
+    icon: { glyph: "Globe" },
+    title: query,
+  };
+}
+
+function webFetchPresentation(url: string) {
+  return {
+    label: { pending: "Fetching page", completed: "Fetched page" },
+    icon: { glyph: "Browser" },
+    title: url,
+  };
+}
 
 function codexEvent<M extends CodexServerNotification["method"]>(
   method: M,
@@ -416,6 +444,7 @@ describe("codex item translation", () => {
           type: "agentMessage",
           id: harness.itemId("item-1"),
           text: "Hello",
+          presentation: AGENT_MESSAGE_PRESENTATION,
         },
       }),
     );
@@ -462,6 +491,7 @@ describe("codex item translation", () => {
           type: "imageView",
           id: harness.itemId("image-1"),
           path: "/tmp/image.png",
+          presentation: IMAGE_PRESENTATION,
         },
       }),
     );
@@ -482,6 +512,7 @@ describe("codex item translation", () => {
           type: "imageView",
           id: harness.itemId("image-1"),
           path: "/tmp/image.png",
+          presentation: IMAGE_PRESENTATION,
         },
       }),
     );
@@ -997,6 +1028,7 @@ describe("codex item translation", () => {
           id: harness.itemId("reasoning-1"),
           summary: ["Read the search flow"],
           content: ["Investigated the search sidebar state machine."],
+          presentation: REASONING_PRESENTATION,
         },
       }),
     );
@@ -1023,6 +1055,7 @@ describe("codex item translation", () => {
           type: "plan",
           id: harness.itemId("plan-1"),
           text: "1. Read the file\n2. Edit the function",
+          presentation: PLAN_PRESENTATION,
         },
       }),
     );
@@ -1042,7 +1075,11 @@ describe("codex item translation", () => {
       expect.objectContaining({
         type: "item/started",
         scope: turnScope(harness.turnId("turn-1")),
-        item: { type: "contextCompaction", id: harness.itemId("compact-1") },
+        item: {
+          type: "contextCompaction",
+          id: harness.itemId("compact-1"),
+          presentation: COMPACTION_PRESENTATION,
+        },
       }),
     );
   });
@@ -1076,6 +1113,7 @@ describe("codex web item translation", () => {
           id: harness.itemId("web-1"),
           queries: ["react suspense"],
           resultText: null,
+          presentation: webSearchPresentation("react suspense"),
         },
       }),
     );
@@ -1113,6 +1151,7 @@ describe("codex web item translation", () => {
             "react suspense fallback",
           ],
           resultText: null,
+          presentation: webSearchPresentation("react suspense primary"),
         },
       }),
     );
@@ -1143,6 +1182,7 @@ describe("codex web item translation", () => {
           prompt: null,
           pattern: null,
           resultText: null,
+          presentation: webFetchPresentation("https://example.com"),
         },
       }),
     );
@@ -1205,6 +1245,7 @@ describe("codex web item translation", () => {
           prompt: null,
           pattern: "Example Domain",
           resultText: null,
+          presentation: webFetchPresentation("https://example.com"),
         },
       }),
     );
