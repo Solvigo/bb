@@ -1204,3 +1204,153 @@ describe("acp delta translation (native kinds → core kinds)", () => {
     ).toMatchObject({ type: "toolCall", tool: "tool" });
   });
 });
+
+/**
+ * Q31: a call to a bb-injected tool reads as that tool (`server: "bb"`, the
+ * definition's presentation). ACP gives the bridge no id linking the MCP
+ * proxy's call to the agent's own tool_call, so the binding is positional.
+ */
+describe("acp delta translation (bb-injected tools)", () => {
+  const ASK_PRESENTATION = {
+    label: { pending: "Asking a question", completed: "Asked a question" },
+    icon: { glyph: "MessageQuestion" },
+    suppress: true,
+  };
+
+  function injectedHarness() {
+    const harness = createHarness();
+    const translator = createAcpDeltaTranslator();
+    translator.configureInjectedTools([
+      { name: "ask_user_question", presentation: ASK_PRESENTATION },
+      { name: "bb_workflow_run" },
+    ]);
+    const assembler = harness.assembler;
+    const translate = (event: ProviderRuntimeEvent) =>
+      assembler.assemble({
+        threadId: THREAD_ID,
+        deltas: translator.translateAcpEvent(event, { threadId: THREAD_ID }),
+      });
+    translate(turnStartedEvent());
+    return { translate, translator };
+  }
+
+  it("binds the agent's announced MCP call when the proxy forwards the bb tool call", () => {
+    const { translate, translator } = injectedHarness();
+    // Cursor's order: the generic announcement first, then the MCP request
+    // reaches the proxy, then the agent settles its call.
+    const [started] = translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "mcp-1",
+        title: "MCP: tool",
+        kind: "other",
+        status: "pending",
+      }),
+    );
+    expect(started).toMatchObject({
+      type: "item/started",
+      item: { type: "toolCall", tool: "other" },
+    });
+
+    translator.noteInjectedToolCall(THREAD_ID, "ask_user_question");
+
+    const [completed] = completedItems(
+      translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "mcp-1",
+          status: "completed",
+        }),
+      ),
+    );
+    expect(completed).toMatchObject({
+      type: "toolCall",
+      server: "bb",
+      tool: "ask_user_question",
+      status: "completed",
+      presentation: ASK_PRESENTATION,
+    });
+  });
+
+  it("holds a proxied call until the agent announces it, and presents an unknown definition generically", () => {
+    const { translate, translator } = injectedHarness();
+    translator.noteInjectedToolCall(THREAD_ID, "bb_workflow_run");
+    translator.noteInjectedToolCall(THREAD_ID, "not_configured");
+
+    const first = completedItems(
+      translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "mcp-2",
+          title: "tool",
+          status: "completed",
+        }),
+      ),
+    );
+    expect(first[0]).toMatchObject({
+      type: "toolCall",
+      server: "bb",
+      tool: "bb_workflow_run",
+      presentation: {
+        label: {
+          pending: "Running bb_workflow_run",
+          completed: "Ran bb_workflow_run",
+        },
+        icon: { glyph: "Toolbox" },
+      },
+    });
+    const second = completedItems(
+      translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "mcp-3",
+          title: "tool",
+          kind: "other",
+          status: "completed",
+        }),
+      ),
+    );
+    expect(second[0]).toMatchObject({
+      type: "toolCall",
+      server: "bb",
+      tool: "not_configured",
+    });
+  });
+
+  it("binds by name when the title names the tool, and never binds a command", () => {
+    const { translate, translator } = injectedHarness();
+    translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "exec-1",
+        title: "`sleep 1`",
+        kind: "execute",
+        status: "pending",
+        rawInput: { command: "sleep 1" },
+      }),
+    );
+    const [named] = translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "mcp-4",
+        title: "ask_user_question (bb-bridge MCP Server)",
+        kind: "other",
+        status: "pending",
+      }),
+    );
+    expect(named).toMatchObject({
+      type: "item/started",
+      item: { type: "toolCall", server: "bb", tool: "ask_user_question" },
+    });
+
+    // A proxied call with only a command open waits; it never rebinds the
+    // command or the already-bound question.
+    translator.noteInjectedToolCall(THREAD_ID, "bb_workflow_run");
+    const settled = completedItems(translate(turnCompletedEvent("end_turn")));
+    expect(settled.map((item) => item.type)).toEqual([
+      "commandExecution",
+      "toolCall",
+    ]);
+    expect(settled[1]).toMatchObject({ tool: "ask_user_question" });
+  });
+});

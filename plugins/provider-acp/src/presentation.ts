@@ -174,6 +174,17 @@ export function planStepsPresentation(
   );
 }
 
+/**
+ * A bb-injected tool whose definition carries no presentation (a server from
+ * before the field existed): a generic label under bb's own glyph.
+ */
+export function bbToolPresentation(tool: string): DeltaPresentation {
+  return {
+    label: { pending: `Running ${tool}`, completed: `Ran ${tool}` },
+    icon: { glyph: "Toolbox" },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Native kinds
 // ---------------------------------------------------------------------------

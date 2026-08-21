@@ -53,6 +53,9 @@ import {
 import {
   classifyAcpToolCall,
   extractAcpToolCallOutputText,
+  isInjectedToolCandidate,
+  type AcpClassifiedToolCall,
+  type AcpInjectedTool,
 } from "./tool-classification.js";
 import { acpVisibilityMetadata } from "./visibility.js";
 import {
@@ -145,6 +148,19 @@ export function createAcpDeltaTranslator() {
    */
   const mergedToolCalls = new Map<string, AcpToolCallUpdateEvent>();
 
+  /**
+   * The bb-injected tools of the session, by name. One translator lives per
+   * session, so the set is session-wide.
+   */
+  let injectedToolsByName = new Map<string, AcpInjectedTool>();
+  /** The bb tool each unsettled call is bound to, by call key. */
+  const injectedToolBindings = new Map<string, AcpInjectedTool>();
+  /**
+   * bb tool calls the MCP proxy forwarded before the agent announced a
+   * matching tool_call, per thread, oldest first.
+   */
+  const pendingInjectedCalls = new Map<string, AcpInjectedTool[]>();
+
   function callKey(
     context: AcpDeltaTranslationContext | undefined,
     toolCallId: string,
@@ -166,7 +182,90 @@ export function createAcpDeltaTranslator() {
   ): void {
     for (const [key] of threadCallEntries(context)) {
       mergedToolCalls.delete(key);
+      injectedToolBindings.delete(key);
     }
+    pendingInjectedCalls.delete(context?.threadId ?? "");
+  }
+
+  // -------------------------------------------------------------------------
+  // bb-injected tools (Q31)
+  // -------------------------------------------------------------------------
+
+  function configureInjectedTools(tools: readonly AcpInjectedTool[]): void {
+    injectedToolsByName = new Map(tools.map((tool) => [tool.name, tool]));
+  }
+
+  /** The injected tool a call's title names outright, if any. */
+  function injectedToolNamedBy(
+    event: AcpToolCallUpdateEvent,
+  ): AcpInjectedTool | undefined {
+    const title = event.title;
+    if (title === undefined || injectedToolsByName.size === 0) {
+      return undefined;
+    }
+    for (const tool of injectedToolsByName.values()) {
+      if (title.includes(tool.name)) {
+        return tool;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Bind a freshly announced tool_call to a bb tool: the one its title names,
+   * else the oldest proxied call still waiting for its announcement.
+   */
+  function bindAnnouncedCall(
+    context: AcpDeltaTranslationContext | undefined,
+    event: AcpToolCallUpdateEvent,
+  ): AcpInjectedTool | undefined {
+    if (!isInjectedToolCandidate(event)) {
+      return undefined;
+    }
+    const named = injectedToolNamedBy(event);
+    if (named !== undefined) {
+      return named;
+    }
+    return pendingInjectedCalls.get(context?.threadId ?? "")?.shift();
+  }
+
+  /**
+   * The MCP proxy forwarded a call to bb tool `tool` for this thread. ACP
+   * gives the bridge no id that links the proxied call to the agent's own
+   * tool_call (Cursor announces every MCP call as "MCP: tool", kind `other`),
+   * so the binding is positional: the unbound candidate whose title names the
+   * tool, else the unbound candidate that mentions MCP, else the oldest
+   * unbound candidate — agents announce parallel calls in the order they run
+   * them. With no candidate open, the call waits for the next announcement.
+   */
+  function noteInjectedToolCall(threadId: string, toolName: string): void {
+    const tool = injectedToolsByName.get(toolName) ?? { name: toolName };
+    const candidates = threadCallEntries({ threadId }).filter(
+      ([key, event]) =>
+        !injectedToolBindings.has(key) && isInjectedToolCandidate(event),
+    );
+    const chosen =
+      candidates.find(([, event]) => event.title?.includes(tool.name)) ??
+      candidates.find(([, event]) => /\bmcp\b/i.test(event.title ?? "")) ??
+      candidates[0];
+    if (chosen !== undefined) {
+      injectedToolBindings.set(chosen[0], tool);
+      return;
+    }
+    const queue = pendingInjectedCalls.get(threadId) ?? [];
+    queue.push(tool);
+    pendingInjectedCalls.set(threadId, queue);
+  }
+
+  /** Classify a call with its bb-tool binding, if it has one. */
+  function classifyCall(
+    context: AcpDeltaTranslationContext | undefined,
+    event: AcpToolCallUpdateEvent,
+  ): AcpClassifiedToolCall {
+    return classifyAcpToolCall(
+      event,
+      injectedToolBindings.get(callKey(context, event.toolCallId)),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -271,6 +370,7 @@ export function createAcpDeltaTranslator() {
   // -------------------------------------------------------------------------
 
   interface AcpCloseArgs {
+    context: AcpDeltaTranslationContext | undefined;
     event: AcpToolCallUpdateEvent;
     status: ThreadEventItemStatus;
     noTurnFallback?: DeltaNoTurnFallback;
@@ -285,7 +385,8 @@ export function createAcpDeltaTranslator() {
   function toolCallClose(args: AcpCloseArgs): ThreadDelta {
     const outputText = extractAcpToolCallOutputText(args.event);
     const terminal = args.status === "completed" || args.status === "failed";
-    const classified = classifyAcpToolCall(args.event);
+    const classified = classifyCall(args.context, args.event);
+    injectedToolBindings.delete(callKey(args.context, args.event.toolCallId));
     return {
       kind: "item.close",
       key: {
@@ -312,6 +413,7 @@ export function createAcpDeltaTranslator() {
       mergedToolCalls.delete(key);
       deltas.push(
         toolCallClose({
+          context,
           event,
           status,
         }),
@@ -390,22 +492,25 @@ export function createAcpDeltaTranslator() {
         }
         // A tool call flushes both open streams before its item.
         const flush = [closeThoughtStream(), closeAssistantStream()];
+        const announcedKey = callKey(context, parsed.data.toolCallId);
+        const bound = bindAnnouncedCall(context, parsed.data);
+        if (bound !== undefined) {
+          injectedToolBindings.set(announcedKey, bound);
+        }
         if (isTerminalAcpStatus(parsed.data.status)) {
           // Arrived already settled: close-without-open, no cache entry.
           return [
             ...flush,
             toolCallClose({
+              context,
               event: parsed.data,
               status: mapAcpToolCallStatus(parsed.data.status),
               noTurnFallback: noTurnFallbackFor(rawEvent),
             }),
           ];
         }
-        mergedToolCalls.set(
-          callKey(context, parsed.data.toolCallId),
-          parsed.data,
-        );
-        const classified = classifyAcpToolCall(parsed.data);
+        mergedToolCalls.set(announcedKey, parsed.data);
+        const classified = classifyCall(context, parsed.data);
         return [
           ...flush,
           {
@@ -434,6 +539,7 @@ export function createAcpDeltaTranslator() {
           mergedToolCalls.delete(key);
           return [
             toolCallClose({
+              context,
               event: merged,
               status: mapAcpToolCallStatus(merged.status),
               noTurnFallback: noTurnFallbackFor(rawEvent),
@@ -444,7 +550,7 @@ export function createAcpDeltaTranslator() {
         const progressText = extractAcpToolCallOutputText(parsed.data);
         // Commands and file changes settle with their output at the close;
         // every other item streams its progress text.
-        const progressItemType = classifyAcpToolCall(merged).item.type;
+        const progressItemType = classifyCall(context, merged).item.type;
         if (
           progressText &&
           progressItemType !== "command" &&
@@ -736,7 +842,12 @@ export function createAcpDeltaTranslator() {
     return mergedToolCalls.get(callKey({ threadId }, toolCallId));
   }
 
-  return { getMergedToolCall, translateAcpEvent };
+  return {
+    configureInjectedTools,
+    getMergedToolCall,
+    noteInjectedToolCall,
+    translateAcpEvent,
+  };
 }
 
 export type AcpDeltaTranslator = ReturnType<typeof createAcpDeltaTranslator>;

@@ -29,6 +29,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
+  bbToolPresentation,
   commandPresentation,
   fileChangePresentation,
   fileReadPresentation,
@@ -53,6 +54,33 @@ import {
 export interface AcpClassifiedToolCall {
   item: DeltaItemShape;
   presentation: DeltaPresentation;
+}
+
+/**
+ * A bb-injected tool the session was constructed with (Q31). The definition
+ * carries its presentation once the server resolved one; a definition from
+ * before the field existed presents generically.
+ */
+export interface AcpInjectedTool {
+  name: string;
+  presentation?: DeltaPresentation;
+}
+
+/** The `server` a bb-injected tool call carries on the wire (Q31). */
+const BB_TOOL_SERVER = "bb";
+
+/**
+ * Whether a tool call can be a call to a bb-injected tool: ACP agents report
+ * MCP tool calls under the generic `other` kind (or no kind), never as a
+ * command, a file change, or a native read/search/fetch/think.
+ */
+export function isInjectedToolCandidate(
+  event: AcpToolCallUpdateEvent,
+): boolean {
+  if (event.kind !== undefined && event.kind !== "other") {
+    return false;
+  }
+  return classifyAcpToolCallOperation(event).kind === "generic";
 }
 
 const INLINE_IMAGE_DATA_URL_PATTERN =
@@ -298,15 +326,32 @@ function genericToolItem(
 }
 
 /**
+ * A call to a bb-injected tool: `server: "bb"` names its origin and the
+ * definition the server handed the bridge says how the row reads, so no
+ * tool-name table is needed anywhere downstream.
+ */
+function bbToolItem(injected: AcpInjectedTool): AcpClassifiedToolCall {
+  return {
+    item: { type: "tool", tool: injected.name, server: BB_TOOL_SERVER },
+    presentation: injected.presentation ?? bbToolPresentation(injected.name),
+  };
+}
+
+/**
  * Classify a (merged) tool_call event into its item shape and presentation.
- * Command and file-change come first, from the shared operation classifier
- * (a diff makes any kind a file change); then the native kind picks the
- * shape; a kind whose shape the agent left unfilled is a generic tool
- * presenting as its kind.
+ * A call bound to a bb-injected tool reads as that tool. Otherwise command
+ * and file-change come first, from the shared operation classifier (a diff
+ * makes any kind a file change); then the native kind picks the shape; a
+ * kind whose shape the agent left unfilled is a generic tool presenting as
+ * its kind.
  */
 export function classifyAcpToolCall(
   event: AcpToolCallUpdateEvent,
+  injected?: AcpInjectedTool,
 ): AcpClassifiedToolCall {
+  if (injected !== undefined && isInjectedToolCandidate(event)) {
+    return bbToolItem(injected);
+  }
   const operation = classifyAcpToolCallOperation(event);
   if (operation.kind === "command") {
     return {
