@@ -1535,6 +1535,29 @@ silently stop working:
 <a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>
 ```
 
+### The provider directory
+
+`experimental_useProviders()` returns `{ status, providers }` — every
+registered agent provider in picker order, as the same `ProviderInfo` the
+host's composer reads (`id`, `displayName`, `logoUrl`, `available`,
+`capabilities`, `composerActions`, and the declared `strings`,
+`reasoningLevels`, `serviceTiers`). It reads the host's own cached roster, so
+it costs no extra request. Use it whenever a surface shows a thread's or
+automation's provider: never vendor provider names or copy in a plugin.
+
+```tsx
+const { providers } = experimental_useProviders();
+const name =
+  providers.find((provider) => provider.id === thread.providerId)?.displayName ??
+  thread.providerId;
+```
+
+`status` is `"loading"` until the roster arrives and `"error"` when the request
+failed; `providers` is empty in both cases, so fall back to the id. The
+backend counterpart is `bb.sdk.providers.list()`. Keep the hook in the plugin
+entry (`app.tsx`) and pass names down as props, so view components stay pure
+and testable outside the plugin runtime.
+
 ### Trusted frontend content scripts
 
 `app.contentScripts.register({ id, mount })` runs ordinary

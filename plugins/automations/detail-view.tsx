@@ -10,7 +10,6 @@ import type {
   PermissionMode,
 } from "./src/rpc-types";
 import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/rpc-types";
-import { experimental_useProviders } from "@get-bb/plugin-sdk/app";
 import { RUN_STATE_PRESENTATION } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
@@ -85,6 +84,12 @@ interface AutomationDetailViewProps {
   executionOptions: AutomationExecutionOptionsResponse | null;
   executionOptionsError: string | null;
   permissionModes: readonly PermissionMode[];
+  /**
+   * The execution provider's display name from the host's provider directory
+   * (`experimental_useProviders`), or undefined when the directory does not
+   * list it; the view then falls back to a readable form of the id.
+   */
+  providerName?: string;
   editing: boolean;
   onToggle: (enabled: boolean) => void;
   onEdit: () => void;
@@ -643,6 +648,7 @@ function AgentAutomationDefinition({
   projectContextLabel,
   pending,
   permissionModes,
+  providerName,
   onCancel,
   onUpdate,
 }: {
@@ -654,6 +660,7 @@ function AgentAutomationDefinition({
   projectContextLabel: string;
   pending: boolean;
   permissionModes: readonly PermissionMode[];
+  providerName: string | undefined;
   onCancel: () => void;
   onUpdate: (update: AgentExecutionUpdate) => Promise<void>;
 }) {
@@ -667,12 +674,11 @@ function AgentAutomationDefinition({
     setModel(execution.model);
     setPermissionMode(execution.permissionMode);
   }, [execution.model, execution.permissionMode, execution.prompt]);
-  // The host's provider directory names the provider; the local formatter
-  // only covers an id the directory no longer lists (a removed plugin).
-  const { providers } = experimental_useProviders();
+  // The host's provider directory (resolved by the plugin entry) names the
+  // provider; the local formatter only covers an id the directory no longer
+  // lists (a removed plugin).
   const providerLabel =
-    providers.find((provider) => provider.id === execution.providerId)
-      ?.displayName ?? formatAutomationProviderLabel(execution.providerId);
+    providerName ?? formatAutomationProviderLabel(execution.providerId);
   const trimmedPrompt = prompt.trim();
   const dirty =
     prompt !== execution.prompt ||
@@ -882,6 +888,7 @@ export function AutomationDetailView({
   onRunNow,
   onDelete,
   onOpenThread,
+  providerName,
   footer,
 }: AutomationDetailViewProps) {
   useResourceRouteLabel(automation.name);
@@ -989,6 +996,7 @@ export function AutomationDetailView({
               permissionModes={permissionModes}
               personalProject={personalProject}
               projectContextLabel={projectContextLabel}
+              providerName={providerName}
               onCancel={onCancelEdit}
               onUpdate={onUpdateAgent}
             />
