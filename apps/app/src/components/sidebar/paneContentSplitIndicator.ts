@@ -1,31 +1,38 @@
-import { useMemo } from "react";
-import { useAtomValue } from "jotai";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import {
-  computePaneRects,
-  countPanes,
-  findPaneByContent,
-  listPanes,
-  type PaneContent,
-  type PaneRect,
-  type SplitLayout,
-} from "@/lib/split-layout";
+import type { WorkspaceContent } from "@/lib/workspace-content";
 
+/**
+ * CARVE PHASE 2 — A STUB WHOSE LIFETIME IS ONE PHASE.
+ *
+ * This was the sidebar's read of the split layout: which rows are open in a pane, plus the mini-map
+ * slots the rail drew for them. The split layout is gone, so there is nothing to indicate — and every
+ * caller is a rail file that phase 3 deletes outright (ThreadRow, ProjectList, TopLevelSidebarSection,
+ * SidebarSectionRow, SplitPaneMiniMap, BuiltInSidebarSection, PluginNavSidebarItems). Rewriting seven
+ * rail files to remove the calls, one phase before deleting all seven, is churn with a chance of
+ * breaking a rail we are about to remove.
+ *
+ * SO THIS RETURNS THE HONEST ANSWER FOR AN APP WITH NO PANES — nothing is open in a split, and there
+ * is no mini-map — with the SAME EXPORTED SHAPES the real module had, read out of git rather than
+ * guessed, so no caller has to change to keep compiling.
+ */
 export interface MiniMapSlot {
   paneId: string;
-  rect: PaneRect;
-  /** The pane represented by the sidebar item. */
+  /** The real `PaneRect` field names, read out of git rather than guessed — SplitPaneMiniMap
+   *  consumes them and would have compiled against invented ones only by luck. */
+  rect: { x: number; y: number; w: number; h: number };
   isMe: boolean;
-  /** The focused pane (drawn in the accent token). */
   isFocused: boolean;
 }
 
 export interface PaneContentSplitIndicator {
-  /** This content is open in a pane while the layout is split (>1 pane). */
+  /** Always false now: there are no panes to be open in. */
   isOpenInSplit: boolean;
-  /** Mini-map slots for the sidebar glyph, or null when there is nothing to show. */
+  /** Always null now: nothing to draw. */
   miniMap: MiniMapSlot[] | null;
+}
+
+export interface ThreadSplitIndicatorTarget {
+  id: string;
+  projectId: string;
 }
 
 const NO_INDICATOR: PaneContentSplitIndicator = {
@@ -33,101 +40,16 @@ const NO_INDICATOR: PaneContentSplitIndicator = {
   miniMap: null,
 };
 
-export interface ThreadSplitIndicatorTarget {
-  id: string;
-  projectId: string;
-}
-
-function buildSplitIndicator(
-  layout: SplitLayout,
-  matchingPaneIds: ReadonlySet<string>,
-): PaneContentSplitIndicator {
-  if (matchingPaneIds.size === 0) {
-    return NO_INDICATOR;
-  }
-  const rects = computePaneRects(layout.root);
-  const miniMap: MiniMapSlot[] = listPanes(layout.root).flatMap((entry) => {
-    const rect = rects.get(entry.paneId);
-    return rect === undefined
-      ? []
-      : [
-          {
-            paneId: entry.paneId,
-            rect,
-            isMe: matchingPaneIds.has(entry.paneId),
-            isFocused: entry.paneId === layout.focusedPaneId,
-          },
-        ];
-  });
-  return {
-    isOpenInSplit: true,
-    miniMap,
-  };
-}
-
-/**
- * Split-membership state for any routable sidebar item. Reads the global split
- * layout so thread, compose, and plugin rows can draw the same pane-position
- * preview without prop threading through the sidebar tree.
- */
 export function usePaneContentSplitIndicator(
-  content: PaneContent,
-  enabled: boolean,
+  _content: WorkspaceContent,
+  _enabled: boolean,
 ): PaneContentSplitIndicator {
-  const layout = useAtomValue(splitLayoutAtom);
-  const isCompact = useIsCompactViewport();
-
-  return useMemo<PaneContentSplitIndicator>(() => {
-    if (
-      !enabled ||
-      layout === null ||
-      isCompact ||
-      countPanes(layout.root) < 2
-    ) {
-      return NO_INDICATOR;
-    }
-    const pane = findPaneByContent(layout.root, content);
-    if (pane === null) {
-      return NO_INDICATOR;
-    }
-    return buildSplitIndicator(layout, new Set([pane.paneId]));
-  }, [content, enabled, isCompact, layout]);
+  return NO_INDICATOR;
 }
 
-/**
- * Split-membership state for a collapsed sidebar area. Every pane occupied by
- * one of the area's hidden threads is filled, so one rollup remains accurate
- * when more than one descendant is open in the split layout.
- */
 export function useThreadGroupSplitIndicator(
-  threads: readonly ThreadSplitIndicatorTarget[],
-  enabled: boolean,
+  _threads: readonly ThreadSplitIndicatorTarget[],
+  _enabled: boolean,
 ): PaneContentSplitIndicator {
-  const layout = useAtomValue(splitLayoutAtom);
-  const isCompact = useIsCompactViewport();
-
-  return useMemo<PaneContentSplitIndicator>(() => {
-    if (
-      !enabled ||
-      threads.length === 0 ||
-      layout === null ||
-      isCompact ||
-      countPanes(layout.root) < 2
-    ) {
-      return NO_INDICATOR;
-    }
-    const threadKeys = new Set(
-      threads.map((thread) => `${thread.projectId}\0${thread.id}`),
-    );
-    const matchingPaneIds = new Set<string>();
-    for (const pane of listPanes(layout.root)) {
-      if (
-        pane.content.kind === "thread" &&
-        threadKeys.has(`${pane.content.projectId}\0${pane.content.threadId}`)
-      ) {
-        matchingPaneIds.add(pane.paneId);
-      }
-    }
-    return buildSplitIndicator(layout, matchingPaneIds);
-  }, [enabled, isCompact, layout, threads]);
+  return NO_INDICATOR;
 }

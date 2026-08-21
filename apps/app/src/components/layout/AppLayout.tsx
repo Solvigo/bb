@@ -86,9 +86,6 @@ import {
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
 import { wsManager } from "@/lib/ws";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { findPaneByThread } from "@/lib/split-layout";
-import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
@@ -449,24 +446,12 @@ export function AppLayout({ children }: AppLayoutProps) {
           projectId: signal.projectId,
           threadId: signal.threadId,
         });
-        if (!threadSplitsEnabled) {
-          void navigate(route);
-          return;
-        }
-        const current = store.get(splitLayoutAtom);
-        const alreadyOpen =
-          current !== null &&
-          findPaneByThread(current.root, signal.projectId, signal.threadId) !==
-            null;
-        const next = applyThreadOpenToLayout(
-          current,
-          { projectId: signal.projectId, threadId: signal.threadId },
-          isCompactViewport ? "replace" : signal.split,
-        );
-        if (next !== current) {
-          store.set(splitLayoutAtom, next);
-        }
-        void navigate(route, alreadyOpen ? { replace: true } : undefined);
+        // CARVE PHASE 2: a thread-open signal used to place the thread in the split layout and then
+        // navigate. There is one surface now, so it navigates — which is exactly what this handler
+        // already did whenever splits were unavailable. The `split` field of the signal is ignored
+        // rather than honoured-in-name: bb's own api documents it as a REQUEST, and a request nobody
+        // can satisfy is better dropped visibly here than pretended to.
+        void navigate(route);
       }),
     [isCompactViewport, navigate, store, threadSplitsEnabled],
   );

@@ -13,7 +13,7 @@ import { appToast } from "@/components/ui/app-toast";
 import {
   closePanesForThreadsAtom,
   type ClosePanesForThreadsResult,
-} from "@/lib/split-layout/atoms";
+} from "@/lib/closed-panes-stub";
 import type { Thread } from "@bb/domain";
 import {
   useArchiveThreadAndChildren,
@@ -152,15 +152,13 @@ export function ThreadActionsProvider({
   // URL, leaves it correct). Otherwise run the caller's pre-split navigate-away.
   const syncNavigationAfterClose = useCallback(
     (result: ClosePanesForThreadsResult, navigateAway: () => void) => {
-      if (result.removedAny && result.focusedRoute !== null) {
-        if (result.focusedRoute.threadId !== viewedThreadIdRef.current) {
-          navigate(getThreadRoutePath(result.focusedRoute), { replace: true });
-        }
-        return;
-      }
+      // CARVE PHASE 2: with no panes, nothing is ever closed and no pane survives to focus — the
+      // stub's result says so in its types, which makes the old focus branch provably unreachable.
+      // Deleted rather than left behind: a branch the compiler can prove dead is a lie about what
+      // this function can do.
       navigateAway();
     },
-    [navigate],
+    [],
   );
 
   const requestRename = useCallback(

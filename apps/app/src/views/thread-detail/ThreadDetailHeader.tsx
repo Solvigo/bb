@@ -34,7 +34,6 @@ import {
   CONTEXT_SELECTION_SURFACE_CLASS,
 } from "@/components/ui/context-selection";
 import { usePaneContext } from "./PaneContext";
-import { PaneMaximizeButton } from "./PaneMaximizeButton";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
@@ -264,7 +263,8 @@ export function ThreadDetailHeader({
             </Button>
           </span>
         ) : null}
-        <PaneMaximizeButton />
+        {/* CARVE PHASE 2: the maximize control was a split-workspace affordance — one surface
+            cannot be maximised against its neighbours, because it has none. */}
         {onClosePane ? (
           <Button
             type="button"

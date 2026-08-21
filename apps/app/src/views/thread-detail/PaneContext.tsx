@@ -14,7 +14,6 @@ import {
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import type { SplitSide } from "@/lib/split-layout";
 
 export interface PaneContextValue {
   paneId: string;
@@ -39,12 +38,13 @@ export interface PaneContextValue {
    * page). Bridges the pane close affordance and archive/delete-when-split.
    */
   onRequestClose: (() => void) | null;
-  /** True while this pane temporarily fills the split workspace. */
+  /** CARVE PHASE 2: kept as a constant `false`/`null` pair — see the assignment below. */
   isMaximized: boolean;
   /** Toggles this pane between its split position and full-workspace display. */
   onToggleMaximize: (() => void) | null;
   /** Moves this pane to one of the split workspace's supported edges. */
-  onMoveToSide?: (side: SplitSide) => void;
+  // `onMoveToSide` is gone with the split workspace: there are no sides to move to, and nothing
+  // consumed it once PaneMaximizeButton went.
   /**
    * True when this pane renders inside a bounded split card (multi-pane
    * layouts). Bounded panes suppress the page-bleed negative margins in

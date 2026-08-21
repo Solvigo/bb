@@ -1,8 +1,6 @@
 import { useCallback, useMemo } from "react";
-import { useStore } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type {
   PluginSidebarProject,
   PluginSidebarThread,
@@ -18,10 +16,8 @@ import {
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
-import { openThreadInSplit } from "./split-layout/openThreadInSplit";
 import {
   getRootComposeRoutePath,
   getProjectComposeRoutePath,
@@ -112,9 +108,9 @@ export function useSidebarThreadEntry(
  */
 export function useSidebarThreadActions(): PluginSidebarThreadActions {
   const navigate = useNavigate();
-  const store = useStore();
-  const isCompact = useIsCompactViewport();
-  const threadSplitsEnabled = useThreadSplitsEnabled();
+  // CARVE PHASE 2: the jotai store, the compact-viewport read and the splits-enabled read were all
+  // here to decide WHERE a split should open. With no split there is nowhere to decide between, so
+  // they go — an unused hook call is not free, it subscribes and re-renders for nothing.
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
   const entriesById = useThreadEntryMap();
@@ -139,17 +135,10 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
         const entry = entriesById.get(threadId);
         if (entry === undefined) return;
         const { projectId } = entry;
-        if (options?.split) {
-          openThreadInSplit({
-            store,
-            navigate,
-            projectId,
-            threadId,
-            isCompact,
-            threadSplitsEnabled,
-          });
-          return;
-        }
+        // CARVE PHASE 2: `options.split` has no split to open into, and the SDK contract for this
+        // method already says it "falls back to plain navigation where splits are off". So both cases
+        // are one line now — the thread OPENS, in the one surface there is. Keeping two identical
+        // branches to look like the option still means something would be worse than dropping it.
         navigate(getThreadRoutePath({ projectId, threadId }));
       },
       openNewThread(options) {
@@ -191,19 +180,7 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
         // plugin requests; the user confirms.
         hostActions.requestDelete(requireEntry(threadId));
       },
-    }),
-    [
-      entriesById,
-      hostActions,
-      isCompact,
-      navigate,
-      requireEntry,
-      setRootComposeProjectId,
-      store,
-      threadSplitsEnabled,
-      updateThreadAsync,
-    ],
-  );
+    }), [entriesById, hostActions, navigate, requireEntry, setRootComposeProjectId, updateThreadAsync]);
 }
 
 /**

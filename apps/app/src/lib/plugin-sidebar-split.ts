@@ -7,7 +7,7 @@ import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSp
 import { useThreadRowSplitDrag } from "@/components/sidebar/useThreadRowSplitDrag";
 import { getThreadDisplayTitle } from "./thread-title";
 import { useSidebarThreadEntry } from "./plugin-sidebar-hooks";
-import type { PaneContent } from "./split-layout";
+import type { WorkspaceContent as PaneContent } from "./workspace-content";
 
 const NO_SPLIT: PluginSidebarThreadSplit = {
   splitProps: {},

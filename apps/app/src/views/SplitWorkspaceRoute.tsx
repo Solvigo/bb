@@ -5,10 +5,10 @@ import {
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
 } from "@/lib/route-paths";
-import type { PaneContent } from "@/lib/split-layout";
+import type { WorkspaceContent } from "@/lib/workspace-content";
 import { useRouteState } from "@/hooks/useRouteState";
 import { LegacyProjectComposeRedirect } from "./RootComposeView";
-import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
+import { StandaloneWorkspace } from "./StandaloneWorkspace";
 
 const ROOT_COMPOSE_CONTENT = { kind: "new-thread" } as const;
 
@@ -31,7 +31,7 @@ export default function SplitWorkspaceRoute() {
   const panelPath = pluginMatch?.params.panelPath;
   const pluginSubPath = pluginMatch?.params["*"] ?? "";
 
-  const routeContent = useMemo<PaneContent | null>(() => {
+  const routeContent = useMemo<WorkspaceContent | null>(() => {
     if (location.pathname === APP_ROOT_ROUTE_PATH) {
       return ROOT_COMPOSE_CONTENT;
     }
@@ -64,5 +64,5 @@ export default function SplitWorkspaceRoute() {
   if (routeContent === null) {
     return <Navigate to={APP_ROOT_ROUTE_PATH} replace />;
   }
-  return <SplitThreadArea routeContent={routeContent} />;
+  return <StandaloneWorkspace content={routeContent} />;
 }

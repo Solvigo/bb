@@ -1,20 +1,19 @@
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
-
 /**
- * True when the split workspace renders pane chrome — panes, pane headers, and
- * the split tree. Compact viewports render the route as a single page surface
- * instead (see SplitThreadArea), so the shared AppLayout header owns the chrome
- * there.
+ * FALSE, ALWAYS — carve phase 2.
  *
- * Both sides of that handoff read this one predicate. Duplicating the policy is
- * what produced #1042: AppLayout suppressed its header for plugin panel routes
- * whenever splits were enabled, while SplitThreadArea had already dropped its
- * pane header for the compact viewport, so mobile plugin panels got no header
- * at all.
+ * This predicate answered "does the split workspace render its own pane chrome", and BOTH sides of a
+ * handoff read it: AppLayout suppressed its header when the panes owned one. That handoff is what
+ * #1042 was about, which is why the policy lives in one place.
+ *
+ * The split workspace is gone, so the honest answer is `false` and the consequence is the correct one:
+ * AppLayout owns the chrome for every route again, which is what it did before splits existed. Left at
+ * its old `threadSplitsEnabled && !isCompactViewport`, this would have gone on claiming pane chrome
+ * that nothing renders — suppressing the app header on a wide viewport for a pane header that no
+ * longer exists. A stale predicate is worse than a deleted one: it is still consulted.
+ *
+ * KEPT AS A FUNCTION rather than inlined at its one call site: phase 3 deletes AppLayout, and a
+ * constant with a name and a reason is easier to find and remove then than a `false` in a JSX guard.
  */
 export function useSplitWorkspaceActive(): boolean {
-  const threadSplitsEnabled = useThreadSplitsEnabled();
-  const isCompactViewport = useIsCompactViewport();
-  return threadSplitsEnabled && !isCompactViewport;
+  return false;
 }
