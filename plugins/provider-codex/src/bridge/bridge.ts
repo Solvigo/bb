@@ -35,6 +35,7 @@
 import {
   isStandaloneBuiltinCompactCommand,
   pendingInteractionResolutionSchema,
+  type DynamicTool,
   type PromptInput,
   type ThreadDelta,
   sanitizeInheritedChildProcessEnv,
@@ -355,9 +356,7 @@ function describeCodexLaunchError(error: unknown): string {
 interface CodexSessionConstruction {
   cwd: string;
   instructionMode: "append" | "replace";
-  dynamicTools:
-    | { name: string; description: string; inputSchema: unknown }[]
-    | undefined;
+  dynamicTools: DynamicTool[] | undefined;
 }
 
 interface CodexBridgeSession {
@@ -898,7 +897,7 @@ interface ConstructThreadSessionArgs {
   cwd: string;
   options: BridgeExecutionOptions;
   instructionMode: "append" | "replace";
-  dynamicTools?: { name: string; description: string; inputSchema: unknown }[];
+  dynamicTools?: DynamicTool[];
   request: CodexSessionConstructionRequest;
 }
 
@@ -921,6 +920,14 @@ async function constructThreadSession(
   const translator = createCodexEventTranslator({
     additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
   });
+  translator.configureInjectedTools(
+    (args.dynamicTools ?? []).map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
     codexThreadId:

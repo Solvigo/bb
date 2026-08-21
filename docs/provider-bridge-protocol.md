@@ -231,6 +231,15 @@ range is what gates a bridge: every bridge in this repo reports
   the row renders after the plugin is gone and mobile renders every kind
   without plugin code. Optional for core shapes until the v2 paths are
   deleted; required when the shape is `extension`.
+- **bb-injected tools carry their presentation.** Every `dynamicTools[]`
+  definition on `thread/start`, `thread/resume` and `thread/fork` carries the
+  `presentation` the server resolved for it (from the owning plugin's
+  `experimental_presentation`, its status labels, or a generic label and the
+  plugin's glyph). A bridge stamps that presentation, beside `server: "bb"`,
+  on the `item.open`/`item.close` of every call to the tool, so no tool-name
+  table labels bb tools anywhere downstream. Optional on the wire while the
+  grammar migrates (a definition recorded before the field existed presents
+  generically); the stabilization pass makes it required.
 - **Extension kinds** `"<pluginId>/<name>"`: the `extension` item shape
   (opaque JSON `payload`; its lifecycle delta must carry a `presentation`)
   and the thread-scoped

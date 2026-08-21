@@ -23,7 +23,9 @@ import { z } from "zod";
 import {
   applyCodexRateLimitUpdate,
   createCodexEventTranslationState,
+  setCodexInjectedTools,
   translateCodexEventToDeltas,
+  type CodexInjectedTool,
 } from "./delta-translation.js";
 import {
   codexBridgeEnvelopeSchema,
@@ -1416,10 +1418,16 @@ export function createCodexEventTranslator(
     return false;
   }
 
+  /** The bb-injected tools this session was constructed with (Q31). */
+  function configureInjectedTools(tools: readonly CodexInjectedTool[]): void {
+    setCodexInjectedTools(eventTranslationState, tools);
+  }
+
   return {
     activateThreadGitWritableRoots,
     buildPostInitializeRequests,
     clearExitedChildThreadState,
+    configureInjectedTools,
     getThreadGitWritableRoots,
     hasOpenThreadWork,
     prepareTurnStart: queueNativeTurnStartClientRequestId,

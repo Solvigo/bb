@@ -64,12 +64,35 @@ function assertNever(value: never): never {
   throw new Error(`Unexpected value: ${String(value)}`);
 }
 
+/**
+ * A bb-injected tool the session was constructed with (Q31). The definition
+ * carries its presentation once the server resolved one; a definition from
+ * before the field existed presents generically.
+ */
+export interface CodexInjectedTool {
+  name: string;
+  presentation?: DeltaPresentation;
+}
+
 interface CodexEventTranslationState {
   rateLimits: CodexRateLimitSnapshot | null;
+  /**
+   * The bb-injected tools of the session, by name. A `dynamicToolCall` to one
+   * of them is a bb tool (`server: "bb"`) and reads the way its definition
+   * says; every other dynamic tool call is codex's own.
+   */
+  injectedToolsByName: Map<string, CodexInjectedTool>;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
-  return { rateLimits: null };
+  return { rateLimits: null, injectedToolsByName: new Map() };
+}
+
+export function setCodexInjectedTools(
+  state: CodexEventTranslationState,
+  tools: readonly CodexInjectedTool[],
+): void {
+  state.injectedToolsByName = new Map(tools.map((tool) => [tool.name, tool]));
 }
 
 function clampRateLimitPercent(value: number): number {
@@ -566,6 +589,9 @@ function toolStatusFields(status: CodexItemStatus): {
 /** Provider-anonymous key for the plan-steps snapshots of a thread. */
 const PLAN_STEPS_CHANNEL = "planSteps";
 
+/** The `server` a bb-injected tool call carries (Q31). */
+const BB_TOOL_SERVER = "bb";
+
 function isTerminalCodexItemStatus(status: CodexItemStatus): boolean {
   return status !== "inProgress";
 }
@@ -606,7 +632,10 @@ function summarizeCollabAgentsStates(
   return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
-function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
+function translateCodexItemShape(
+  item: unknown,
+  state: CodexEventTranslationState,
+): CodexItemTranslationResult {
   const parsed = codexHandledThreadItemSchema.safeParse(item);
   if (!parsed.success) {
     return { kind: "unhandled" };
@@ -693,10 +722,15 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
     case "dynamicToolCall": {
       const result = extractDynamicToolCallResult(parsedItem.contentItems);
       const error = buildDynamicToolCallError(parsedItem.success, result);
+      // A dynamic tool bb injected at session construction is a bb tool:
+      // `server: "bb"` names its origin and its definition says how the row
+      // reads, so no tool-name table is needed anywhere downstream.
+      const injected = state.injectedToolsByName.get(parsedItem.tool);
       return {
         kind: "translated",
         shape: {
           type: "tool",
+          ...(injected === undefined ? {} : { server: BB_TOOL_SERVER }),
           tool: parsedItem.tool,
           ...(parsedItem.arguments === undefined
             ? {}
@@ -708,7 +742,8 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
             ? {}
             : { durationMs: parsedItem.durationMs }),
         },
-        presentation: dynamicToolPresentation(parsedItem.tool),
+        presentation:
+          injected?.presentation ?? dynamicToolPresentation(parsedItem.tool),
         ...toolStatusFields(parsedItem.status),
       };
     }
@@ -929,7 +964,10 @@ export function translateCodexEventToDeltas(
       return [{ kind: "thread.goalCleared" }];
     case "item/started":
     case "item/completed": {
-      const translation = translateCodexItemShape(handledEvent.params.item);
+      const translation = translateCodexItemShape(
+        handledEvent.params.item,
+        state,
+      );
       if (translation.kind === "ignored") {
         return [];
       }

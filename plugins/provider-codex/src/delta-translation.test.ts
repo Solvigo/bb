@@ -852,6 +852,105 @@ describe("codex item translation", () => {
     );
   });
 
+  it("stamps bb-injected tool calls with server bb and the definition's presentation", () => {
+    const harness = createHarness();
+    harness.translator.configureInjectedTools([
+      {
+        name: "bb_workflow_run",
+        presentation: {
+          label: {
+            pending: "Starting workflow",
+            completed: "Started workflow",
+          },
+          icon: { glyph: "Workflow" },
+        },
+      },
+    ]);
+    const injected = harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "dynamicToolCall",
+          id: "dyn-bb-1",
+          namespace: null,
+          tool: "bb_workflow_run",
+          arguments: { name: "review" },
+          status: "inProgress",
+          contentItems: null,
+          success: null,
+          durationMs: null,
+        },
+      }),
+    );
+    expect(injected).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: {
+          type: "toolCall",
+          id: harness.itemId("dyn-bb-1"),
+          server: "bb",
+          tool: "bb_workflow_run",
+          arguments: { name: "review" },
+          status: "pending",
+          presentation: {
+            label: {
+              pending: "Starting workflow",
+              completed: "Started workflow",
+            },
+            icon: { glyph: "Workflow" },
+          },
+        },
+      }),
+    );
+
+    // A dynamic tool the session was not constructed with is codex's own:
+    // no server, the generic presentation.
+    const native = harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "dynamicToolCall",
+          id: "dyn-native-1",
+          namespace: null,
+          tool: "codex_native_tool",
+          arguments: {},
+          status: "inProgress",
+          contentItems: null,
+          success: null,
+          durationMs: null,
+        },
+      }),
+    );
+    expect(native).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "toolCall",
+          tool: "codex_native_tool",
+          presentation: {
+            label: {
+              pending: "Running codex_native_tool",
+              completed: "Ran codex_native_tool",
+            },
+            icon: { glyph: "Toolbox" },
+          },
+        }),
+      }),
+    );
+    expect(
+      native.some(
+        (event) =>
+          event.type === "item/started" &&
+          event.item.type === "toolCall" &&
+          event.item.server !== undefined,
+      ),
+    ).toBe(false);
+  });
+
   it("preserves textual errors on failed dynamicToolCalls", () => {
     const harness = createHarness();
     const events = harness.translate({
