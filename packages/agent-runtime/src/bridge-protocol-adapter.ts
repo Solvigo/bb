@@ -30,6 +30,7 @@ import {
   negotiateGrammarVersion,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
+  providerRecoveryNotificationSchema,
   threadDeltaNotificationParamsSchema,
   type BridgeCapabilities,
   type SkillsConfigureRoot,
@@ -41,6 +42,7 @@ import {
 import { z } from "zod";
 import type {
   AdapterCommand,
+  ProviderRecoveryHint,
   ProviderAdapter,
   ProviderExecutionContext,
 } from "./provider-adapter.js";
@@ -704,6 +706,29 @@ export function createBridgeProtocolAdapter(
       // provider/raw is droppable diagnostics by contract; anything else is
       // forward skew from a newer bridge and is ignored the same way.
       return [];
+    },
+
+    decodeRecoveryHint(
+      event: ProviderRuntimeEvent,
+    ): ProviderRecoveryHint | null {
+      if (event.method !== BRIDGE_NOTIFICATION_METHODS.providerRecovery) {
+        return null;
+      }
+      const parsed = providerRecoveryNotificationSchema.safeParse(event.params);
+      if (!parsed.success) {
+        // A malformed hint is dropped like any other malformed notification:
+        // the bridge's `provider/error` delta beside it carries the
+        // user-visible consequence.
+        return null;
+      }
+      return {
+        ...(parsed.data.threadId === undefined
+          ? {}
+          : { threadId: parsed.data.threadId }),
+        kind: parsed.data.kind,
+        message: parsed.data.message,
+        retryable: parsed.data.retryable,
+      };
     },
 
     // Input acceptance rides `input.accepted` deltas through the assembler;

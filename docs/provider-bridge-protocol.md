@@ -230,6 +230,9 @@ validate unchanged. A bridge that emits any of it reports
   `session/replaced`, not a delta: `{ threadId?, kind: sessionArchived |
 authRequired | restartRecommended | staleTurn | rateLimited, message,
 retryable }`. The runtime acts on the kind and never matches error text.
+  Today the bridge adapter decodes it and the runtime forwards it to its
+  `onProviderRecovery` hook (the daemon logs it); the per-kind actions land
+  with the runtime cleanup workstream.
 
 The assembler builds every v3 core kind: `fileRead`, `search` and
 `planSteps` open pending and settle from the terminal shape like `command`;

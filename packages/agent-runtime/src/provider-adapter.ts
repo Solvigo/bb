@@ -23,8 +23,15 @@ import type {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   AgentRuntimeBridgeLaunch,
+  AgentRuntimeProviderRecoveryHint,
   AgentRuntimeSkillRoot,
 } from "./types.js";
+
+/** A decoded recovery hint before the runtime stamps the provider id. */
+export type ProviderRecoveryHint = Omit<
+  AgentRuntimeProviderRecoveryHint,
+  "providerId"
+>;
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
 interface ProviderAcceptedCommandTranslationArgs {
@@ -248,6 +255,12 @@ export interface ProviderAdapter {
     selectedOnlyModels: AvailableModel[];
   };
   translateEvent(event: ProviderRuntimeEvent): ThreadEvent[];
+  /**
+   * A typed `provider/recovery` hint carried by this notification, or null
+   * for anything else. Decoded by the adapter (it owns the wire), forwarded
+   * by the runtime to `onProviderRecovery` — never a timeline event.
+   */
+  decodeRecoveryHint?(event: ProviderRuntimeEvent): ProviderRecoveryHint | null;
   /**
    * Returns normalized events implied by a successful provider command.
    * Use this for provider protocol gaps where accepted commands do not produce

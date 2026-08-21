@@ -439,6 +439,55 @@ describe("translateEvent", () => {
   });
 });
 
+describe("provider/recovery", () => {
+  it("decodes a typed recovery hint as a runtime signal, never a timeline event", () => {
+    const adapter = makeAdapter();
+    const event = {
+      jsonrpc: "2.0" as const,
+      method: "provider/recovery",
+      params: {
+        threadId: "thr_1",
+        kind: "sessionArchived",
+        message: "session rollout-1 is archived",
+        retryable: true,
+      },
+    };
+    expect(adapter.decodeRecoveryHint?.(event)).toEqual({
+      threadId: "thr_1",
+      kind: "sessionArchived",
+      message: "session rollout-1 is archived",
+      retryable: true,
+    });
+    expect(adapter.translateEvent(event)).toStrictEqual([]);
+    // Provider-wide hints carry no thread.
+    expect(
+      adapter.decodeRecoveryHint?.({
+        jsonrpc: "2.0",
+        method: "provider/recovery",
+        params: { kind: "authRequired", message: "sign in", retryable: false },
+      }),
+    ).toEqual({ kind: "authRequired", message: "sign in", retryable: false });
+  });
+
+  it("drops a malformed or unknown-kind hint and ignores other notifications", () => {
+    const adapter = makeAdapter();
+    expect(
+      adapter.decodeRecoveryHint?.({
+        jsonrpc: "2.0",
+        method: "provider/recovery",
+        params: { kind: "rebootTheUniverse", message: "x", retryable: true },
+      }),
+    ).toBeNull();
+    expect(
+      adapter.decodeRecoveryHint?.({
+        jsonrpc: "2.0",
+        method: "thread/openWork",
+        params: { threadId: "thr_1", open: true },
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("inbound request decoding", () => {
   it("decodes canonical tool calls and rejects other methods", () => {
     const adapter = makeAdapter();

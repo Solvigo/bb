@@ -1181,6 +1181,16 @@ export function createAgentRuntimeWithAdapters(
     ) {
       return;
     }
+    // A typed recovery hint is a runtime signal, not timeline traffic: parse
+    // and forward it, and let the translator see nothing of it.
+    const recoveryHint = args.proc.adapter.decodeRecoveryHint?.(args.parsed);
+    if (recoveryHint !== null && recoveryHint !== undefined) {
+      options.onProviderRecovery?.({
+        providerId: args.proc.providerId,
+        ...recoveryHint,
+      });
+      return;
+    }
     emitTranslatedEvents({
       events: args.proc.adapter.translateEvent(args.parsed),
       proc: args.proc,
