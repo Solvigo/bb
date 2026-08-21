@@ -525,7 +525,7 @@ describe("useSystemExecutionOptions", () => {
         useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
       { wrapper: reload.wrapper },
     );
-    // Only the built-in identity preloads; the failed probe's rows do not.
+    // The provider roster replays; the failed probe's rows do not.
     expect(result.current.isPlaceholderData).toBe(true);
     expect(result.current.data?.models).toEqual([]);
   });
@@ -567,11 +567,12 @@ describe("useSystemExecutionOptions", () => {
       ],
       { wrapper: reload.wrapper },
     );
-    // Other routings keep only the built-in identity, with no rows.
-    expect(result.current[0]!.isPlaceholderData).toBe(true);
-    expect(result.current[0]!.data?.models).toEqual([]);
-    expect(result.current[1]!.isPlaceholderData).toBe(true);
-    expect(result.current[1]!.data?.models).toEqual([]);
+    // Other routings have nothing to replay — no vendored roster stands in —
+    // so they wait for their own probe.
+    expect(result.current[0]!.isPlaceholderData).toBe(false);
+    expect(result.current[0]!.data).toBeUndefined();
+    expect(result.current[1]!.isPlaceholderData).toBe(false);
+    expect(result.current[1]!.data).toBeUndefined();
     // The routing that was observed replays its own catalog.
     expect(result.current[2]!.isPlaceholderData).toBe(true);
     expect(result.current[2]!.data?.models).toEqual([CODEX_MODEL]);
@@ -599,13 +600,15 @@ describe("useSystemExecutionOptions", () => {
       ],
       { wrapper: reload.wrapper },
     );
-    // Another provider never inherits this catalog: only its built-in
-    // identity preloads, with no rows.
+    // Another provider never inherits this catalog: the host's remembered
+    // roster replays with no rows.
+    expect(result.current[0]!.isPlaceholderData).toBe(true);
     expect(result.current[0]!.data?.models).toEqual([]);
     // Nor does another host of the same provider: hosts can be signed into
-    // different accounts, so host B waits for its own probe.
-    expect(result.current[1]!.isPlaceholderData).toBe(true);
-    expect(result.current[1]!.data?.models).toEqual([]);
+    // different accounts, and nothing was remembered for host B, so it waits
+    // for its own probe.
+    expect(result.current[1]!.isPlaceholderData).toBe(false);
+    expect(result.current[1]!.data).toBeUndefined();
   });
 
   it("retries one transient failure before surfacing model selector errors", async () => {
