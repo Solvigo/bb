@@ -21,6 +21,19 @@ import { ApiError } from "../../errors.js";
 const IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
 const FILE_LIMIT_BYTES = 25 * 1024 * 1024;
 
+// HEIC/HEIF (the iPhone camera default) is stored and served verbatim, but
+// nothing downstream can decode it: Chromium (web app and Electron shell) has
+// no HEVC decoder, and no provider image input accepts it, so the composer
+// showed a broken thumbnail while the model silently received nothing. bb
+// ships no transcoder, so refuse the upload with a reason instead.
+const HEIF_MIME_TYPES = new Set([
+  "image/heic",
+  "image/heic-sequence",
+  "image/heif",
+  "image/heif-sequence",
+]);
+const HEIF_EXTENSIONS = new Set([".heic", ".heif"]);
+
 type PromptAttachmentInput = Extract<
   PromptInput,
   { type: "localFile" | "localImage" }
@@ -137,11 +150,26 @@ export async function validatePromptAttachmentReferences(
   }
 }
 
+function isHeifAttachment(file: File): boolean {
+  const mimeType = (file.type.split(";")[0] ?? "").trim().toLowerCase();
+  return (
+    HEIF_MIME_TYPES.has(mimeType) ||
+    HEIF_EXTENSIONS.has(extname(file.name).toLowerCase())
+  );
+}
+
 export async function storeAttachment(
   dataDir: string,
   projectId: string,
   file: File,
 ): Promise<UploadedPromptAttachment> {
+  if (isHeifAttachment(file)) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.",
+    );
+  }
   const isImage = (file.type || "").startsWith("image/");
   const sizeLimit = isImage ? IMAGE_LIMIT_BYTES : FILE_LIMIT_BYTES;
   if (file.size > sizeLimit) {
