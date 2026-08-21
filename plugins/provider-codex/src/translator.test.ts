@@ -805,17 +805,19 @@ describe("codex subagent activity correlation", () => {
       expect.objectContaining({
         type: "item/started",
         scope: turnScope(harness.turnId("parent-turn")),
-        item: expect.objectContaining({
-          type: "toolCall",
+        item: {
+          type: "delegation",
           id: harness.itemId("subagent-call-1"),
-          tool: "spawnAgent",
+          childRef: "agent-thread-1",
+          label: "/root/lifecycle_child",
           status: "pending",
-          arguments: {
-            senderThreadId: rootProviderThreadId,
-            receiverThreadIds: ["agent-thread-1"],
-            description: "/root/lifecycle_child",
+          background: false,
+          presentation: {
+            label: { pending: "Running agent", completed: "Agent finished" },
+            icon: { glyph: "UserRound" },
+            title: "/root/lifecycle_child",
           },
-        }),
+        },
       }),
     ]);
 
@@ -867,9 +869,9 @@ describe("codex subagent activity correlation", () => {
         type: "item/completed",
         scope: turnScope(harness.turnId("parent-turn")),
         item: expect.objectContaining({
-          type: "toolCall",
+          type: "delegation",
           id: harness.itemId("subagent-call-1"),
-          tool: "spawnAgent",
+          childRef: "agent-thread-1",
           status: "completed",
         }),
       }),
@@ -895,12 +897,23 @@ describe("codex subagent activity correlation", () => {
     );
     harness.translate(childTurnCompleted("child-turn-1"));
 
-    // The interaction itself is bookkeeping, not a timeline item.
+    // A follow-up to a settled agent re-opens its delegation row (same item
+    // id): the agent works again, and an open delegation is open work.
     expect(
       harness.translate(
         subAgentActivity({ id: "interaction-1", kind: "interacted" }),
       ),
-    ).toEqual([]);
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("subagent-call-1"),
+          status: "pending",
+        }),
+      }),
+    ]);
 
     expect(harness.translate(childTurnStarted("child-turn-2"))).toContainEqual(
       expect.objectContaining({
@@ -910,8 +923,7 @@ describe("codex subagent activity correlation", () => {
       }),
     );
 
-    // Re-arming must not re-complete the spawning tool call: the delegation
-    // item stays open across the resumed turn.
+    // The resumed turn settles the re-opened delegation again.
     const resumedTurnCompleted = harness.translate(
       childTurnCompleted("child-turn-2"),
     );
@@ -919,6 +931,15 @@ describe("codex subagent activity correlation", () => {
       expect.objectContaining({
         type: "turn/completed",
         scope: turnScope(harness.turnId("child-turn-2")),
+      }),
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("subagent-call-1"),
+          status: "completed",
+        }),
       }),
     ]);
   });
@@ -934,11 +955,19 @@ describe("codex subagent activity correlation", () => {
     harness.translate(childTurnStarted("child-turn-1"));
     harness.translate(childTurnCompleted("child-turn-1"));
 
-    for (const index of [1, 2]) {
+    // The first follow-up re-opens the delegation; the second finds it open.
+    expect(
+      harness
+        .translate(
+          subAgentActivity({ id: "interaction-1", kind: "interacted" }),
+        )
+        .map((event) => event.type),
+    ).toEqual(["item/started"]);
+    expect(
       harness.translate(
-        subAgentActivity({ id: `interaction-${index}`, kind: "interacted" }),
-      );
-    }
+        subAgentActivity({ id: "interaction-2", kind: "interacted" }),
+      ),
+    ).toEqual([]);
 
     for (const index of [2, 3]) {
       expect(
@@ -950,14 +979,14 @@ describe("codex subagent activity correlation", () => {
           parentToolCallId: harness.itemId("subagent-call-1"),
         }),
       );
+      // The delegation closes only once the last owed follow-up turn settles.
       expect(
-        harness.translate(childTurnCompleted(`child-turn-${index}`)),
-      ).toEqual([
-        expect.objectContaining({
-          type: "turn/completed",
-          scope: turnScope(harness.turnId(`child-turn-${index}`)),
-        }),
-      ]);
+        harness
+          .translate(childTurnCompleted(`child-turn-${index}`))
+          .map((event) => event.type),
+      ).toEqual(
+        index === 3 ? ["turn/completed", "item/completed"] : ["turn/completed"],
+      );
     }
   });
 
@@ -1002,6 +1031,50 @@ describe("codex subagent activity correlation", () => {
         parentToolCallId: harness.itemId("subagent-call-1"),
       }),
     );
+  });
+
+  // Nothing runs behind a dead app-server child, and an open delegation is
+  // open work for the runtime: the child-exit path settles every delegation
+  // the thread still had open, so the runtime can reap the thread.
+  it("settles open delegations as failed when the child exits", () => {
+    const harness = createHarness();
+    harness.translate(
+      subAgentActivity({ id: "subagent-call-1", kind: "started" }),
+    );
+    harness.translate(childTurnStarted("child-turn-1"));
+    expect(
+      harness.translator.hasOpenThreadWork({
+        providerThreadId: rootProviderThreadId,
+      }),
+    ).toBe(true);
+
+    const closes = harness.translator.clearExitedChildThreadState({
+      providerThreadId: rootProviderThreadId,
+    });
+    expect(
+      harness.assembler.assemble({ threadId: THREAD_ID, deltas: closes }),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("subagent-call-1"),
+          status: "failed",
+        }),
+      }),
+    ]);
+    expect(
+      harness.translator.hasOpenThreadWork({
+        providerThreadId: rootProviderThreadId,
+      }),
+    ).toBe(false);
+    // Idempotent: a second clear has nothing left to settle.
+    expect(
+      harness.translator.clearExitedChildThreadState({
+        providerThreadId: rootProviderThreadId,
+      }),
+    ).toEqual([]);
   });
 
   // Codex can redeliver the same activity item. Counting it twice queued a

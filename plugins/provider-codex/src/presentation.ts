@@ -147,6 +147,25 @@ export function imageViewPresentation(path: string): DeltaPresentation {
   return withTitle(IMAGE_VIEW_PRESENTATION, presentationTitle(fileName(path)));
 }
 
+/**
+ * A plan-steps snapshot (codex `update_plan`). The headline is the step in
+ * progress — what the agent is doing now — falling back to the explanation.
+ */
+export function planStepsPresentation(args: {
+  steps: readonly { step: string; status: string }[];
+  explanation: string | null;
+}): DeltaPresentation {
+  const active = args.steps.find((step) => step.status === "active");
+  const headline = active?.step ?? args.explanation ?? undefined;
+  return withTitle(
+    {
+      label: { pending: "Updating plan", completed: "Updated plan" },
+      icon: { glyph: "ListTodo" },
+    },
+    headline === undefined ? undefined : presentationTitle(headline),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Generic tools (MCP servers, dynamic tools)
 // ---------------------------------------------------------------------------

@@ -926,7 +926,7 @@ describe("codex item translation", () => {
     );
   });
 
-  it("maps collabAgentToolCall to toolCall with agent states as the result", () => {
+  it("maps a collabAgentToolCall that names its child to a delegation", () => {
     const harness = createHarness();
     const events = harness.translate(
       codexEvent("item/completed", {
@@ -952,19 +952,60 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
+        item: {
+          type: "delegation",
+          id: harness.itemId("collab-1"),
+          childRef: "sub-thread-1",
+          label: "Inspect the docs directory",
+          status: "completed",
+          background: false,
+          summary: 'sub-thread-1: {"status":"completed","message":"done"}',
+          presentation: {
+            label: { pending: "Spawning agent", completed: "Spawned agent" },
+            icon: { glyph: "UserRound" },
+            title: "Inspect the docs directory",
+          },
+        },
+      }),
+    );
+  });
+
+  it("keeps a collabAgentToolCall without a receiver a generic tool call", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "collabAgentToolCall",
+          id: "collab-wait-1",
+          tool: "wait",
+          status: "completed",
+          senderThreadId: "t1",
+          receiverThreadIds: [],
+          prompt: null,
+          model: null,
+          reasoningEffort: null,
+          agentsStates: {},
+        },
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
         item: expect.objectContaining({
           type: "toolCall",
-          tool: "spawnAgent",
+          tool: "wait",
           status: "completed",
-          arguments: expect.objectContaining({
-            senderThreadId: "t1",
-            receiverThreadIds: ["sub-thread-1"],
-            prompt: "Inspect the docs directory",
-            model: "gpt-5.4",
-            reasoningEffort: "medium",
-          }),
-          result: {
-            "sub-thread-1": { status: "completed", message: "done" },
+          arguments: { senderThreadId: "t1", receiverThreadIds: [] },
+          result: {},
+          presentation: {
+            label: {
+              pending: "Waiting for agents",
+              completed: "Waited for agents",
+            },
+            icon: { glyph: "UserRound" },
           },
         }),
       }),
@@ -998,7 +1039,9 @@ describe("codex item translation", () => {
       expect.objectContaining({
         type: "item/completed",
         item: expect.objectContaining({
-          type: "toolCall",
+          type: "delegation",
+          childRef: "sub-thread-1",
+          label: "Spawn agent",
           status: "interrupted",
         }),
       }),
@@ -1444,7 +1487,7 @@ describe("codex delta and usage translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex plan translation", () => {
-  it("maps turn/plan/updated step statuses", () => {
+  it("maps turn/plan/updated to a settled planSteps snapshot", () => {
     const harness = createHarness();
     const events = harness.translate(
       codexEvent("turn/plan/updated", {
@@ -1458,23 +1501,33 @@ describe("codex plan translation", () => {
         ],
       }),
     );
-    expect(events).toContainEqual(
+    expect(events).toEqual([
       expect.objectContaining({
-        type: "turn/plan/updated",
+        type: "item/completed",
         scope: turnScope(harness.turnId("turn-1")),
-        explanation: "Here's the plan",
-        plan: [
-          { step: "Read the file", status: "completed" },
-          { step: "Edit the function", status: "active" },
-          { step: "Run tests", status: "pending" },
-        ],
+        item: {
+          type: "planSteps",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
+          steps: [
+            { step: "Read the file", status: "completed" },
+            { step: "Edit the function", status: "active" },
+            { step: "Run tests", status: "pending" },
+          ],
+          explanation: "Here's the plan",
+          status: "completed",
+          presentation: {
+            label: { pending: "Updating plan", completed: "Updated plan" },
+            icon: { glyph: "ListTodo" },
+            title: "Edit the function",
+          },
+        },
       }),
-    );
+    ]);
   });
 
-  it("tolerates null explanations", () => {
+  it("mints one planSteps item per snapshot and tolerates null explanations", () => {
     const harness = createHarness();
-    const events = harness.translate({
+    const first = harness.translate({
       method: "turn/plan/updated",
       params: {
         threadId: "t1",
@@ -1486,18 +1539,45 @@ describe("codex plan translation", () => {
         ],
       },
     });
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "turn/plan/updated",
-        scope: turnScope(harness.turnId("turn-1")),
+    const second = harness.translate({
+      method: "turn/plan/updated",
+      params: {
+        threadId: "t1",
+        turnId: "turn-1",
+        explanation: null,
         plan: [
           { step: "Read the file", status: "completed" },
-          { step: "Run tests", status: "pending" },
+          { step: "Run tests", status: "completed" },
         ],
+      },
+    });
+
+    expect(first).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope(harness.turnId("turn-1")),
+        item: expect.objectContaining({
+          type: "planSteps",
+          steps: [
+            { step: "Read the file", status: "completed" },
+            { step: "Run tests", status: "pending" },
+          ],
+        }),
       }),
+    ]);
+    expect(
+      first[0]?.type === "item/completed" ? first[0].item : null,
+    ).not.toHaveProperty("explanation");
+    // The later snapshot supersedes the earlier one as its own item.
+    expect(second).toHaveLength(1);
+    const firstItem =
+      first[0]?.type === "item/completed" ? first[0].item : null;
+    const secondItem =
+      second[0]?.type === "item/completed" ? second[0].item : null;
+    expect(secondItem?.id).not.toBe(firstItem?.id);
+    expect(second.some((event) => event.type === "turn/plan/updated")).toBe(
+      false,
     );
-    expect(events[0]).not.toHaveProperty("explanation");
   });
 });
 

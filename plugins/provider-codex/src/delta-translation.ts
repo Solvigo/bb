@@ -54,6 +54,7 @@ import {
   fileChangePresentation,
   imageViewPresentation,
   mcpToolPresentation,
+  planStepsPresentation,
   webFetchPresentation,
   webSearchPresentation,
 } from "./presentation.js";
@@ -562,6 +563,49 @@ function toolStatusFields(status: CodexItemStatus): {
   };
 }
 
+/** Provider-anonymous key for the plan-steps snapshots of a thread. */
+const PLAN_STEPS_CHANNEL = "planSteps";
+
+function isTerminalCodexItemStatus(status: CodexItemStatus): boolean {
+  return status !== "inProgress";
+}
+
+type CodexCollabAgentToolCall = Extract<
+  CodexHandledThreadItem,
+  { type: "collabAgentToolCall" }
+>;
+
+const COLLAB_DELEGATION_VERBS: Readonly<Record<string, string>> = {
+  spawnAgent: "Spawn agent",
+  wait: "Wait for agent",
+  resumeAgent: "Resume agent",
+  sendInput: "Send input to agent",
+  closeAgent: "Close agent",
+};
+
+/** The delegation's human label: the prompt when the call carries one. */
+function collabDelegationLabel(item: CodexCollabAgentToolCall): string {
+  if (item.prompt !== null && item.prompt.trim().length > 0) {
+    return item.prompt.trim();
+  }
+  return COLLAB_DELEGATION_VERBS[item.tool] ?? item.tool;
+}
+
+/**
+ * The child's terminal summary as codex reports it: `agentsStates` maps each
+ * agent thread id to its final state (a status string or a structured
+ * record). Rendered as one line per agent; absent when codex reported none.
+ */
+function summarizeCollabAgentsStates(
+  agentsStates: Record<string, unknown>,
+): string | undefined {
+  const lines = Object.entries(agentsStates).map(([agentThreadId, state]) => {
+    const rendered = typeof state === "string" ? state : JSON.stringify(state);
+    return `${agentThreadId}: ${rendered}`;
+  });
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
 function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
   const parsed = codexHandledThreadItemSchema.safeParse(item);
   if (!parsed.success) {
@@ -668,7 +712,37 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
         ...toolStatusFields(parsedItem.status),
       };
     }
-    case "collabAgentToolCall":
+    case "collabAgentToolCall": {
+      const presentation = collabAgentPresentation({
+        tool: parsedItem.tool,
+        prompt: parsedItem.prompt,
+      });
+      const childRef = parsedItem.receiverThreadIds[0];
+      if (childRef !== undefined && childRef.length > 0) {
+        // A collab call that names its child agent IS a delegation to it
+        // (grammar v3): spawnAgent/resumeAgent/sendInput with a receiver,
+        // and a wait/closeAgent scoped to one agent. The child's own turns
+        // link back through the call id as their parentRef.
+        return {
+          kind: "translated",
+          shape: {
+            type: "delegation",
+            childRef,
+            label: collabDelegationLabel(parsedItem),
+            background: false,
+            ...(isTerminalCodexItemStatus(parsedItem.status)
+              ? {
+                  summary: summarizeCollabAgentsStates(parsedItem.agentsStates),
+                }
+              : {}),
+          },
+          presentation,
+          ...toolStatusFields(parsedItem.status),
+        };
+      }
+      // Without a receiver there is no child to delegate to: codex's bare
+      // `wait` (wait for every agent) and `closeAgent` stay generic tool
+      // calls, presented as the collab verb they are.
       return {
         kind: "translated",
         shape: {
@@ -685,12 +759,10 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
           },
           result: parsedItem.agentsStates,
         },
-        presentation: collabAgentPresentation({
-          tool: parsedItem.tool,
-          prompt: parsedItem.prompt,
-        }),
+        presentation,
         ...toolStatusFields(parsedItem.status),
       };
+    }
     case "subAgentActivity":
       // The translator handles this statefully so it can correlate the
       // activity with the child turn and close the synthetic delegation row.
@@ -999,20 +1071,35 @@ export function translateCodexEventToDeltas(
         },
       ];
     }
-    case "turn/plan/updated":
+    case "turn/plan/updated": {
+      // Codex's `update_plan` surfaces only as this turn-level notification,
+      // so each update is one settled `planSteps` snapshot (grammar v3): a
+      // channel-keyed close mints a fresh item per snapshot, and the latest
+      // one supersedes the rest — the same shape as a Claude TodoWrite call.
+      const steps = handledEvent.params.plan.map((step) => ({
+        step: step.step,
+        status:
+          step.status === "inProgress" ? ("active" as const) : step.status,
+      }));
+      const explanation = handledEvent.params.explanation;
       return [
         {
-          kind: "turn.plan",
-          steps: handledEvent.params.plan.map((step) => ({
-            step: step.step,
-            status: step.status === "inProgress" ? "active" : step.status,
-          })),
-          ...(handledEvent.params.explanation
-            ? { explanation: handledEvent.params.explanation }
-            : {}),
+          kind: "item.close",
+          key: { channel: PLAN_STEPS_CHANNEL },
+          status: "completed",
+          item: {
+            type: "planSteps",
+            steps,
+            ...(explanation ? { explanation } : {}),
+          },
+          presentation: planStepsPresentation({
+            steps,
+            explanation: explanation ?? null,
+          }),
           providerTurnId: handledEvent.params.turnId,
         },
       ];
+    }
     case "turn/diff/updated":
       return [
         {
