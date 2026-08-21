@@ -230,20 +230,10 @@ export function mcpToolPresentation(args: {
 }
 
 /**
- * `AskUserQuestion` is fully represented by its user-question interaction
- * row; the generic tool row beside it would read as a duplicate, so clients
- * collapse it by default.
+ * A dynamic tool that is codex's own (a bb-injected tool carries its own
+ * presentation on its definition instead).
  */
-const ASK_USER_QUESTION_TOOL = "AskUserQuestion";
-
 export function dynamicToolPresentation(tool: string): DeltaPresentation {
-  if (tool === ASK_USER_QUESTION_TOOL) {
-    return {
-      label: { pending: "Asking a question", completed: "Asked a question" },
-      icon: { glyph: "MessageQuestion" },
-      suppress: true,
-    };
-  }
   return {
     label: { pending: `Running ${tool}`, completed: `Ran ${tool}` },
     icon: { glyph: "Toolbox" },

@@ -390,8 +390,6 @@ interface CodexBridgeSession {
    * every thread/delta for the session, so these flush right after it.
    */
   pendingPreIdentityDeltas: ThreadDelta[];
-  /** Last `thread/openWork` value sent, so only changes go on the wire. */
-  openWorkReported: boolean;
   closing: boolean;
 }
 
@@ -429,15 +427,6 @@ function currentSession(
 
 function releaseSession(session: CodexBridgeSession): void {
   session.closing = true;
-  // The session is gone, so its work is too. Retract the open-work claim or
-  // the runtime keeps refusing to reap a thread that no longer exists here.
-  if (session.openWorkReported) {
-    session.openWorkReported = false;
-    sendNotification(BRIDGE_NOTIFICATION_METHODS.threadOpenWork, {
-      threadId: session.bbThreadId,
-      open: false,
-    });
-  }
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -577,30 +566,6 @@ function sendThreadDeltas(
   });
 }
 
-/**
- * Codex models native subagents as tool calls, not as bb background tasks, so
- * the runtime's own background-work tracker cannot see them. Report the
- * current value after every batch of translated events: a session release must
- * not stop this process while a child agent still runs or still owes a
- * followup turn.
- */
-function reportOpenThreadWork(session: CodexBridgeSession): void {
-  const codexThreadId = session.codexThreadId;
-  const open =
-    codexThreadId !== null &&
-    session.translator.hasOpenThreadWork({
-      providerThreadId: codexThreadId,
-    });
-  if (open === session.openWorkReported) {
-    return;
-  }
-  session.openWorkReported = open;
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.threadOpenWork, {
-    threadId: session.bbThreadId,
-    open,
-  });
-}
-
 function announceSessionIdentity(
   session: CodexBridgeSession,
   codexThreadId: string,
@@ -666,7 +631,6 @@ function handleChildNotification(
     session,
     session.translator.translateEvent(toProviderRuntimeEvent(method, params)),
   );
-  reportOpenThreadWork(session);
 }
 
 const codexChildToolCallParamsSchema = z.object({
@@ -737,9 +701,7 @@ function handleChildRequest(
     params,
   });
   if (macOsPermission !== null) {
-    sendThreadDeltas(session, [
-      buildMacOsPermissionItemDelta(macOsPermission),
-    ]);
+    sendThreadDeltas(session, [buildMacOsPermissionItemDelta(macOsPermission)]);
   }
 
   let decoded: DecodedInteractiveRequest | null;
@@ -844,12 +806,10 @@ function handleChildExit(
       : {}),
     message,
   });
-  // Nothing runs behind a dead child, so drop its live state, settle every
-  // delegation it still had open as failed (open delegations are open work
-  // for the runtime), and retract the open-work claim. The runtime's
-  // open-work view is level-triggered: without this the thread is never
-  // idle-reaped, and a stale tracked subagent would re-raise the claim on
-  // the next report.
+  // Nothing runs behind a dead child, so drop its live state and settle every
+  // delegation it still had open as failed: open delegations are open work
+  // for the runtime's reaper, and without the closes the thread would never
+  // be idle-reaped.
   if (session.codexThreadId !== null) {
     sendThreadDeltas(
       session,
@@ -858,7 +818,6 @@ function handleChildExit(
       }),
     );
   }
-  reportOpenThreadWork(session);
   // The session entry stays (with its identity) so the next turn/start can
   // restore the thread from its rollout via session/replaced.
 }
@@ -996,7 +955,6 @@ async function constructThreadSession(
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
-    openWorkReported: false,
     closing: false,
   };
   sessionsByBbThreadId.set(args.threadId, session);

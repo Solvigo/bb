@@ -220,7 +220,7 @@ range is what gates a bridge: every bridge in this repo reports
 - **Core item shapes** `fileRead`, `search` (`mode: content | path | list`),
   `delegation` (`childRef`, `label`, `background`, `summary?`; one shape for
   codex `spawnAgent`/`wait`, the Claude `Agent` tool, and backgrounded
-  agents, replacing `thread/openWork`), and `planSteps` (a structured plan
+  agents, which replaced `thread/openWork`), and `planSteps` (a structured plan
   snapshot as an item, beside the turn-level `turn.plan`).
 - **`presentation`** on `item.open` and `item.close`, the one place it
   travels: `label {pending, completed}`, `icon {glyph}` (host glyphs only —
@@ -390,16 +390,14 @@ carries the whole item, so refusing it would lose real content.
    `fork: "tip"` bridge rejects checkpoint forks with
    `FORK_CHECKPOINT_UNSUPPORTED` rather than cloning history the bb timeline
    does not show.
-5. `thread/openWork` reports whether a thread still owns provider work that
-   outlives its turn and that bb cannot see. Work reported as
-   `backgroundTask` items is already tracked by the runtime; this is for
-   work the provider models as something else (codex reports native
-   subagents as tool calls). It is level-triggered — send the current value,
-   the runtime keeps the last one heard — and a bridge that never sends it
-   reads as no open work. Retract it (`open: false`) when the session is
-   released, or the runtime will refuse to reap a thread that no longer
-   exists on your side. Missing this is how an idle-looking thread gets its
-   parent process stopped out from under a running child agent.
+5. Open work is what the timeline says it is. A `backgroundTask` item and a
+   `delegation` item that are still pending are live provider work, and the
+   runtime will not reap the session while one is open. Model a native
+   sub-agent as a `delegation` (codex does), re-open it when the agent works
+   again, and settle it — as failed — when your provider child dies, or the
+   runtime keeps refusing to reap a thread that no longer exists on your
+   side. There is no side channel for this (the former `thread/openWork`
+   notification is gone; a runtime ignores it).
 
 ## Ordering guarantees
 

@@ -763,31 +763,31 @@ describe("codex subagent activity correlation", () => {
     });
   }
 
-  // Codex reports native subagents as tool calls rather than as bb background
-  // tasks, so the shared background-work state cannot see them. Releasing an
-  // idle session while a child agent is still running kills the child.
-  it("reports an unfinished subagent as open thread work", () => {
+  // The delegation row IS the open-work signal: it opens pending at the
+  // spawn and closes when the child's turn ends, and the runtime counts a
+  // pending delegation as live provider work (so an idle-looking session
+  // with a running child is not reaped). There is no side channel.
+  it("opens a pending delegation at the spawn and settles it with the child turn", () => {
     const harness = createHarness();
-    const work = { providerThreadId: rootProviderThreadId };
-
-    expect(harness.translator.hasOpenThreadWork(work)).toBe(false);
-
-    harness.translate(
+    const opened = harness.translate(
       subAgentActivity({ id: "subagent-call-1", kind: "started" }),
     );
-
-    expect(harness.translator.hasOpenThreadWork(work)).toBe(true);
-    // Scoped per parent thread: another session must not be pinned open.
-    expect(
-      harness.translator.hasOpenThreadWork({
-        providerThreadId: "other-thread",
+    expect(opened).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "delegation",
+          status: "pending",
+        }),
       }),
-    ).toBe(false);
+    ]);
 
     harness.translate(childTurnStarted("child-turn-1"));
-    harness.translate(childTurnCompleted("child-turn-1"));
-
-    expect(harness.translator.hasOpenThreadWork(work)).toBe(false);
+    expect(
+      harness
+        .translate(childTurnCompleted("child-turn-1"))
+        .map((event) => event.type),
+    ).toEqual(["turn/completed", "item/completed"]);
   });
 
   // subAgentActivity is bookkeeping, not a timeline item: bb synthesizes the
@@ -1042,11 +1042,6 @@ describe("codex subagent activity correlation", () => {
       subAgentActivity({ id: "subagent-call-1", kind: "started" }),
     );
     harness.translate(childTurnStarted("child-turn-1"));
-    expect(
-      harness.translator.hasOpenThreadWork({
-        providerThreadId: rootProviderThreadId,
-      }),
-    ).toBe(true);
 
     const closes = harness.translator.clearExitedChildThreadState({
       providerThreadId: rootProviderThreadId,
@@ -1064,11 +1059,6 @@ describe("codex subagent activity correlation", () => {
         }),
       }),
     ]);
-    expect(
-      harness.translator.hasOpenThreadWork({
-        providerThreadId: rootProviderThreadId,
-      }),
-    ).toBe(false);
     // Idempotent: a second clear has nothing left to settle.
     expect(
       harness.translator.clearExitedChildThreadState({

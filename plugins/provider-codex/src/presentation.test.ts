@@ -92,13 +92,13 @@ describe("codex presentation", () => {
     });
   });
 
-  it("collapses the AskUserQuestion tool row behind its interaction row", () => {
-    expect(dynamicToolPresentation("AskUserQuestion")).toEqual({
-      label: { pending: "Asking a question", completed: "Asked a question" },
-      icon: { glyph: "MessageQuestion" },
-      suppress: true,
+  it("presents codex's own dynamic tools generically", () => {
+    // A bb-injected tool (AskUserQuestion, bb_workflow_run) carries its own
+    // presentation on its definition; this is only for codex's own tools.
+    expect(dynamicToolPresentation("codex_tool")).toEqual({
+      label: { pending: "Running codex_tool", completed: "Ran codex_tool" },
+      icon: { glyph: "Toolbox" },
     });
-    expect(dynamicToolPresentation("bb_workflow_run").suppress).toBeUndefined();
   });
 
   it("labels each collab verb and headlines the prompt", () => {

@@ -53,6 +53,12 @@ import { subAgentPresentation } from "./presentation.js";
 // 2. The later `item.close` command delta consumes that stored state to
 //    repair the authoritative final output.
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
+/**
+ * Codex's collab verbs that start or resume a child agent. A call that names
+ * its receiver is a `delegation` item already; one whose receiver is not
+ * known yet stays a tool item, and these names are how the bridge knows the
+ * next child turn on the multiplexed root thread belongs to it.
+ */
 const CODEX_DELEGATION_TOOL_NAMES = new Set(["spawnAgent", "resumeAgent"]);
 const TOOL_OUTPUT_MARKER_LINE = "Output:";
 const TOOL_OUTPUT_METADATA_PREFIXES = [
@@ -108,7 +114,7 @@ interface CodexPendingDelegationTurnLink {
   parentTurnId: string;
 }
 
-/** The delegation arguments the synthetic/native spawn calls carry. */
+/** The collab arguments a receiver-less spawn/resume tool call carries. */
 const codexDelegationArgsSchema = z
   .object({
     receiverThreadIds: z.array(z.string()).optional(),
@@ -134,7 +140,7 @@ function getCodexDelegationToolCall(
   ) {
     return null;
   }
-  // A v3 delegation names its child directly; the child's turns map to the
+  // A delegation names its child directly; the child's turns map to the
   // call through that id.
   if (delta.item.type === "delegation") {
     return {
@@ -1400,24 +1406,6 @@ export function createCodexEventTranslator(
     );
   }
 
-  // The same predicate the delegation rows encode, answered locally for the
-  // bridge's `thread/openWork` report while that notification still exists.
-  function hasOpenThreadWork({
-    providerThreadId,
-  }: {
-    providerThreadId: string;
-  }): boolean {
-    for (const tracked of trackedSubAgentsByCallId.values()) {
-      if (tracked.parentProviderThreadId !== providerThreadId) {
-        continue;
-      }
-      if (isTrackedSubAgentOpen(tracked)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   /** The bb-injected tools this session was constructed with (Q31). */
   function configureInjectedTools(tools: readonly CodexInjectedTool[]): void {
     setCodexInjectedTools(eventTranslationState, tools);
@@ -1429,7 +1417,6 @@ export function createCodexEventTranslator(
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,
-    hasOpenThreadWork,
     prepareTurnStart: queueNativeTurnStartClientRequestId,
     prepareWorkspaceWriteGitRoots,
     translateEvent,
