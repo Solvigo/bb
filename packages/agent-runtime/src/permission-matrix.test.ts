@@ -189,11 +189,15 @@ const EXPECTED = {
 // ---------------------------------------------------------------------------
 
 /** Resolves to `true` only when `A` and `B` are the same union. */
-type SameUnion<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type SameUnion<A, B> = [A] extends [B]
+  ? [B] extends [A]
+    ? true
+    : false
+  : false;
 const policyKeyCoversPolicyUnion: SameUnion<
   PolicyKey,
-  `${Extract<RuntimePermissionPolicy, { permissionEscalation: PermissionEscalation }>["permissionMode"]}/${PermissionEscalation}` |
-    `${Extract<RuntimePermissionPolicy, { permissionEscalation: null }>["permissionMode"]}/-`
+  | `${Extract<RuntimePermissionPolicy, { permissionEscalation: PermissionEscalation }>["permissionMode"]}/${PermissionEscalation}`
+  | `${Extract<RuntimePermissionPolicy, { permissionEscalation: null }>["permissionMode"]}/-`
 > = true;
 const subjectKindCoversUnion: SameUnion<
   SubjectKind,
@@ -460,8 +464,7 @@ const CELLS = POLICY_KEYS.flatMap((policyKey) =>
   SUBJECT_KINDS.flatMap((kind) =>
     ENFORCERS.flatMap((enforcer) =>
       DENY_AVAILABILITY.map(
-        (availability) =>
-          [policyKey, kind, enforcer, availability] as const,
+        (availability) => [policyKey, kind, enforcer, availability] as const,
       ),
     ),
   ),

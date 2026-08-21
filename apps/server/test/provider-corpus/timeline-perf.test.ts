@@ -138,10 +138,7 @@ function stageDuration(
 }
 
 function sumProfileDurations(pages: readonly BuiltTimelinePage[]): number {
-  return pages.reduce(
-    (total, page) => total + page.profile.totalDurationMs,
-    0,
-  );
+  return pages.reduce((total, page) => total + page.profile.totalDurationMs, 0);
 }
 
 /** One warm-up build, then `BUILD_SAMPLES` measured builds. */
@@ -380,9 +377,7 @@ describe.skipIf(!available)("provider corpus timeline perf baseline", () => {
   const failures: string[] = [];
   let synthetic: SyntheticThread | null = null;
 
-  it.each(
-    corpusThreads.map((thread) => [thread.id, thread.provider] as const),
-  )(
+  it.each(corpusThreads.map((thread) => [thread.id, thread.provider] as const))(
     "%s (%s)",
     (threadId) => {
       synthetic ??= createSyntheticThread(SYNTHETIC_EVENT_COUNT);
@@ -404,7 +399,9 @@ describe.skipIf(!available)("provider corpus timeline perf baseline", () => {
       measured.set(threadId, outcome.result);
       attemptsByThread.set(threadId, outcome.attempts);
       for (const failure of outcome.failures) {
-        failures.push(`${threadId} (after ${outcome.attempts} attempts): ${failure}`);
+        failures.push(
+          `${threadId} (after ${outcome.attempts} attempts): ${failure}`,
+        );
       }
     },
     PER_THREAD_TIMEOUT_MS,
@@ -477,39 +474,35 @@ describe.skipIf(!available)("provider corpus timeline perf baseline", () => {
 });
 
 describe("timeline build micro-benchmark", () => {
-  it(
-    `projects every page of a ${SYNTHETIC_EVENT_COUNT}-event thread under ${SYNTHETIC_CEILING_MS} ms`,
-    () => {
-      const synthetic = createSyntheticThread(SYNTHETIC_EVENT_COUNT);
-      try {
-        expect(synthetic.eventCount).toBeGreaterThanOrEqual(
-          SYNTHETIC_EVENT_COUNT,
-        );
-        // The latest page alone is bounded by segment windowing, so the whole
-        // walk is what scales with the thread: every page, default variant,
-        // summed over the build profiles (SQLite reads, decode, projection,
-        // pagination) rather than wall time, so disk noise does not count.
-        const samples = sample(() => walkSynthetic(synthetic));
-        const durations = samples.map((pages) => sumProfileDurations(pages));
-        const p50 = percentile(durations, 0.5);
-        const last = samples[samples.length - 1];
-        if (last === undefined) {
-          throw new Error("no samples");
-        }
-        const rowsProjected = last.reduce(
-          (total, page) => total + page.profile.projectedRowCount,
-          0,
-        );
-        process.stdout.write(
-          `Synthetic ${synthetic.eventCount}-event thread: ${last.length} pages, ${rowsProjected} rows projected, ` +
-            `full walk p50 ${round(p50)} ms (samples ${durations.map((value) => round(value)).join(", ")})\n`,
-        );
-        expect(last.length).toBeGreaterThan(1);
-        expect(p50).toBeLessThan(SYNTHETIC_CEILING_MS);
-      } finally {
-        synthetic.close();
+  it(`projects every page of a ${SYNTHETIC_EVENT_COUNT}-event thread under ${SYNTHETIC_CEILING_MS} ms`, () => {
+    const synthetic = createSyntheticThread(SYNTHETIC_EVENT_COUNT);
+    try {
+      expect(synthetic.eventCount).toBeGreaterThanOrEqual(
+        SYNTHETIC_EVENT_COUNT,
+      );
+      // The latest page alone is bounded by segment windowing, so the whole
+      // walk is what scales with the thread: every page, default variant,
+      // summed over the build profiles (SQLite reads, decode, projection,
+      // pagination) rather than wall time, so disk noise does not count.
+      const samples = sample(() => walkSynthetic(synthetic));
+      const durations = samples.map((pages) => sumProfileDurations(pages));
+      const p50 = percentile(durations, 0.5);
+      const last = samples[samples.length - 1];
+      if (last === undefined) {
+        throw new Error("no samples");
       }
-    },
-    120_000,
-  );
+      const rowsProjected = last.reduce(
+        (total, page) => total + page.profile.projectedRowCount,
+        0,
+      );
+      process.stdout.write(
+        `Synthetic ${synthetic.eventCount}-event thread: ${last.length} pages, ${rowsProjected} rows projected, ` +
+          `full walk p50 ${round(p50)} ms (samples ${durations.map((value) => round(value)).join(", ")})\n`,
+      );
+      expect(last.length).toBeGreaterThan(1);
+      expect(p50).toBeLessThan(SYNTHETIC_CEILING_MS);
+    } finally {
+      synthetic.close();
+    }
+  }, 120_000);
 });

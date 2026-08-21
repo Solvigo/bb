@@ -217,7 +217,10 @@ export function buildRouteTimelinePage(
 }
 
 export function latestTimelinePage(): ThreadTimelinePageRequest {
-  return { kind: "latest", segmentLimit: THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT };
+  return {
+    kind: "latest",
+    segmentLimit: THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
+  };
 }
 
 /**
@@ -473,7 +476,10 @@ function globSegmentsMatch(
   return globSegmentsMatch(rest, segments.slice(1));
 }
 
-export function allowlistPathMatches(pattern: string, pointer: string): boolean {
+export function allowlistPathMatches(
+  pattern: string,
+  pointer: string,
+): boolean {
   const patternSegments = pattern.split("/").slice(1);
   const pointerSegments = pointer.split("/").slice(1);
   return globSegmentsMatch(patternSegments, pointerSegments);
@@ -523,7 +529,10 @@ export function readAllowlist(snapshotsDir: string): AllowlistEntry[] {
 // Statistics
 // ---------------------------------------------------------------------------
 
-export function percentile(values: readonly number[], fraction: number): number {
+export function percentile(
+  values: readonly number[],
+  fraction: number,
+): number {
   if (values.length === 0) {
     return 0;
   }

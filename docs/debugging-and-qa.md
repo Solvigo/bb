@@ -133,8 +133,18 @@ cover. An entry names a scope, a path, and the PR that made the change:
 
 ```json
 [
-  { "threadId": "thr_abc123", "path": "/variants/*/pages/*/rows/*/output", "pr": "#1234", "reason": "…" },
-  { "provider": "codex", "path": "/variants/default/pages/**/planSteps", "pr": "#1235", "reason": "…" },
+  {
+    "threadId": "thr_abc123",
+    "path": "/variants/*/pages/*/rows/*/output",
+    "pr": "#1234",
+    "reason": "…"
+  },
+  {
+    "provider": "codex",
+    "path": "/variants/default/pages/**/planSteps",
+    "pr": "#1235",
+    "reason": "…"
+  },
   { "*": true, "path": "/variants/**/maxSeq", "pr": "#1236", "reason": "…" }
 ]
 ```

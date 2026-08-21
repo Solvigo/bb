@@ -131,14 +131,23 @@ function pushSyntheticTurn(
     },
   });
   builder.push({ type: "turn/started", scope, data: {} });
-  builder.push({ type: "turn/input/accepted", scope, data: { clientRequestId } });
+  builder.push({
+    type: "turn/input/accepted",
+    scope,
+    data: { clientRequestId },
+  });
 
   // reasoning with deltas
   builder.push({
     type: "item/started",
     scope,
     data: {
-      item: { type: "reasoning", id: id("reasoning"), summary: [], content: [] },
+      item: {
+        type: "reasoning",
+        id: id("reasoning"),
+        summary: [],
+        content: [],
+      },
     },
   });
   for (let delta = 0; delta < 3; delta += 1) {
@@ -292,7 +301,12 @@ function pushSyntheticTurn(
   pushItemPair(
     builder,
     scope,
-    { type: "webSearch", id: id("search"), queries: [`query ${turn}`], resultText: null },
+    {
+      type: "webSearch",
+      id: id("search"),
+      queries: [`query ${turn}`],
+      resultText: null,
+    },
     {
       type: "webSearch",
       id: id("search"),
@@ -342,7 +356,11 @@ function pushSyntheticTurn(
     type: "item/completed",
     scope,
     data: {
-      item: { type: "plan", id: id("plan"), text: "1. Do the thing\n2. Verify" },
+      item: {
+        type: "plan",
+        id: id("plan"),
+        text: "1. Do the thing\n2. Verify",
+      },
     },
   });
   pushItemPair(
@@ -398,7 +416,9 @@ function pushSyntheticTurn(
   builder.push({
     type: "turn/diff/updated",
     scope,
-    data: { diff: `diff --git a/src/module-${turn % 7}.ts b/src/module-${turn % 7}.ts\n` },
+    data: {
+      diff: `diff --git a/src/module-${turn % 7}.ts b/src/module-${turn % 7}.ts\n`,
+    },
   });
   builder.push({
     type: "thread/tokenUsage/updated",

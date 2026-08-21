@@ -123,9 +123,7 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
     threads: 0,
   };
 
-  it.each(
-    corpusThreads.map((thread) => [thread.id, thread.provider] as const),
-  )(
+  it.each(corpusThreads.map((thread) => [thread.id, thread.provider] as const))(
     "%s (%s)",
     (threadId, provider) => {
       const corpusThread = loadCorpusThread(threadId);
@@ -177,7 +175,11 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
               [
                 `Row snapshot diff for ${threadId} (${provider}): ${matched.unallowed.length} unallowed path(s)`,
                 formatDiffs(matched.unallowed, 20),
-                unifiedJsonDiff(expected, built.snapshot, `${provider}/${threadId}`),
+                unifiedJsonDiff(
+                  expected,
+                  built.snapshot,
+                  `${provider}/${threadId}`,
+                ),
               ].join("\n"),
             );
           }
