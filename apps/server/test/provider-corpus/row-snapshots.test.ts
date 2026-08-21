@@ -16,7 +16,9 @@ import {
 } from "@bb/test-helpers";
 import type { CorpusThread } from "@bb/test-helpers";
 import type { TimelineRow } from "@bb/server-contract";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 import {
   TIMELINE_VARIANTS,
   applyAllowlist,
@@ -61,12 +63,14 @@ function countTimelineRows(rows: readonly TimelineRow[]): number {
 function buildRowSnapshot(
   loaded: LoadedCorpusThread,
   corpusThread: CorpusThread,
+  registry: ProviderRegistryService,
 ): { rows: number; snapshot: JsonValue } {
   let rows = 0;
   const variants: RowSnapshot["variants"] = {};
   for (const variant of TIMELINE_VARIANTS) {
     const pages = buildAllRouteTimelinePages({
       db: loaded.db,
+      registry,
       thread: loaded.thread,
       variant,
     });
@@ -84,12 +88,23 @@ function buildRowSnapshot(
   return { rows, snapshot: normalizeJson(snapshot) };
 }
 
+/**
+ * The reader already restricts ids to one safe path segment; this keeps the
+ * resolved file under the rows root even if that validation ever loosens.
+ */
 function snapshotFilePath(
   snapshotsDir: string,
   provider: string,
   threadId: string,
 ): string {
-  return path.join(snapshotsDir, "rows", provider, `${threadId}.json`);
+  const rowsRoot = path.resolve(snapshotsDir, "rows");
+  const filePath = path.resolve(rowsRoot, provider, `${threadId}.json`);
+  if (!filePath.startsWith(`${rowsRoot}${path.sep}`)) {
+    throw new Error(
+      `Snapshot path for ${provider}/${threadId} escapes ${rowsRoot}`,
+    );
+  }
+  return filePath;
 }
 
 function formatDiffs(diffs: readonly JsonDiff[], limit: number): string {
@@ -113,6 +128,7 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
   const snapshotsDir = path.join(corpusDir, "snapshots");
   const allowlist = available ? readAllowlist(snapshotsDir) : [];
   const usedAllowlistEntries = new Set<number>();
+  let registry: ProviderRegistryService | null = null;
   const totals = {
     bytes: 0,
     diffThreads: [] as string[],
@@ -123,13 +139,22 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
     threads: 0,
   };
 
+  beforeAll(async () => {
+    if (available) {
+      registry = await createTestProviderRegistry();
+    }
+  });
+
   it.each(corpusThreads.map((thread) => [thread.id, thread.provider] as const))(
     "%s (%s)",
     (threadId, provider) => {
+      if (registry === null) {
+        throw new Error("provider registry did not load");
+      }
       const corpusThread = loadCorpusThread(threadId);
       const loaded = loadCorpusThreadIntoDb(corpusThread);
       try {
-        const built = buildRowSnapshot(loaded, corpusThread);
+        const built = buildRowSnapshot(loaded, corpusThread, registry);
         const serialized = `${JSON.stringify(built.snapshot)}\n`;
         totals.threads += 1;
         totals.rows += built.rows;
@@ -140,7 +165,7 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
           // A baseline must not depend on the wall clock or on iteration
           // order: a second projection of the same rows has to match
           // byte-for-byte before it is worth writing down.
-          const rebuilt = buildRowSnapshot(loaded, corpusThread);
+          const rebuilt = buildRowSnapshot(loaded, corpusThread, registry);
           expect(JSON.stringify(rebuilt.snapshot)).toBe(
             JSON.stringify(built.snapshot),
           );

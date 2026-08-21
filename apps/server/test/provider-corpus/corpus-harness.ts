@@ -23,7 +23,7 @@ import {
 } from "@bb/db";
 import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
-import type { ProviderComposerCommand, Thread } from "@bb/domain";
+import type { Thread } from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
 import type { CorpusThread } from "@bb/test-helpers";
 import { sql } from "drizzle-orm";
@@ -34,6 +34,8 @@ import {
   type ThreadTimelineBuildProfile,
   type ThreadTimelinePageRequest,
 } from "../../src/services/threads/timeline.js";
+import { resolveProviderPlanCommand } from "../../src/services/providers/provider-plan-command.js";
+import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { previewTimelineResponseOutputs } from "../../src/services/threads/timeline-output-preview.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
@@ -145,18 +147,6 @@ export function loadCorpusThreadIntoDb(
 // Route-equivalent projection
 // ---------------------------------------------------------------------------
 
-const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  codex: "Codex",
-  "claude-code": "Claude Code",
-};
-
-/** Both first-party providers declare the `plan` composer action. */
-const PLAN_COMMAND: ProviderComposerCommand = {
-  trigger: "/",
-  name: "plan",
-  trailingText: " ",
-};
-
 export type TimelineVariant = "default" | "nested";
 
 export const TIMELINE_VARIANTS: readonly TimelineVariant[] = [
@@ -172,6 +162,12 @@ export interface BuiltTimelinePage {
 export interface BuildRouteTimelinePageArgs {
   db: DbConnection;
   page: ThreadTimelinePageRequest;
+  /**
+   * The first-party providers as their plugins register them
+   * (`createTestProviderRegistry`), so the display name and plan command come
+   * from the same declarations and resolvers the route uses.
+   */
+  registry: ProviderRegistryService;
   thread: Thread;
   variant: TimelineVariant;
 }
@@ -197,10 +193,12 @@ export function buildRouteTimelinePage(
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
       maxSeq,
       page: args.page,
-      providerDisplayName:
-        PROVIDER_DISPLAY_NAMES[args.thread.providerId] ??
+      providerDisplayName: args.registry.get(args.thread.providerId)?.info
+        .displayName,
+      planCommand: resolveProviderPlanCommand(
+        args.registry,
         args.thread.providerId,
-      planCommand: PLAN_COMMAND,
+      ),
       summaryOnly: false,
     },
   );

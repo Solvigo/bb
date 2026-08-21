@@ -33,9 +33,18 @@ import { z } from "zod";
 
 export const PROVIDER_CORPUS_DIR_ENV = "BB_PROVIDER_CORPUS_DIR";
 
+/**
+ * Thread and provider ids name directories under the corpus and under the
+ * snapshot tree, so they must be single path segments: no separators, no
+ * `.`/`..`, nothing the filesystem could interpret.
+ */
+const corpusPathSegmentSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "must be one safe path segment");
+
 const corpusManifestThreadSchema = z.object({
-  id: z.string().min(1),
-  provider: z.string().min(1),
+  id: corpusPathSegmentSchema,
+  provider: corpusPathSegmentSchema,
   events: z.number().int().nonnegative(),
   reasons: z.array(z.string().min(1)),
 });
@@ -46,8 +55,8 @@ const corpusManifestSchema = z.object({
 });
 
 const corpusThreadRowSchema = z.object({
-  id: z.string().min(1),
-  provider_id: z.string().min(1),
+  id: corpusPathSegmentSchema,
+  provider_id: corpusPathSegmentSchema,
   title: z.string().nullable(),
   status: threadStatusSchema,
   created_at: z.number().int(),
@@ -271,36 +280,69 @@ export function decodeCorpusStoredEventRow(
   });
 }
 
-function findCorpusThreadDir(dir: string, threadId: string): string {
-  const threadsDir = path.join(dir, "threads");
-  for (const provider of fs.readdirSync(threadsDir)) {
-    const candidate = path.join(threadsDir, provider, threadId);
-    if (fs.existsSync(path.join(candidate, "meta.json"))) {
-      return candidate;
-    }
-  }
-  throw new Error(`Corpus thread ${threadId} not found under ${threadsDir}`);
+function sameStringSet(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    [...left].sort().join("\0") === [...right].sort().join("\0")
+  );
 }
 
+/**
+ * Loads one thread through its manifest entry and checks that the manifest,
+ * `meta.json`, and every event row agree on the thread id, provider, reasons,
+ * and row count. A corpus whose files drifted apart must fail here rather
+ * than produce a plausible baseline for the wrong thread.
+ */
 export function loadCorpusThread(threadId: string): CorpusThread {
   const dir = requireProviderCorpusDir();
-  const threadDir = findCorpusThreadDir(dir, threadId);
+  const entry = listCorpusThreads().find((thread) => thread.id === threadId);
+  if (entry === undefined) {
+    throw new Error(`Corpus thread ${threadId} is not in manifest.json`);
+  }
+  const threadDir = path.join(dir, "threads", entry.provider, entry.id);
   const meta = corpusMetaSchema.parse(
     readJsonFile(path.join(threadDir, "meta.json")),
   );
+  if (meta.thread.id !== entry.id) {
+    throw new Error(
+      `Corpus thread ${threadId}: meta.json names thread ${meta.thread.id}`,
+    );
+  }
+  if (meta.thread.provider_id !== entry.provider) {
+    throw new Error(
+      `Corpus thread ${threadId}: meta.json names provider ${meta.thread.provider_id}; manifest says ${entry.provider}`,
+    );
+  }
+  if (!sameStringSet(meta.reasons, entry.reasons)) {
+    throw new Error(
+      `Corpus thread ${threadId}: meta.json reasons [${meta.reasons.join(", ")}] differ from manifest [${entry.reasons.join(", ")}]`,
+    );
+  }
   const ndjson = fs.readFileSync(path.join(threadDir, "events.ndjson"), "utf8");
   const eventRows: CorpusStoredEventRow[] = [];
   for (const line of ndjson.split("\n")) {
     if (line.length === 0) {
       continue;
     }
-    eventRows.push(
-      toCorpusStoredEventRow(corpusEventRowSchema.parse(JSON.parse(line))),
+    const row = toCorpusStoredEventRow(
+      corpusEventRowSchema.parse(JSON.parse(line)),
     );
+    if (row.threadId !== entry.id) {
+      throw new Error(
+        `Corpus thread ${threadId}: event ${row.id} (#${row.sequence}) belongs to thread ${row.threadId}`,
+      );
+    }
+    eventRows.push(row);
   }
-  if (eventRows.length !== meta.event_rows) {
+  if (
+    eventRows.length !== meta.event_rows ||
+    eventRows.length !== entry.events
+  ) {
     throw new Error(
-      `Corpus thread ${threadId} has ${eventRows.length} event rows; meta.json says ${meta.event_rows}`,
+      `Corpus thread ${threadId} has ${eventRows.length} event rows; meta.json says ${meta.event_rows}, manifest says ${entry.events}`,
     );
   }
   return {

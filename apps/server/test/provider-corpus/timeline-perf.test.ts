@@ -8,20 +8,28 @@
  *    fails when a thread's normalized build cost exceeds its baseline by more
  *    than 10% or its median persisted event size by more than 15%.
  *
- *    Raw wall-clock p50/p95 are recorded and printed, but the gate uses the
- *    minimum of the five samples divided by the minimum of five interleaved
- *    builds of the synthetic calibration thread. Contention only ever adds
- *    time, so the minimum is the estimate closest to the intrinsic cost, and
- *    the in-run calibration cancels machine speed and load. On a loaded
- *    16-core workstation the raw p50 swung by up to 30% between two runs of
- *    the same commit; the normalized minimum stayed within a few percent, with
- *    rare bursts that the per-thread retry (below) absorbs.
+ *    Raw wall-clock p50/p95 from the build profiles are recorded and printed,
+ *    but the gate uses a normalized cost: the minimum build time over the
+ *    samples divided by the minimum time of a fixed CPU workload that shares
+ *    no code with the timeline (JSON codec and sorting over a deterministic
+ *    document), run once per sample right before the builds. Contention only
+ *    ever adds time, so each minimum discards the contended samples on its
+ *    own side and is the estimate closest to intrinsic cost; interleaving
+ *    keeps both minima inside the same short window, so steady load and
+ *    machine speed cancel; and a workload outside the timeline path means a
+ *    uniform timeline regression still moves the ratio. (The minimum of the
+ *    per-sample ratios is recorded as a diagnostic but not gated on: a stall
+ *    on the calibration side drives it spuriously low.) On a 16-core
+ *    workstation at load ~6 the raw p50 swung by up to 30% between two runs
+ *    of the same commit while this ratio stayed within a few percent; the
+ *    per-thread retry absorbs the rare burst.
  *
  * 2. CI micro-benchmark (always runs): every page of a synthetic 10k-event
  *    thread must build under a generous ceiling. It guards against a
  *    pathological regression, not against the budget the corpus baseline pins.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   corpusAvailable,
@@ -29,9 +37,11 @@ import {
   loadCorpusThread,
   resolveProviderCorpusDir,
 } from "@bb/test-helpers";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
+import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import type { ThreadTimelineBuildProfileStage } from "../../src/services/threads/timeline.js";
+import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 import {
   buildAllRouteTimelinePages,
   buildRouteTimelinePage,
@@ -50,9 +60,11 @@ import {
 const BUILD_SAMPLES = 5;
 /**
  * A burst of interference (another suite starting, a GC pause) can still hit
- * all five samples of one thread. Each thread is measured up to this many
- * times: write mode keeps the cheapest attempt, compare mode stops at the first
- * attempt that passes and fails only when every attempt exceeds the budget.
+ * all five samples of one thread. Each thread is measured this many times:
+ * write mode keeps the attempt with the median cost (the cheapest would mint
+ * a lucky baseline that later runs cannot match), compare mode stops at the
+ * first attempt that passes and fails only when every attempt exceeds the
+ * budget.
  */
 const MEASUREMENT_ATTEMPTS = 3;
 const LARGEST_PER_PROVIDER = 10;
@@ -67,14 +79,21 @@ const DATA_BYTES_TOLERANCE = 1.15;
 const PER_THREAD_TIMEOUT_MS = 5 * 60_000;
 
 /**
- * Measured locally at 160–250 ms p50 for the full page walk of the 10k-event
- * synthetic thread (12 pages, default variant) on a 2026 Linux workstation;
- * the ceiling is the top of that range times three so a slow CI runner passes
- * while a pathological regression (an unbounded reprojection, a quadratic
- * pass) still fails.
+ * Bump when the calibration workload changes shape: a baseline normalized
+ * against a different workload is not comparable and must be rewritten.
+ */
+const CALIBRATION_KIND = "json-sort-v1";
+
+/**
+ * Measured locally at 150–170 ms minimum (160–250 ms p50) for the full page
+ * walk of the 10k-event synthetic thread (12 pages, default variant) on a
+ * 2026 Linux workstation. The gate takes the minimum of five walks, which a
+ * loaded runner only exceeds when every sample is slow, and the ceiling is
+ * ~10× the local minimum: a slow CI runner passes, while a pathological
+ * regression (an unbounded reprojection, a quadratic pass) still fails.
  */
 const SYNTHETIC_EVENT_COUNT = 10_000;
-const SYNTHETIC_CEILING_MS = 750;
+const SYNTHETIC_CEILING_MS = 1_500;
 
 const STAGES: readonly ThreadTimelineBuildProfileStage[] = [
   "event-query",
@@ -91,8 +110,10 @@ const buildCostSchema = z.object({
   p50Ms: z.number(),
   p95Ms: z.number(),
   minMs: z.number(),
-  /** `minMs` divided by the calibration thread's `minMs` from the same run. */
+  /** `minMs` ÷ the calibration minimum of the same interleaved samples. */
   normalizedMin: z.number(),
+  /** Minimum over samples of the per-sample ratio; diagnostic only. */
+  pairedRatioMin: z.number(),
 });
 type BuildCost = z.infer<typeof buildCostSchema>;
 
@@ -102,7 +123,7 @@ const perfThreadBaselineSchema = z.object({
   dataBytesMedian: z.number(),
   dataBytesP95: z.number(),
   dataBytesTotal: z.number(),
-  /** Full-walk minimum of the synthetic calibration thread, measured just before. */
+  /** Calibration workload minimum across this thread's samples. */
   calibrationMinMs: z.number(),
   latest: buildCostSchema.extend({
     rowsProduced: z.number(),
@@ -116,12 +137,71 @@ const perfThreadBaselineSchema = z.object({
 });
 type PerfThreadBaseline = z.infer<typeof perfThreadBaselineSchema>;
 
-const perfBaselineSchema = z.object({
+const perfGateSettingsSchema = z.object({
   samplesPerThread: z.number(),
-  calibrationEventCount: z.number(),
+  calibration: z.string(),
+});
+
+const perfBaselineSchema = z.object({
+  gate: perfGateSettingsSchema,
   threads: z.record(z.string(), perfThreadBaselineSchema),
 });
 type PerfBaseline = z.infer<typeof perfBaselineSchema>;
+
+const CURRENT_GATE_SETTINGS = {
+  samplesPerThread: BUILD_SAMPLES,
+  calibration: CALIBRATION_KIND,
+} satisfies z.infer<typeof perfGateSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// Calibration workload: deterministic CPU work with no timeline code in it.
+// ---------------------------------------------------------------------------
+
+function createLcg(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    return state / 0x1_0000_0000;
+  };
+}
+
+function buildCalibrationDocument(): string {
+  const random = createLcg(20_260_821);
+  const records = Array.from({ length: 6_000 }, (_, index) => ({
+    id: `rec_${index}`,
+    score: random(),
+    tags: Array.from({ length: 4 }, () => `tag-${Math.floor(random() * 100)}`),
+    text: "lorem ipsum dolor sit amet ".repeat(1 + (index % 5)),
+    nested: { a: random(), b: [random(), random()], c: { d: index } },
+  }));
+  return JSON.stringify(records);
+}
+
+const CALIBRATION_DOCUMENT = buildCalibrationDocument();
+/** Keeps the workload's results alive so the JIT cannot elide the work. */
+let calibrationSink = 0;
+
+/** Runs the fixed workload once and returns its wall time in ms. */
+function runCalibrationWorkload(): number {
+  const startedAt = performance.now();
+  let checksum = 0;
+  for (let round = 0; round < 6; round += 1) {
+    const parsed: unknown = JSON.parse(CALIBRATION_DOCUMENT);
+    checksum += JSON.stringify(parsed).length;
+  }
+  const random = createLcg(7);
+  const numbers = Array.from({ length: 150_000 }, () => random());
+  numbers.sort((left, right) => left - right);
+  checksum += numbers[12_345] ?? 0;
+  const words = CALIBRATION_DOCUMENT.split('"');
+  checksum += words.filter((word) => word.startsWith("tag-")).length;
+  calibrationSink = (calibrationSink + checksum) % 1_000_003;
+  return performance.now() - startedAt;
+}
+
+// ---------------------------------------------------------------------------
+// Measurement
+// ---------------------------------------------------------------------------
 
 function round(value: number, digits = 2): number {
   const factor = 10 ** digits;
@@ -151,25 +231,25 @@ function sample<T>(build: () => T): T[] {
   return samples;
 }
 
-function buildCost(
-  durations: readonly number[],
-  calibrationMinMs: number,
-): BuildCost {
+interface PairedDuration {
+  buildMs: number;
+  calibrationMs: number;
+}
+
+function buildCost(pairs: readonly PairedDuration[]): BuildCost {
+  const durations = pairs.map((pair) => pair.buildMs);
+  const calibrationMin = Math.min(...pairs.map((pair) => pair.calibrationMs));
   const minMs = Math.min(...durations);
   return {
     p50Ms: round(percentile(durations, 0.5)),
     p95Ms: round(percentile(durations, 0.95)),
     minMs: round(minMs),
-    normalizedMin: round(minMs / calibrationMinMs, 4),
+    normalizedMin: round(minMs / calibrationMin, 4),
+    pairedRatioMin: round(
+      Math.min(...pairs.map((pair) => pair.buildMs / pair.calibrationMs)),
+      4,
+    ),
   };
-}
-
-function walkSynthetic(synthetic: SyntheticThread): BuiltTimelinePage[] {
-  return buildAllRouteTimelinePages({
-    db: synthetic.db,
-    thread: synthetic.thread,
-    variant: "default",
-  });
 }
 
 interface InterleavedSample {
@@ -180,31 +260,30 @@ interface InterleavedSample {
 
 function measureCorpusThread(
   threadId: string,
-  synthetic: SyntheticThread,
+  registry: ProviderRegistryService,
 ): PerfThreadBaseline {
   const corpusThread = loadCorpusThread(threadId);
   const loaded = loadCorpusThreadIntoDb(corpusThread);
   try {
-    // Calibration, latest page, and full walk are interleaved per sample so a
-    // change in machine load lands on the calibration and the thread alike.
+    // Each sample runs the calibration workload right before the two builds,
+    // so the minima on both sides come from the same short window.
     const samples = sample(
       (): InterleavedSample => ({
-        calibrationMs: sumProfileDurations(walkSynthetic(synthetic)),
+        calibrationMs: runCalibrationWorkload(),
         latest: buildRouteTimelinePage({
           db: loaded.db,
-          thread: loaded.thread,
           page: latestTimelinePage(),
+          registry,
+          thread: loaded.thread,
           variant: "default",
         }),
         walk: buildAllRouteTimelinePages({
           db: loaded.db,
+          registry,
           thread: loaded.thread,
           variant: "default",
         }),
       }),
-    );
-    const calibrationMinMs = Math.min(
-      ...samples.map((entry) => entry.calibrationMs),
     );
     const latestSamples = samples.map((entry) => entry.latest);
     const walkSamples = samples.map((entry) => entry.walk);
@@ -231,11 +310,15 @@ function measureCorpusThread(
       dataBytesMedian: percentile(dataBytes, 0.5),
       dataBytesP95: percentile(dataBytes, 0.95),
       dataBytesTotal: dataBytes.reduce((total, bytes) => total + bytes, 0),
-      calibrationMinMs: round(calibrationMinMs),
+      calibrationMinMs: round(
+        Math.min(...samples.map((entry) => entry.calibrationMs)),
+      ),
       latest: {
         ...buildCost(
-          latestSamples.map((page) => page.profile.totalDurationMs),
-          calibrationMinMs,
+          samples.map((entry) => ({
+            buildMs: entry.latest.profile.totalDurationMs,
+            calibrationMs: entry.calibrationMs,
+          })),
         ),
         rowsProduced: lastLatest.profile.projectedRowCount,
         selectionStrategy: lastLatest.profile.selectionStrategy,
@@ -243,8 +326,10 @@ function measureCorpusThread(
       },
       walk: {
         ...buildCost(
-          walkSamples.map((pages) => sumProfileDurations(pages)),
-          calibrationMinMs,
+          samples.map((entry) => ({
+            buildMs: sumProfileDurations(entry.walk),
+            calibrationMs: entry.calibrationMs,
+          })),
         ),
         pages: lastWalk.length,
         rowsProduced: lastWalk.reduce(
@@ -317,34 +402,52 @@ interface MeasuredThread {
 
 /**
  * Measures up to `MEASUREMENT_ATTEMPTS` times. Without a baseline (write
- * mode) every attempt runs and the cheapest wins; with one, the first passing
- * attempt wins and otherwise the cheapest failing attempt is reported.
+ * mode) every attempt runs and the median-cost attempt wins; with one, the
+ * first passing attempt wins and otherwise the cheapest failing attempt is
+ * reported.
  */
 function measureThreadWithRetries(
   threadId: string,
-  synthetic: SyntheticThread,
+  registry: ProviderRegistryService,
   expected: PerfThreadBaseline | null,
 ): MeasuredThread {
-  let best: MeasuredThread | null = null;
+  const attempts: MeasuredThread[] = [];
   for (let attempt = 1; attempt <= MEASUREMENT_ATTEMPTS; attempt += 1) {
-    const result = measureCorpusThread(threadId, synthetic);
+    const result = measureCorpusThread(threadId, registry);
     const failures = expected === null ? [] : perfChecks(result, expected);
     const candidate: MeasuredThread = { attempts: attempt, failures, result };
-    if (
-      best === null ||
-      normalizedCost(candidate.result) < normalizedCost(best.result)
-    ) {
-      best = candidate;
-    }
     if (expected !== null && failures.length === 0) {
       return candidate;
     }
-    best.attempts = attempt;
+    attempts.push(candidate);
   }
-  if (best === null) {
+  const byCost = [...attempts].sort(
+    (left, right) => normalizedCost(left.result) - normalizedCost(right.result),
+  );
+  const chosen =
+    expected === null ? byCost[Math.floor(byCost.length / 2)] : byCost[0];
+  if (chosen === undefined) {
     throw new Error("no measurement attempts");
   }
-  return best;
+  return { ...chosen, attempts: attempts.length };
+}
+
+function readBaseline(baselinePath: string): PerfBaseline | null {
+  if (!fs.existsSync(baselinePath)) {
+    return null;
+  }
+  const baseline = perfBaselineSchema.parse(
+    JSON.parse(fs.readFileSync(baselinePath, "utf8")),
+  );
+  if (
+    baseline.gate.samplesPerThread !== CURRENT_GATE_SETTINGS.samplesPerThread ||
+    baseline.gate.calibration !== CURRENT_GATE_SETTINGS.calibration
+  ) {
+    throw new Error(
+      `perf-baseline.json was written with ${JSON.stringify(baseline.gate)} but this suite measures with ${JSON.stringify(CURRENT_GATE_SETTINGS)}; rewrite the baseline with BB_PROVIDER_CORPUS_SNAPSHOT=write`,
+    );
+  }
+  return baseline;
 }
 
 const available = corpusAvailable();
@@ -366,21 +469,25 @@ describe.skipIf(!available)("provider corpus timeline perf baseline", () => {
   const corpusDir = resolveProviderCorpusDir() ?? "";
   const snapshotsDir = path.join(corpusDir, "snapshots");
   const baselinePath = path.join(snapshotsDir, "perf-baseline.json");
-  const baseline: PerfBaseline | null =
-    available && mode === "compare" && fs.existsSync(baselinePath)
-      ? perfBaselineSchema.parse(
-          JSON.parse(fs.readFileSync(baselinePath, "utf8")),
-        )
-      : null;
+  const baseline =
+    available && mode === "compare" ? readBaseline(baselinePath) : null;
   const measured = new Map<string, PerfThreadBaseline>();
   const attemptsByThread = new Map<string, number>();
   const failures: string[] = [];
-  let synthetic: SyntheticThread | null = null;
+  let registry: ProviderRegistryService | null = null;
+
+  beforeAll(async () => {
+    if (available) {
+      registry = await createTestProviderRegistry();
+    }
+  });
 
   it.each(corpusThreads.map((thread) => [thread.id, thread.provider] as const))(
     "%s (%s)",
     (threadId) => {
-      synthetic ??= createSyntheticThread(SYNTHETIC_EVENT_COUNT);
+      if (registry === null) {
+        throw new Error("provider registry did not load");
+      }
       let expected: PerfThreadBaseline | null = null;
       if (mode === "compare") {
         if (baseline === null) {
@@ -395,7 +502,7 @@ describe.skipIf(!available)("provider corpus timeline perf baseline", () => {
           );
         }
       }
-      const outcome = measureThreadWithRetries(threadId, synthetic, expected);
+      const outcome = measureThreadWithRetries(threadId, registry, expected);
       measured.set(threadId, outcome.result);
       attemptsByThread.set(threadId, outcome.attempts);
       for (const failure of outcome.failures) {
@@ -408,7 +515,6 @@ describe.skipIf(!available)("provider corpus timeline perf baseline", () => {
   );
 
   afterAll(() => {
-    synthetic?.close();
     if (!available || measured.size === 0) {
       return;
     }
@@ -455,27 +561,37 @@ describe.skipIf(!available)("provider corpus timeline perf baseline", () => {
       ];
     });
     const table = formatMarkdownTable(header, rows);
+    // A perf gate needs a machine that is not oversubscribed: with more
+    // runnable threads than cores even paired ratios drift by 10–20%.
+    const [loadAverage1m = 0] = os.loadavg();
+    const loadNote = `load average ${loadAverage1m.toFixed(1)} on ${os.cpus().length} cores${
+      loadAverage1m > os.cpus().length
+        ? " — OVERSUBSCRIBED, timings are not trustworthy"
+        : ""
+    }`;
     process.stdout.write(
-      `Timeline perf (${mode}, ${BUILD_SAMPLES} samples/thread, default variant; norm = min ÷ calibration min):\n${table}\n`,
+      `Timeline perf (${mode}, ${BUILD_SAMPLES} samples/thread, default variant; norm = min build ÷ min ${CALIBRATION_KIND} workload over interleaved samples; ${loadNote}):\n${table}\n`,
     );
     fs.mkdirSync(snapshotsDir, { recursive: true });
     fs.writeFileSync(path.join(snapshotsDir, "perf-last-run.md"), `${table}\n`);
     if (mode === "write") {
       const written: PerfBaseline = {
-        samplesPerThread: BUILD_SAMPLES,
-        calibrationEventCount: SYNTHETIC_EVENT_COUNT,
+        gate: CURRENT_GATE_SETTINGS,
         threads: Object.fromEntries(measured),
       };
       fs.writeFileSync(baselinePath, `${JSON.stringify(written, null, 2)}\n`);
       return;
     }
-    expect(failures, "timeline perf regressions").toEqual([]);
+    expect(failures, `timeline perf regressions (${loadNote})`).toEqual([]);
   });
 });
 
 describe("timeline build micro-benchmark", () => {
-  it(`projects every page of a ${SYNTHETIC_EVENT_COUNT}-event thread under ${SYNTHETIC_CEILING_MS} ms`, () => {
-    const synthetic = createSyntheticThread(SYNTHETIC_EVENT_COUNT);
+  it(`projects every page of a ${SYNTHETIC_EVENT_COUNT}-event thread under ${SYNTHETIC_CEILING_MS} ms`, async () => {
+    const registry = await createTestProviderRegistry();
+    const synthetic: SyntheticThread = createSyntheticThread(
+      SYNTHETIC_EVENT_COUNT,
+    );
     try {
       expect(synthetic.eventCount).toBeGreaterThanOrEqual(
         SYNTHETIC_EVENT_COUNT,
@@ -484,9 +600,16 @@ describe("timeline build micro-benchmark", () => {
       // walk is what scales with the thread: every page, default variant,
       // summed over the build profiles (SQLite reads, decode, projection,
       // pagination) rather than wall time, so disk noise does not count.
-      const samples = sample(() => walkSynthetic(synthetic));
+      const samples = sample(() =>
+        buildAllRouteTimelinePages({
+          db: synthetic.db,
+          registry,
+          thread: synthetic.thread,
+          variant: "default",
+        }),
+      );
       const durations = samples.map((pages) => sumProfileDurations(pages));
-      const p50 = percentile(durations, 0.5);
+      const minimum = Math.min(...durations);
       const last = samples[samples.length - 1];
       if (last === undefined) {
         throw new Error("no samples");
@@ -497,10 +620,11 @@ describe("timeline build micro-benchmark", () => {
       );
       process.stdout.write(
         `Synthetic ${synthetic.eventCount}-event thread: ${last.length} pages, ${rowsProjected} rows projected, ` +
-          `full walk p50 ${round(p50)} ms (samples ${durations.map((value) => round(value)).join(", ")})\n`,
+          `full walk min ${round(minimum)} ms, p50 ${round(percentile(durations, 0.5))} ms ` +
+          `(samples ${durations.map((value) => round(value)).join(", ")})\n`,
       );
       expect(last.length).toBeGreaterThan(1);
-      expect(p50).toBeLessThan(SYNTHETIC_CEILING_MS);
+      expect(minimum).toBeLessThan(SYNTHETIC_CEILING_MS);
     } finally {
       synthetic.close();
     }

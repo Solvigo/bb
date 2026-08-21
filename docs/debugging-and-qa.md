@@ -155,11 +155,20 @@ covers nothing fails the run because it is stale. Refresh the baseline with
 `write` only when the diff is the intended behavior change, in the PR that
 makes it, and remove the allowlist entries it absorbs.
 
-Perf compare mode passes when each thread's normalized minimum (thread build
-minimum over calibration minimum) is within 10% of the baseline, or within
-5 ms of intrinsic cost for the small latest-page builds, and the median event
-size is within 15%. Each thread gets up to three attempts so a burst of load
-does not fail the run; raw p50/p95 are printed for information.
+Perf compare mode passes when each thread's normalized cost is within 10% of
+the baseline (or within 5 ms of intrinsic cost for the small latest-page
+builds) and the median event size is within 15%. The normalized cost is the
+minimum build time over five samples divided by the minimum time of a fixed
+CPU workload (JSON codec and sorting over a deterministic document) run once
+per sample right before the builds. The workload shares no code with the
+timeline, so a uniform timeline regression still moves the ratio, while
+machine speed and steady load cancel. Each thread gets up to three attempts so
+a burst of load does not fail the run (write mode keeps the median attempt);
+raw p50/p95 are printed for information. The
+baseline records the gate settings and compare mode refuses a baseline
+written with different ones. Run the gate on a machine whose load average is
+below its core count: when the machine is oversubscribed the table header
+says so and even paired ratios drift by 10–20%.
 
 ## Local Cloud
 
