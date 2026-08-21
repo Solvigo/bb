@@ -937,7 +937,7 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("preloads Claude models and defers recovery until the probe lands", async () => {
+  it("keeps a stored model through a cold-cache probe and recovers only once it lands", async () => {
     let resolveOptions: (
       value: SystemExecutionOptionsResponse,
     ) => void = () => {};
@@ -960,21 +960,10 @@ describe("useThreadCreationOptions", () => {
       { wrapper },
     );
 
-    // The curated catalog renders before the host model probe returns, so the
-    // picker is usable immediately instead of empty for the probe's duration.
-    await waitFor(() => {
-      expect(result.current.modelOptions.map((option) => option.value)).toEqual(
-        [
-          "claude-fable-5",
-          "claude-opus-5[1m]",
-          "claude-opus-4-8[1m]",
-          "claude-opus-4-7[1m]",
-          "claude-sonnet-5",
-        ],
-      );
-    });
-    // A provisional catalog is never proof that the stored model was retired,
-    // so the selection must survive until the authoritative probe lands.
+    // No vendored catalog: the picker has no rows until the probe returns,
+    // and an empty pending list is never proof that the stored model was
+    // retired, so the selection survives.
+    expect(result.current.modelOptions).toEqual([]);
     expect(result.current.selectedModel).toBe("claude-mythos-5");
     expect(result.current.executionInputSources.model).toBeUndefined();
 

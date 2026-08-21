@@ -314,7 +314,7 @@ describe("usage limits model", () => {
   });
 
   it("picks the body per status", () => {
-    const config = USAGE_PROVIDERS[0]!;
+    const config = usageProviderConfigs(USAGE_PROVIDER_INFOS)[0]!;
     expect(
       describeUsageBody({
         config,

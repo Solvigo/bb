@@ -210,7 +210,7 @@ describe("useSystemProviders", () => {
 });
 
 describe("useSystemExecutionOptions", () => {
-  it("preloads built-in provider identities while their models are loading", () => {
+  it("waits for the first probe on a cold cache instead of replaying a vendored roster", () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(
       () => new Promise(() => undefined),
     );
@@ -221,13 +221,10 @@ describe("useSystemExecutionOptions", () => {
       { wrapper },
     );
 
-    expect(result.current.isPlaceholderData).toBe(true);
-    expect(result.current.data?.models).toEqual([]);
-    expect(
-      result.current.data?.providers.some(
-        (provider) => provider.id === "codex",
-      ),
-    ).toBe(true);
+    // The app knows no provider by name: with nothing remembered there is no
+    // honest provisional frame, so the query is simply pending.
+    expect(result.current.isPlaceholderData).toBe(false);
+    expect(result.current.data).toBeUndefined();
   });
 
   it("keeps dynamic providers visible while another provider's models load", async () => {
