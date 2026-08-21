@@ -1,7 +1,8 @@
 /**
- * The runtime delta assembler.
+ * The delta assembler.
  *
- * One per bridge-protocol adapter: it consumes `thread/delta` notifications
+ * One per bridge-protocol adapter in the runtime (and one per conformance or
+ * calibration run in the testing kit): it consumes `thread/delta` notifications
  * (parsed semantic deltas from a bridge) and constructs every canonical
  * `ThreadEvent`. The bridge knows the dialect; this module knows the
  * timeline — it mints turn/item ids (entropy+serial, #1224 discipline held
@@ -35,20 +36,20 @@ import type {
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
+import type { BridgeGrammarVersions } from "../handshake.js";
 import type {
-  BridgeGrammarVersions,
   DeltaFileChange,
   DeltaItemKey,
   DeltaItemShape,
   DeltaNoTurnFallback,
   DeltaTextChannel,
   ThreadDelta,
-} from "@bb/provider-bridge-protocol";
+} from "../thread-delta.js";
+import { THREAD_DELTA_KEY_SEPARATOR } from "../thread-delta.js";
 import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_GRAMMAR_V3,
-  THREAD_DELTA_KEY_SEPARATOR,
-} from "@bb/provider-bridge-protocol";
+} from "../version.js";
 
 /**
  * The `thread/delta` grammar range this assembler speaks, reported to every
@@ -66,7 +67,7 @@ import {
   buildEditDiff,
   toOptionalRecord,
   withParentToolCallId,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+} from "../bridge-kit/adapter-utils.js";
 
 declare const unstampedThreadIdBrand: unique symbol;
 

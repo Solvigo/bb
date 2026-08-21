@@ -1353,15 +1353,6 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
     devDependencies:
-      '@bb/agent-runtime':
-        specifier: workspace:*
-        version: link:../../../packages/agent-runtime
-      '@bb/domain':
-        specifier: workspace:*
-        version: link:../../../packages/domain
-      '@bb/provider-bridge-protocol':
-        specifier: workspace:*
-        version: link:../../../packages/provider-bridge-protocol
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10

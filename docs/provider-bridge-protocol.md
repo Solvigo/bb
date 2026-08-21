@@ -41,9 +41,12 @@ cannot resolve them. Everything a bridge compiles against is published at
 **`@get-bb/plugin-sdk/provider-bridge`**: the protocol schemas (including
 the `thread/delta` grammar), the bridge kit (JSON-RPC plumbing, tool-call
 and interaction codecs, visibility, dialect-parsing helpers), and the domain
-vocabulary the params reference. In-repo, those are implemented by
-`@bb/provider-bridge-protocol` and `@bb/domain`; test infrastructure stays
-private in `@bb/provider-bridge-protocol/testing`.
+vocabulary the params reference, and the testing kit a bridge proves itself
+with — the conformance scenarios, the real delta assembler, the JSON-RPC
+harness and the calibration normalizer — is published beside it as
+**`@get-bb/plugin-sdk/provider-bridge/testing`**. In-repo, those are
+implemented by `@bb/provider-bridge-protocol` (the grammar, the
+`assembler`, `conformance` and `testing` subpaths) and `@bb/domain`.
 
 ## Transport
 

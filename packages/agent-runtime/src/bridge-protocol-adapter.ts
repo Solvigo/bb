@@ -38,7 +38,7 @@ import {
 import {
   ASSEMBLER_GRAMMAR_VERSIONS,
   createDeltaAssembler,
-} from "./delta-assembler.js";
+} from "@bb/provider-bridge-protocol/assembler";
 import { z } from "zod";
 import type {
   AdapterCommand,

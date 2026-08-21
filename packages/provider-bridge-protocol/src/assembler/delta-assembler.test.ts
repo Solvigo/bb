@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import type { DeltaItemShape, ThreadDelta } from "@bb/provider-bridge-protocol";
+import type { DeltaItemShape, ThreadDelta } from "../thread-delta.js";
 import {
   createDeltaAssembler,
   diffCumulativeText,
   type DeltaAssembler,
 } from "./delta-assembler.js";
-import { createBridgeDeltaEventCollector } from "./test/bridge-delta-assembly.js";
+import { createBridgeDeltaEventCollector } from "../testing/bridge-delta-assembly.js";
 
 const THREAD_ID = "thr_1";
 const CREQ = "creq_abcdefghjk" as ClientTurnRequestId;
