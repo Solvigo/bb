@@ -1,6 +1,5 @@
 import {
   type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
   type Ref,
   type ReactNode,
 } from "react";
@@ -16,11 +15,9 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar.js";
-import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import { TowerTopBar } from "@/components/tower/TowerTopBar";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
-import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
-import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import {
   resolveAutomationBreadcrumbs,
@@ -40,7 +37,7 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
+import { clearResizeCursor } from "@/lib/resizeCursor";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
@@ -70,7 +67,6 @@ import {
   getRootComposeRoutePath,
   getThreadRoutePath,
   isProjectlessProjectId,
-  isToolsRoutePath,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -148,7 +144,6 @@ interface SidebarStateBridgeProps {
   children: ReactNode;
 }
 
-type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
 type SidebarProviderStyle = CSSProperties & {
@@ -433,12 +428,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, [location.pathname, setResourceRouteLabel]);
   const navigate = useNavigate();
-  const {
-    appRoutePath,
-    settingsRoutePath,
-    toolsBackRoutePath,
-    toolsRoutePath,
-  } = useAppSettingsRouteMemory();
+  // CARVE PHASE 3: only the settings path is still read here. The other three were the rail's
+  // back-links (app, tools, tools-back) and the Tower bar links to what it needs directly.
+  const { settingsRoutePath } = useAppSettingsRouteMemory();
   useEffect(
     () =>
       wsManager.onThreadOpen((signal) => {
@@ -485,12 +477,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   // title in the center, the registration's headerContent as the actions.
   const { navPanels } = usePluginSlots();
   // Global settings routes swap the app sidebar for the settings sidebar.
-  const isGlobalSettingsView =
-    matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
   const systemConfigQuery = useSystemConfig();
   const toolsHubEnabled = systemConfigQuery.data?.experiments.toolsHub === true;
-  const isGlobalToolsView =
-    toolsHubEnabled && isToolsRoutePath(location.pathname);
   const pluginPanelMatch = matchPath(
     PLUGIN_PANEL_ROUTE_PATH,
     location.pathname,
@@ -717,18 +705,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     : "none";
   useFaviconBadge(faviconBadge);
 
-  const handleResizeMouseDown = useCallback(
-    (event: SidebarResizeMouseEvent) => {
-      event.preventDefault();
-      setIsSidebarResizing(true);
-      startXRef.current = event.clientX;
-      startWidthRef.current = liveWidthRef.current;
-      document.body.classList.add("sidebar-resizing");
-      applyResizeCursor("horizontal");
-      document.body.style.userSelect = "none";
-    },
-    [],
-  );
+  // CARVE PHASE 3: the sidebar resize drag went with the rail — there is nothing to resize.
 
   const finishSidebarResize = useCallback(() => {
     if (animationFrameRef.current !== null) {
@@ -808,35 +785,32 @@ export function AppLayout({ children }: AppLayoutProps) {
               providerRef={providerRef}
               style={sidebarProviderStyle}
             >
-              {isGlobalSettingsView ? (
-                <SettingsSidebar
-                  onResizeMouseDown={handleResizeMouseDown}
-                  isResizing={isSidebarResizing}
-                  showTopReserve={true}
-                  appRoutePath={appRoutePath}
-                />
-              ) : isGlobalToolsView ? (
-                <ToolsSidebar
-                  onResizeMouseDown={handleResizeMouseDown}
-                  isResizing={isSidebarResizing}
-                  showTopReserve={true}
-                  appRoutePath={toolsBackRoutePath}
-                />
-              ) : (
-                <AppSidebar
-                  onResizeMouseDown={handleResizeMouseDown}
-                  isResizing={isSidebarResizing}
-                  showTopReserve={true}
-                  settingsRoutePath={settingsRoutePath}
-                  toolsRoutePath={toolsHubEnabled ? toolsRoutePath : undefined}
-                />
-              )}
+              {/* ── CARVE PHASE 3 ────────────────────────────────────────────────────────────────
+                  THE RAIL IS NO LONGER RENDERED. Three sidebars stood here — AppSidebar for the app,
+                  SettingsSidebar and ToolsSidebar for their own sections — and the upper-level
+                  dashboard replaces all three with one slim bar below.
+
+                  SETTINGS KEEPS ITS OWN NAVIGATION: SettingsSidebar is built on the generic
+                  SectionSidebar, which is collision (b) in the carve map and survives — the settings
+                  route renders its own section list inside its page, so removing the rail does not
+                  cost settings its navigation.
+
+                  WHY THE FILES ARE STILL ON DISK AT THIS COMMIT, stated rather than left to look like
+                  hiding: three of the rail's modules are shared vocabulary that KEEPS import
+                  (`sidebarRowClasses`, `sortableMotion`, `useSidebarReorderDnd` for the plugin nav
+                  host; `sidebarCollapsedAtoms` for the project actions provider and a cache owner;
+                  `ThreadRow` for the compose screen's mobile recents), and the rail also owns the
+                  thread-search panel and the `thread.search` command. Deleting 11,000 lines in the same
+                  commit that changes the chrome would have meant improvising answers to those — the
+                  away-drive's own rule is to stop and report rather than improvise a hole. The chrome
+                  changes here; the deletion is priced in the report and lands next. */}
               <SidebarInset>
                 <div
                   ref={contentShellRef}
                   data-testid="app-layout-content-shell"
                   className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
                 >
+                  <TowerTopBar />
                   {showHeader ? (
                     <AppHeader
                       usesDesktopChrome={usesDesktopChrome}
