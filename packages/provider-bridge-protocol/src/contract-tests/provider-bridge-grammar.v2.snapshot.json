@@ -88,22 +88,6 @@
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },
-    "message.close": {
-      "kind": "required",
-      "channel": "required",
-      "streamKey": "optional",
-      "text": "optional",
-      "parentRef": "optional",
-      "noTurnFallback": "optional"
-    },
-    "message.delta": {
-      "kind": "required",
-      "channel": "required",
-      "streamKey": "required",
-      "text": "required",
-      "parentRef": "optional",
-      "noTurnFallback": "optional"
-    },
     "provider.error": {
       "kind": "required",
       "message": "required",
@@ -201,18 +185,6 @@
       "last": "required",
       "modelContextWindow": "required",
       "providerTurnId": "optional"
-    },
-    "usage.exact": {
-      "kind": "required",
-      "total": "required",
-      "last": "required",
-      "modelContextWindow": "required",
-      "providerTurnId": "optional"
-    },
-    "usage.turn": {
-      "kind": "required",
-      "tokens": "required",
-      "modelContextWindow": "optional"
     }
   },
   "itemShapes": {

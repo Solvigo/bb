@@ -82,8 +82,13 @@ Handshake capabilities are **session-behavior facts** (`sessionRestore`,
 the code that implements them, so they cannot drift from behavior.
 `grammarVersions` is the inclusive `[min, max]` range of the `thread/delta`
 grammar the bridge speaks (default `[2, 2]`: a bridge that says nothing
-speaks exactly the version it negotiated), which is how the vocabulary can
-grow without a daemon bump. `steerMode` says whether `turn/steer` is
+speaks the grammar that shipped with the protocol version it negotiated),
+which is how the vocabulary can change without a protocol bump. The runtime
+states its assembler's range in the `initialize` params and both sides use
+the highest common version; today the assembler speaks **v3 only**
+(`[3, 3]`), so every bridge reports `[3, 3]` and a bridge whose range
+misses 3 — including one that predates the field — is refused at spawn with
+a legible error. `steerMode` says whether `turn/steer` is
 injected into the live model loop (`inject`) or held for the next prompt
 boundary (`queue`, the default and the conservative reading). The runtime never sends a
 capability-gated method to a bridge that did not advertise it. A handshake
@@ -201,13 +206,16 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
 - **Settlement.** `session.ended` and settling errors close open turns and
   items with the right statuses.
 
-### Grammar v3 (accepted beside v2)
+### Grammar v3
 
 The target provider-plugin surface ([provider-plugin-api.md](provider-plugin-api.md))
-grows the delta vocabulary; every addition is a new union member or an
-optional field, so the protocol version stays at 2 and a v2 bridge's deltas
-validate unchanged. A bridge that emits any of it reports
-`grammarVersions: [2, 3]`.
+grew the delta vocabulary into grammar v3: new union members and optional
+fields beside the v2 grammar, plus one streaming dialect and one usage
+dialect replacing v2's two of each (`message.delta`/`message.close` and
+`usage.turn`/`usage.exact` are deleted). The protocol version stays at 2 —
+the envelope and the method vocabulary did not change — and the grammar
+range is what gates a bridge: every bridge in this repo reports
+`grammarVersions: [3, 3]`.
 
 - **Core item shapes** `fileRead`, `search` (`mode: content | path | list`),
   `delegation` (`childRef`, `label`, `background`, `summary?`; one shape for

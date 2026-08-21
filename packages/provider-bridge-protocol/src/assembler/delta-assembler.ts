@@ -9,8 +9,8 @@
  * centrally), correlates accepted input with the queue-until-turn-opens and
  * claim-if-idle terminal rules, synthesizes `item/started` for delta-first
  * streams, pairs item opens with closes (echoing started fields), diffs
- * cumulative command-output snapshots, accumulates token usage, settles
- * turns and items on session end, and coalesces streamed-text events per
+ * cumulative command-output snapshots, settles turns and items on session
+ * end, and coalesces streamed-text events per
  * flush window (`textDeltaFlushMs`, the same trailing-edge no-timer
  * discipline as the progress throttle) so chatty providers stop producing
  * one timeline event per token.
@@ -33,7 +33,6 @@ import type {
   ThreadEventItem,
   ThreadEventItemPresentation,
   ThreadEventItemStatus,
-  ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type { BridgeGrammarVersions } from "../handshake.js";
@@ -46,21 +45,19 @@ import type {
   ThreadDelta,
 } from "../thread-delta.js";
 import { THREAD_DELTA_KEY_SEPARATOR } from "../thread-delta.js";
-import {
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  THREAD_DELTA_GRAMMAR_V3,
-} from "../version.js";
+import { THREAD_DELTA_GRAMMAR_V3 } from "../version.js";
 
 /**
  * The `thread/delta` grammar range this assembler speaks, reported to every
  * bridge in the `initialize` params so the two sides negotiate a version
- * (see `negotiateGrammarVersion` in the protocol). `[2, 3]`: every v2 dialect
- * still assembles, and the v3 core kinds (`fileRead`, `search`, `delegation`,
- * `planSteps`), `presentation`, and extension kinds are constructed below, so
- * a `[2, 3]` bridge negotiates 3 and may emit them.
+ * (see `negotiateGrammarVersion` in the protocol). `[3, 3]`: the v2 dialects
+ * (`message.*`, `usage.turn`/`usage.exact`) are deleted, so a bridge whose
+ * range lacks 3 — including one that predates `grammarVersions` and reads as
+ * `[2, 2]` — is refused at the handshake with a legible error instead of
+ * connecting to an assembler that would drop its every stream.
  */
 export const ASSEMBLER_GRAMMAR_VERSIONS: BridgeGrammarVersions = [
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_GRAMMAR_V3,
 ];
 import {
@@ -207,21 +204,12 @@ interface EventSink {
   push(...newEvents: ThreadEvent[]): void;
 }
 
-interface OpenStreamState {
-  bbItemId: string;
-  channel: "assistant" | "reasoning";
-  parentToolCallId: string | undefined;
-  text: string;
-}
-
 interface ThreadAssemblyState {
   currentTurnId: string | undefined;
   lastTurnId: string | undefined;
   pendingAccepted: ClientTurnRequestId[];
   /** Open (started, unsettled) items keyed by their provider join key. */
   openItemsByKey: Map<string, OpenItemState>;
-  /** Open message streams keyed by parentRef/channel/streamKey. */
-  openStreamsByKey: Map<string, OpenStreamState>;
   /** Last cumulative command-output snapshot per item key. */
   commandSnapshotsByKey: Map<string, string>;
   /** Both-way provider↔bb item id maps for command-plane reverse lookup. */
@@ -238,7 +226,6 @@ interface ThreadAssemblyState {
    * families like acp fs-writes legitimately close the same key repeatedly).
    */
   settledItemKeys: Set<string>;
-  cumulativeTokens: ThreadEventTokenUsageBreakdown;
   /**
    * Central progress throttling (one emission per item key per policy
    * interval): last emission time per key — seeded by `item.open`, so a
@@ -324,18 +311,6 @@ function itemKeyString(key: DeltaItemKey): string {
   ].join(SEP);
 }
 
-function streamKeyString(args: {
-  channel: string;
-  parentRef: string | undefined;
-  streamKey: string | undefined;
-}): string {
-  return [
-    args.parentRef ?? "root",
-    args.channel,
-    args.streamKey ?? args.channel,
-  ].join(SEP);
-}
-
 /**
  * Grammar v3 presentation rides the lifecycle delta, not the shape, and is
  * persisted on the canonical item so the row renders after the plugin is
@@ -406,20 +381,12 @@ export function createDeltaAssembler(
       lastTurnId: undefined,
       pendingAccepted: [],
       openItemsByKey: new Map(),
-      openStreamsByKey: new Map(),
       commandSnapshotsByKey: new Map(),
       bbItemIdByProviderItemId: new Map(),
       providerItemIdByBbItemId: new Map(),
       bbTurnIdByProviderTurnId: new Map(),
       providerTurnIdByBbTurnId: new Map(),
       settledItemKeys: new Set(),
-      cumulativeTokens: {
-        totalTokens: 0,
-        inputTokens: 0,
-        cachedInputTokens: 0,
-        outputTokens: 0,
-        reasoningOutputTokens: 0,
-      },
       progressLastEmitByKey: new Map(),
       pendingProgressByKey: new Map(),
       textLastEmitByStream: new Map(),
@@ -697,7 +664,6 @@ export function createDeltaAssembler(
         state.pendingProgressByKey.delete(key);
       }
     }
-    state.openStreamsByKey.clear();
     state.commandSnapshotsByKey.clear();
   }
 
@@ -1398,12 +1364,6 @@ export function createDeltaAssembler(
     state: ThreadAssemblyState,
     parentRef: string | undefined,
   ): void {
-    const prefix = `${parentRef ?? "root"}${SEP}assistant${SEP}`;
-    for (const key of [...state.openStreamsByKey.keys()]) {
-      if (key.startsWith(prefix)) {
-        state.openStreamsByKey.delete(key);
-      }
-    }
     for (const [keyStr, open] of [...state.openItemsByKey]) {
       if (
         open.key.providerItemId === undefined &&
@@ -2110,114 +2070,6 @@ export function createDeltaAssembler(
         return;
       }
 
-      case "message.delta": {
-        const turnId = state.currentTurnId;
-        if (turnId === undefined) {
-          pushNoTurnFallback(
-            state,
-            delta.noTurnFallback,
-            delta.parentRef,
-            events,
-          );
-          return;
-        }
-        const streamKey = streamKeyString({
-          channel: delta.channel,
-          parentRef: delta.parentRef,
-          streamKey: delta.streamKey,
-        });
-        const parentToolCallId = mapParentRef(state, delta.parentRef);
-        let stream = state.openStreamsByKey.get(streamKey);
-        if (stream === undefined) {
-          const bbItemId = mintItemId();
-          stream = {
-            bbItemId,
-            channel: delta.channel,
-            parentToolCallId,
-            text: "",
-          };
-          state.openStreamsByKey.set(streamKey, stream);
-          const item: ThreadEventItem =
-            delta.channel === "assistant"
-              ? { type: "agentMessage", id: bbItemId, text: "" }
-              : { type: "reasoning", id: bbItemId, summary: [], content: [] };
-          events.push({
-            type: "item/started",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            item: withParentToolCallId(item, parentToolCallId),
-          });
-        }
-        stream.text += delta.text;
-        events.push({
-          type:
-            delta.channel === "assistant"
-              ? "item/agentMessage/delta"
-              : "item/reasoning/textDelta",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          itemId: stream.bbItemId,
-          delta: delta.text,
-          ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-        });
-        return;
-      }
-
-      case "message.close": {
-        const streamKey = streamKeyString({
-          channel: delta.channel,
-          parentRef: delta.parentRef,
-          streamKey: delta.streamKey,
-        });
-        const stream = state.openStreamsByKey.get(streamKey);
-        const turnId = state.currentTurnId;
-        if (turnId === undefined) {
-          pushNoTurnFallback(
-            state,
-            delta.noTurnFallback,
-            delta.parentRef,
-            events,
-          );
-          return;
-        }
-        // Settling always releases the stream: later text mints a fresh item
-        // even when the settle emits nothing (whitespace-only accumulation).
-        state.openStreamsByKey.delete(streamKey);
-        const finalText = delta.text ?? stream?.text;
-        if (finalText === undefined || finalText.length === 0) {
-          return;
-        }
-        // Empty-after-trim suppression for accumulated settles (the ACP
-        // translators' rule, held centrally): a stream that only ever
-        // received whitespace completes no item. Provider-final text is
-        // emitted as given.
-        if (delta.text === undefined && finalText.trim().length === 0) {
-          return;
-        }
-        const bbItemId = stream?.bbItemId ?? mintItemId();
-        const parentToolCallId =
-          stream?.parentToolCallId ?? mapParentRef(state, delta.parentRef);
-        const item: ThreadEventItem =
-          delta.channel === "assistant"
-            ? { type: "agentMessage", id: bbItemId, text: finalText }
-            : {
-                type: "reasoning",
-                id: bbItemId,
-                summary: [],
-                content: [finalText],
-              };
-        events.push({
-          type: "item/completed",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          item: withParentToolCallId(item, parentToolCallId),
-        });
-        return;
-      }
-
       case "command.outputSnapshot": {
         if (state.currentTurnId === undefined) {
           pushNoTurnFallback(
@@ -2276,69 +2128,6 @@ export function createDeltaAssembler(
             modelContextWindow: delta.modelContextWindow,
           },
         });
-        return;
-      }
-
-      case "usage.turn": {
-        const turnId = currentOrLastTurnId(state);
-        if (turnId === undefined) {
-          return;
-        }
-        state.cumulativeTokens.totalTokens += delta.tokens.totalTokens;
-        state.cumulativeTokens.inputTokens += delta.tokens.inputTokens;
-        state.cumulativeTokens.cachedInputTokens +=
-          delta.tokens.cachedInputTokens;
-        state.cumulativeTokens.outputTokens += delta.tokens.outputTokens;
-        state.cumulativeTokens.reasoningOutputTokens +=
-          delta.tokens.reasoningOutputTokens;
-        events.push({
-          type: "thread/tokenUsage/updated",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          tokenUsage: {
-            total: { ...state.cumulativeTokens },
-            last: { ...delta.tokens },
-            modelContextWindow: delta.modelContextWindow ?? null,
-          },
-        });
-        return;
-      }
-
-      case "usage.exact": {
-        // The provider accumulates its own totals: fan the snapshot out
-        // verbatim to both usage events (codex's tokenUsage handling).
-        const turnId =
-          delta.providerTurnId !== undefined
-            ? resolveVouchedTurnId(state, delta.providerTurnId)
-            : currentOrLastTurnId(state);
-        if (turnId === undefined) {
-          return;
-        }
-        events.push(
-          {
-            type: "thread/tokenUsage/updated",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            tokenUsage: {
-              total: { ...delta.total },
-              last: { ...delta.last },
-              modelContextWindow: delta.modelContextWindow,
-            },
-          },
-          {
-            type: "thread/contextWindowUsage/updated",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            contextWindowUsage: {
-              usedTokens: delta.last.totalTokens,
-              modelContextWindow: delta.modelContextWindow,
-              estimated: false,
-            },
-          },
-        );
         return;
       }
 
@@ -2607,28 +2396,6 @@ export function createDeltaAssembler(
         if (turnId === undefined) {
           return;
         }
-        for (const stream of state.openStreamsByKey.values()) {
-          const item: ThreadEventItem =
-            stream.channel === "assistant"
-              ? {
-                  type: "agentMessage",
-                  id: stream.bbItemId,
-                  text: stream.text,
-                }
-              : {
-                  type: "reasoning",
-                  id: stream.bbItemId,
-                  summary: [],
-                  content: stream.text.length === 0 ? [] : [stream.text],
-                };
-          events.push({
-            type: "item/completed",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            item: withParentToolCallId(item, stream.parentToolCallId),
-          });
-        }
         for (const open of state.openItemsByKey.values()) {
           // Thread-attached items (background tasks, background delegations)
           // have a provider-owned lifecycle that outlives sessions; bridges
@@ -2733,7 +2500,6 @@ export function createDeltaAssembler(
           continue;
         }
         if (
-          delta.kind === "message.close" ||
           delta.kind === "item.textClose" ||
           delta.kind === "item.close" ||
           delta.kind === "session.ended"

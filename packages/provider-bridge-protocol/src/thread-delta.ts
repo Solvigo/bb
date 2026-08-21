@@ -1,6 +1,6 @@
 /**
  * The narrow-grammar `thread/delta` notification: the protocol's one and only
- * timeline lane (protocol version 2).
+ * timeline lane (protocol version 2, grammar v3).
  *
  * A bridge emits parsed *semantic deltas* instead of finished `ThreadEvent`s:
  * the runtime's delta assembler owns turn/item id minting, accepted-input
@@ -9,13 +9,17 @@
  * (tool-call ids, stream keys, parent refs, provider turn ids) so the
  * assembler can hold the bidirectional provider↔bb id maps.
  *
- * Grammar v3 (docs/provider-plugin-api.md §3) is accepted beside v2 in this
- * schema: the core vocabulary gains `fileRead`, `search`, `delegation`,
- * `planSteps` and the open `extension` shape, every `item.open`/`item.close`
- * may carry a declarative `presentation`, and `extension.state` carries
- * plugin-declared thread state. Every v3 addition is optional or a new union
- * member, so a v2 bridge's deltas still validate unchanged; the workstream
- * that deletes the v2 paths makes `presentation` required.
+ * Grammar v3 (docs/provider-plugin-api.md §3): the core vocabulary has
+ * `fileRead`, `search`, `delegation`, `planSteps` and the open `extension`
+ * shape, every `item.open`/`item.close` may carry a declarative
+ * `presentation`, `extension.state` carries plugin-declared thread state,
+ * and there is one streaming dialect (`item.textDelta`/`item.textClose`)
+ * and one usage dialect (`usage` + `contextWindow`). The v2 dialects
+ * (`message.delta`/`message.close`, `usage.turn`/`usage.exact`) are gone:
+ * every bridge in this repo emits v3 and a bridge that reports a grammar
+ * range without 3 is refused at the handshake. `presentation` stays optional
+ * until every first-party bridge attaches it; the stabilization pass makes
+ * it required.
  */
 import {
   backgroundTaskStatusSchema,
@@ -328,9 +332,6 @@ export const deltaProgressSnapshotSchema = z.discriminatedUnion("type", [
 ]);
 export type DeltaProgressSnapshot = z.infer<typeof deltaProgressSnapshotSchema>;
 
-export const deltaMessageChannelSchema = z.enum(["assistant", "reasoning"]);
-export type DeltaMessageChannel = z.infer<typeof deltaMessageChannelSchema>;
-
 /**
  * The streamed-text channels: which text item a stream feeds and which of its
  * fields the text lands in. `agentMessage` and `plan` items have one text;
@@ -531,38 +532,6 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
-   * Streamed message text. The assembler synthesizes `item/started` on
-   * delta-first opens and accumulates the stream text. v2 only: superseded
-   * by `item.textDelta` keyed by `{ channel: streamKey, parentRef }`; deleted
-   * with the v2 paths.
-   */
-  z.object({
-    kind: z.literal("message.delta"),
-    channel: deltaMessageChannelSchema,
-    streamKey: deltaKeyPartSchema,
-    text: z.string(),
-    parentRef: deltaKeyPartSchema.optional(),
-    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
-  }),
-
-  /**
-   * Close a message stream. `text` present: settle with the provider's final
-   * text (preferred over accumulation). `text` absent: settle with the
-   * accumulated stream text (ACP-style). Silent stream release needs no
-   * delta: a tool `item.open` in the same scope auto-detaches the open
-   * assistant stream so later text mints a fresh item. v2 only: superseded
-   * by `item.textClose`; deleted with the v2 paths.
-   */
-  z.object({
-    kind: z.literal("message.close"),
-    channel: deltaMessageChannelSchema,
-    streamKey: deltaKeyPartSchema.optional(),
-    text: z.string().optional(),
-    parentRef: deltaKeyPartSchema.optional(),
-    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
-  }),
-
-  /**
    * Streamed text — the one streaming dialect. Every text stream is keyed
    * like every other item: by the provider's own item id when the provider
    * names its message items (codex), or by a bridge-chosen `key.channel`
@@ -639,32 +608,6 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    */
   z.object({
     kind: z.literal("usage"),
-    total: threadEventTokenUsageBreakdownSchema,
-    last: threadEventTokenUsageBreakdownSchema,
-    modelContextWindow: z.number().nullable(),
-    providerTurnId: providerTurnIdSchema.optional(),
-  }),
-
-  /**
-   * Last-turn usage; the assembler accumulates the running thread totals.
-   * v2 only: superseded by `usage`, which carries the bridge-accumulated
-   * total; deleted with the v2 paths.
-   */
-  z.object({
-    kind: z.literal("usage.turn"),
-    tokens: threadEventTokenUsageBreakdownSchema,
-    modelContextWindow: z.number().nullable().optional(),
-  }),
-
-  /**
-   * Exact provider-reported usage (codex): the provider already accumulates,
-   * so the assembler fans the snapshot out verbatim to both usage events
-   * (`thread/tokenUsage/updated` + `thread/contextWindowUsage/updated`, the
-   * context meter reading `last.totalTokens`). v2 only: superseded by
-   * `usage` + `contextWindow`; deleted with the v2 paths.
-   */
-  z.object({
-    kind: z.literal("usage.exact"),
     total: threadEventTokenUsageBreakdownSchema,
     last: threadEventTokenUsageBreakdownSchema,
     modelContextWindow: z.number().nullable(),

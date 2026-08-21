@@ -15,6 +15,7 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   modelListParamsSchema,
   experimental_providerMaintenanceParamsSchema,
@@ -607,12 +608,10 @@ async function handleRequest(
           threadGoalClear: false,
           fork: "checkpoint",
           approvalEnforcedBy: "runtime",
-          // Pi emits the v2 grammar only, and delivers a steer inside the
-          // live run (between assistant turns), which is `inject`.
-          grammarVersions: [
-            PROVIDER_BRIDGE_PROTOCOL_VERSION,
-            PROVIDER_BRIDGE_PROTOCOL_VERSION,
-          ],
+          // Pi emits the v3 grammar (one streaming dialect, one usage
+          // dialect), and delivers a steer inside the live run (between
+          // assistant turns), which is `inject`.
+          grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "inject",
         },
       };

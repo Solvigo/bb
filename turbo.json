@@ -405,7 +405,28 @@
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
+    // The thread.stop race suite builds the scripted echo bridge artifact and
+    // serves it through the daemon's artifact cache, so it needs the SDK dist
+    // for the same reason as @bb/server#test.
+    "@bb/host-daemon#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
     },
     // Builds real plugin host artifacts (the builtin artifacts suite, plus the
     // fixture that pins the published bridge surface as bundled-not-stubbed),

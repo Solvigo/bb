@@ -17,6 +17,10 @@
  * - `call_tool:<name>` / `call_tool_unresolved:<name>` — call a dynamic tool
  *   on `item/tool/call` with a resolved (vouched) or unresolved (null) turn id
  *   and answer `Tool called: <name>`.
+ * - `hold_turn` — open the turn and never settle it (a stop interrupts it).
+ * - `fail_turn:<text>` / `prestart_fail:<text>` — raise a provider error
+ *   carrying the text (underscores read as spaces) and settle the turn as
+ *   failed, after or before the turn opens.
  * - otherwise the turn answers `Response to: <prompt text>`.
  *
  * Process- and session-level behaviour (archived sessions, failing commands,
@@ -42,6 +46,7 @@ import {
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   initializeParamsSchema,
   modelListParamsSchema,
@@ -76,6 +81,7 @@ const scriptedMethodSchema = z.enum([
   "turn/steer",
   "thread/stop",
   "thread/discard",
+  "thread/archive",
   "thread/unarchive",
   "thread/name/set",
   "thread/goal/clear",
@@ -109,18 +115,63 @@ export const scriptedEchoOptionsSchema = z
     exitAfter: scriptedMethodSchema.optional(),
     /** Answer these methods with METHOD_NOT_FOUND. */
     unsupportedMethods: z.array(scriptedMethodSchema).optional(),
-    /** Answer these methods with a -32000 error carrying this message. */
+    /**
+     * Answer these methods with a JSON-RPC error carrying this message and
+     * `code` (default -32000; e.g. NO_ACTIVE_TURN to reject a steer the way a
+     * provider with no live turn does). With `times`, only the first that
+     * many calls of the method fail (counted per process) and later ones are
+     * handled normally — a transient failure.
+     */
     failMethods: z
-      .array(z.object({ method: scriptedMethodSchema, message: z.string() }))
+      .array(
+        z.object({
+          method: scriptedMethodSchema,
+          message: z.string(),
+          code: z.number().int().optional(),
+          times: z.number().int().positive().optional(),
+        }),
+      )
       .optional(),
     /** Delay the `thread.goalCleared` delta by this many ms after the answer. */
     goalClearNotifyDelayMs: z.number().int().nonnegative().optional(),
+    /**
+     * The `cleared` value `thread/goal/clear` answers (default true). The
+     * `thread.goalCleared` delta is emitted either way: a false answer models
+     * a provider that persisted the clear after it had already responded.
+     */
+    goalClearReportsCleared: z.boolean().optional(),
     /** Accept `turn/start` but never open the turn (the watchdog case). */
     swallowTurnStart: z.boolean().optional(),
     /** Report `sessionRestorable` on every identity result. */
     sessionRestorable: z.boolean().optional(),
     /** Prefix the echoed user message as a provider warning (test noise). */
     warnOnTurn: z.boolean().optional(),
+    /**
+     * The bb thread id the bridge puts on its `item/tool/call` requests
+     * instead of the session's own — a provider whose thread hint disagrees
+     * with its provider-thread identity.
+     */
+    toolCallThreadIdHint: z.string().min(1).optional(),
+    /**
+     * The `approvalEnforcedBy` the handshake reports (default `runtime`).
+     * Process-level only (`SCRIPTED_ECHO_OPTIONS`): `initialize` carries no
+     * session options.
+     */
+    approvalEnforcedBy: z.enum(["runtime", "provider"]).optional(),
+    /**
+     * Mint provider thread ids as `prov-<pid>-<n>` and prefix every answer
+     * with `pid:<pid>:`, so a test can tell which bridge process served a
+     * thread (process-per-thread providers, restarts, reaping).
+     */
+    identifyProcess: z.boolean().optional(),
+    /** Refuse `thread/stop` for these bb thread ids (-32000). */
+    failStopForThreadIds: z.array(z.string().min(1)).optional(),
+    /**
+     * On SIGTERM, emit a late `thread/identity` for every open session
+     * before exiting — a provider that keeps talking while it is shut down.
+     * Process-level (`SCRIPTED_ECHO_OPTIONS`).
+     */
+    emitIdentityOnSigterm: z.boolean().optional(),
   })
   .strict();
 export type ScriptedEchoOptions = z.infer<typeof scriptedEchoOptionsSchema>;
@@ -132,6 +183,23 @@ const SCRIPTED_OPTIONS_ENV = "SCRIPTED_ECHO_OPTIONS";
  * (session construction options, dynamic tools, skill roots, turn input).
  */
 const SCRIPTED_RECORD_PATH_ENV = "SCRIPTED_ECHO_RECORD_PATH";
+/**
+ * When set, the bridge appends one line per process-lifecycle step to this
+ * file: `spawn:<pid>`, `exit:<pid>` (on SIGTERM), and
+ * `<method>:<pid>:<threadId>` for thread/start, thread/resume, turn/start
+ * and thread/stop — the per-process view the request record (which has no
+ * pid) cannot give.
+ */
+const SCRIPTED_PROCESS_LOG_PATH_ENV = "SCRIPTED_ECHO_PROCESS_LOG_PATH";
+
+function logProcessStep(step: string): void {
+  const logPath = process.env[SCRIPTED_PROCESS_LOG_PATH_ENV];
+  if (logPath === undefined || logPath.length === 0) {
+    return;
+  }
+  appendFileSync(logPath, `${step}\n`);
+}
+logProcessStep(`spawn:${process.pid}`);
 
 function readEnvOptions(): ScriptedEchoOptions {
   const raw = process.env[SCRIPTED_OPTIONS_ENV];
@@ -201,6 +269,8 @@ type PendingReply =
 const sessions = new Map<string, Session>();
 const pendingReplies = new Map<JsonRpcId, PendingReply>();
 const unarchivedSessionIds = new Set<string>();
+/** How many times each method has failed under a bounded `failMethods` entry. */
+const scriptedFailureCounts = new Map<ScriptedMethod, number>();
 let discardFailed = false;
 let providerThreadCounter = 0;
 let outboundRequestCounter = 0;
@@ -272,6 +342,14 @@ interface TurnPlan {
   responseText: string;
   toolName: string | null;
   toolTurnResolved: boolean;
+  /** `hold_turn`: open the turn and never settle it (until a stop). */
+  holdTurn: boolean;
+  /**
+   * `fail_turn:<text>`: open the turn, raise a provider error carrying the
+   * text, and settle the turn as failed. `prestart_fail:<text>`: raise the
+   * error before the turn opens (a turnless, thread-scoped error).
+   */
+  failure: { text: string; beforeTurn: boolean } | null;
 }
 
 function promptText(input: readonly PromptInput[]): string {
@@ -295,6 +373,12 @@ function parseTurnPlan(inputText: string): TurnPlan {
     /(?:^|\s)call_tool:([^\s]+)(?:\s|$)/u.exec(inputText);
   const approvalKind =
     APPROVAL_KINDS.find((kind) => kind === approvalMatch?.[1]) ?? null;
+  const holdMatch = /(?:^|\s)hold_turn(?:\s|$)/u.exec(inputText);
+  const failMatch = /(?:^|\s)fail_turn:([^\s]+)(?:\s|$)/u.exec(inputText);
+  const prestartFailMatch = /(?:^|\s)prestart_fail:([^\s]+)(?:\s|$)/u.exec(
+    inputText,
+  );
+  const failureText = prestartFailMatch?.[1] ?? failMatch?.[1];
   return {
     approvalKind,
     delayMs: delayMatch?.[1] === undefined ? 0 : Number(delayMatch[1]),
@@ -303,6 +387,15 @@ function parseTurnPlan(inputText: string): TurnPlan {
       inputText.length > 0 ? `Response to: ${inputText}` : "Response complete",
     toolName: toolMatch?.[1] ?? null,
     toolTurnResolved: unresolvedToolMatch === null,
+    holdTurn: holdMatch !== null,
+    failure:
+      failureText === undefined
+        ? null
+        : {
+            // Underscores stand in for spaces so the text rides one token.
+            text: failureText.replaceAll("_", " "),
+            beforeTurn: prestartFailMatch !== null,
+          },
   };
 }
 
@@ -409,13 +502,17 @@ function clearActiveTurn(session: Session): void {
 function completeTurn(
   session: Session,
   status: "completed" | "interrupted" | "failed",
-  responseText: string,
+  text: string,
 ): void {
   const turn = session.activeTurn;
   if (turn === null) {
     return;
   }
   clearActiveTurn(session);
+  const responseText =
+    session.options.identifyProcess === true
+      ? `pid:${process.pid}:${text}`
+      : text;
   const deltas: ThreadDelta[] = [];
   if (status === "completed") {
     session.messageCount += 1;
@@ -466,9 +563,28 @@ function beginTurn(args: {
 }): void {
   const { session } = args;
   clearActiveTurn(session);
+  const plan = parseTurnPlan(promptText(args.input));
+  if (plan.failure !== null && plan.failure.beforeTurn) {
+    // The provider refused before any turn opened: a thread-scoped error
+    // that claims the accepted input, never a started turn.
+    if (args.clientRequestId !== undefined) {
+      emitDeltas(session.threadId, [
+        { kind: "input.accepted", clientRequestId: args.clientRequestId },
+      ]);
+    }
+    emitDeltas(session.threadId, [
+      {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: plan.failure.text,
+        willRetry: false,
+        settlesTurn: true,
+      },
+    ]);
+    return;
+  }
   session.turnCount += 1;
   const providerTurnId = `turn-${session.turnCount}`;
-  const plan = parseTurnPlan(promptText(args.input));
   session.activeTurn = { providerTurnId, timer: null };
 
   const deltas: ThreadDelta[] = [];
@@ -489,6 +605,24 @@ function beginTurn(args: {
     });
   }
   emitDeltas(session.threadId, deltas);
+
+  if (plan.holdTurn) {
+    return;
+  }
+  if (plan.failure !== null) {
+    clearActiveTurn(session);
+    emitDeltas(session.threadId, [
+      {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: plan.failure.text,
+        willRetry: false,
+        settlesTurn: true,
+        providerTurnId,
+      },
+    ]);
+    return;
+  }
 
   if (plan.approvalKind !== null) {
     const requestId = sendRequest(
@@ -536,7 +670,7 @@ function beginTurn(args: {
   if (plan.toolName !== null) {
     const requestId = sendRequest(BRIDGE_INBOUND_REQUEST_METHODS.toolCall, {
       providerThreadId: session.providerThreadId,
-      threadId: session.threadId,
+      threadId: session.options.toolCallThreadIdHint ?? session.threadId,
       turnId: plan.toolTurnResolved ? providerTurnId : null,
       callId: `call-${session.turnCount}`,
       tool: plan.toolName,
@@ -590,7 +724,22 @@ function isAllowedDecision(result: unknown): boolean {
   );
 }
 
-function handleResponse(id: JsonRpcId, result: unknown): boolean {
+const jsonRpcErrorSchema = z
+  .object({ code: z.number(), message: z.string() })
+  .passthrough();
+
+/**
+ * The runtime answered one of this bridge's requests. A result resumes the
+ * turn per the request kind; an error (the tool handler threw, the
+ * interaction was unsupported or malformed) fails the turn with the error's
+ * message, the way a real provider surfaces a failed tool or approval — so a
+ * test can observe the runtime's error answer on the timeline.
+ */
+function handleResponse(
+  id: JsonRpcId,
+  result: unknown,
+  error: unknown,
+): boolean {
   const pending = pendingReplies.get(id);
   if (pending === undefined) {
     return false;
@@ -598,6 +747,23 @@ function handleResponse(id: JsonRpcId, result: unknown): boolean {
   pendingReplies.delete(id);
   const session = sessions.get(pending.threadId);
   if (session === undefined) {
+    return true;
+  }
+  const parsedError = jsonRpcErrorSchema.safeParse(error);
+  if (parsedError.success) {
+    const turn = session.activeTurn;
+    if (turn !== null) {
+      clearActiveTurn(session);
+      emitDeltas(session.threadId, [
+        {
+          kind: "provider.error",
+          message: `${pending.kind} request failed: ${parsedError.data.message}`,
+          detail: `JSON-RPC error ${parsedError.data.code}`,
+          settlesTurn: true,
+          providerTurnId: turn.providerTurnId,
+        },
+      ]);
+    }
     return true;
   }
   switch (pending.kind) {
@@ -680,6 +846,19 @@ function openSession(args: {
   return session;
 }
 
+function mintProviderThreadId(
+  options: ScriptedEchoOptions,
+  threadId: string,
+): string {
+  if (options.identityFromThreadId === true) {
+    return threadId;
+  }
+  providerThreadCounter += 1;
+  return options.identifyProcess === true
+    ? `prov-${process.pid}-${providerThreadCounter}`
+    : `prov-${providerThreadCounter}`;
+}
+
 function identityResult(session: Session): Record<string, unknown> {
   if (session.options.answerStartWithoutIdentity === true) {
     return { threadId: session.threadId };
@@ -747,8 +926,8 @@ const handlers: Record<string, RequestHandler> = {
         threadRename: true,
         threadGoalClear: true,
         fork: "checkpoint",
-        approvalEnforcedBy: "runtime",
-        grammarVersions: [2, 3],
+        approvalEnforcedBy: processOptions.approvalEnforcedBy ?? "runtime",
+        grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
       },
     });
@@ -836,15 +1015,12 @@ const handlers: Record<string, RequestHandler> = {
     }
     const options = scriptedOptionsFor(parsed.data.options.providerOptions);
     afterStartDelay(options, () => {
-      providerThreadCounter += 1;
       const session = openSession({
         threadId: parsed.data.threadId,
-        providerThreadId:
-          options.identityFromThreadId === true
-            ? parsed.data.threadId
-            : `prov-${providerThreadCounter}`,
+        providerThreadId: mintProviderThreadId(options, parsed.data.threadId),
         options,
       });
+      logProcessStep(`thread/start:${process.pid}:${parsed.data.threadId}`);
       respondResult(id, identityResult(session));
       if (parsed.data.input !== undefined && parsed.data.input.length > 0) {
         beginTurn({ session, input: parsed.data.input });
@@ -872,6 +1048,9 @@ const handlers: Record<string, RequestHandler> = {
         providerThreadId: parsed.data.providerThreadId,
         options,
       });
+      logProcessStep(
+        `thread/resume:${process.pid}:${parsed.data.threadId}:${parsed.data.providerThreadId}`,
+      );
       respondResult(id, identityResult(session));
     });
   },
@@ -887,13 +1066,9 @@ const handlers: Record<string, RequestHandler> = {
       return;
     }
     afterStartDelay(options, () => {
-      providerThreadCounter += 1;
       const session = openSession({
         threadId: parsed.data.threadId,
-        providerThreadId:
-          options.identityFromThreadId === true
-            ? parsed.data.threadId
-            : `prov-${providerThreadCounter}`,
+        providerThreadId: mintProviderThreadId(options, parsed.data.threadId),
         options,
       });
       respondResult(id, identityResult(session));
@@ -915,6 +1090,9 @@ const handlers: Record<string, RequestHandler> = {
     if (rejectIfArchived(id, session.options, session.providerThreadId)) {
       return;
     }
+    logProcessStep(
+      `turn/start:${process.pid}:${parsed.data.threadId}:${promptText(parsed.data.input)}`,
+    );
     respondResult(id, {});
     if (session.options.swallowTurnStart === true) {
       return;
@@ -968,6 +1146,12 @@ const handlers: Record<string, RequestHandler> = {
       return;
     }
     const session = sessions.get(parsed.data.threadId);
+    logProcessStep(`thread/stop:${process.pid}:${parsed.data.threadId}`);
+    const stopOptions = session?.options ?? processOptions;
+    if (stopOptions.failStopForThreadIds?.includes(parsed.data.threadId)) {
+      respondError(id, -32000, `stop refused for ${parsed.data.threadId}`);
+      return;
+    }
     if (
       session !== undefined &&
       parsed.data.intent === "interrupt" &&
@@ -1068,13 +1252,14 @@ const handlers: Record<string, RequestHandler> = {
     const notifyCleared = (): void => {
       emitDeltas(parsed.data.threadId, [{ kind: "thread.goalCleared" }]);
     };
+    const answer = { cleared: options.goalClearReportsCleared ?? true };
     if (options.goalClearNotifyDelayMs === undefined) {
       // The cleared signal precedes the answer, as codex persists it.
       notifyCleared();
-      respondResult(id, { cleared: true });
+      respondResult(id, answer);
       return;
     }
-    respondResult(id, { cleared: true });
+    respondResult(id, answer);
     setTimeout(notifyCleared, options.goalClearNotifyDelayMs);
   },
 };
@@ -1119,8 +1304,12 @@ function applyScriptedMethodPolicy(
     (entry) => entry.method === scripted.data,
   );
   if (failure !== undefined) {
-    respondError(id, -32000, failure.message);
-    return "handled";
+    const failedSoFar = scriptedFailureCounts.get(scripted.data) ?? 0;
+    if (failure.times === undefined || failedSoFar < failure.times) {
+      scriptedFailureCounts.set(scripted.data, failedSoFar + 1);
+      respondError(id, failure.code ?? -32000, failure.message);
+      return "handled";
+    }
   }
   return "continue";
 }
@@ -1165,16 +1354,17 @@ export function handleLine(line: string): void {
   ) {
     return;
   }
-  const { id, method, params, result } = message as {
+  const { id, method, params, result, error } = message as {
     id?: unknown;
     method?: unknown;
     params?: unknown;
     result?: unknown;
+    error?: unknown;
   };
   if (typeof method !== "string") {
     // A response to one of this bridge's own requests, or noise.
     if (typeof id === "string" || typeof id === "number") {
-      handleResponse(id, result);
+      handleResponse(id, result, error);
     }
     return;
   }
@@ -1203,4 +1393,18 @@ export function handleLine(line: string): void {
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
+  onSigterm: () => {
+    logProcessStep(`exit:${process.pid}`);
+    if (processOptions.emitIdentityOnSigterm === true) {
+      for (const session of sessions.values()) {
+        notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
+          threadId: session.threadId,
+          providerThreadId: `late-${session.providerThreadId}`,
+        });
+      }
+      setTimeout(() => process.exit(0), 10);
+      return;
+    }
+    process.exit(0);
+  },
 });

@@ -752,6 +752,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@bb/scripts':
         specifier: workspace:*
         version: link:../../packages/scripts

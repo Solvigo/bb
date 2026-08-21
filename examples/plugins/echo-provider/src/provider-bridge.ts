@@ -15,7 +15,8 @@
  *   the bridge stays alive. The dispatch table is keyed by the protocol
  *   package's own method vocabulary, so it cannot drift from the schemas.
  * - Handshake: initialize answers protocol version 2 — the narrow-grammar
- *   dialect. The runtime rejects any other version at spawn.
+ *   dialect — and grammar range [3, 3]. The runtime rejects any other
+ *   protocol version, or a grammar range without 3, at spawn.
  * - Grammar: the bridge emits `thread/delta` semantic deltas, never finished
  *   timeline events — the runtime's assembler mints every turn and item id
  *   and constructs the canonical events. Every accepted turn settles
@@ -32,6 +33,7 @@ import {
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   initializeParamsSchema,
   modelListParamsSchema,
@@ -186,12 +188,16 @@ const handlers: Record<string, RequestHandler> = {
       invalidParams(id, BRIDGE_REQUEST_METHODS.initialize, parsed.error.issues);
       return;
     }
-    // All capabilities absent: sessionRestore, threadArchive, threadRename
+    // Session capabilities absent: sessionRestore, threadArchive, threadRename
     // and threadGoalClear read false and fork reads "none", so the runtime
-    // will never send this bridge a capability-gated method.
+    // will never send this bridge a capability-gated method. The grammar
+    // range is stated: the runtime assembles grammar v3 only, and a bridge
+    // that says nothing reads as v2 and is refused at the handshake.
     respondResult(id, {
       protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      capabilities: {},
+      capabilities: {
+        grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
+      },
     });
   },
 

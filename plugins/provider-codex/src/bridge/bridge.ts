@@ -42,6 +42,7 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   modelListParamsSchema,
   experimental_providerInstallationRunParamsSchema,
@@ -1237,13 +1238,11 @@ function handleInitialize(id: string | number): void {
       threadGoalClear: true,
       fork: "checkpoint",
       approvalEnforcedBy: "runtime",
-      // grammarVersions [2, 2] — this bridge emits the v2 delta grammar only
-      // (v3 shapes land per bridge in WS1b). steerMode "inject" — codex
-      // `turn/steer` injects into the live turn natively.
-      grammarVersions: [
-        PROVIDER_BRIDGE_PROTOCOL_VERSION,
-        PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      ],
+      // grammarVersions [3, 3] — this bridge emits the v3 delta grammar (one
+      // streaming dialect, one usage dialect; the v3 item shapes land per
+      // bridge in WS1b). steerMode "inject" — codex `turn/steer` injects into
+      // the live turn natively.
+      grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
     },
   };
