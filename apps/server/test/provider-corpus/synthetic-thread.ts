@@ -13,7 +13,7 @@ import {
   noopNotifier,
   upsertHost,
 } from "@bb/db";
-import type { DbConnection, InsertEventInput } from "@bb/db";
+import type { DbConnection } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
   parseStoredThreadEvent,
@@ -21,6 +21,9 @@ import {
   turnScope,
 } from "@bb/domain";
 import type { Thread, ThreadEventScope, ThreadEventType } from "@bb/domain";
+
+/** The db package keeps the input row type private; derive it from the call. */
+type InsertEventInput = Parameters<typeof insertEvents>[2][number];
 
 const PROVIDER_THREAD_ID = "synthetic-provider-thread";
 const BASE_CREATED_AT = 1_700_000_000_000;

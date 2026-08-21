@@ -40,7 +40,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
-import type { ThreadTimelineBuildProfileStage } from "../../src/services/threads/timeline.js";
+import type { ThreadTimelineBuildProfile } from "../../src/services/threads/timeline.js";
 import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 import {
   buildAllRouteTimelinePages,
@@ -94,6 +94,9 @@ const CALIBRATION_KIND = "json-sort-v1";
  */
 const SYNTHETIC_EVENT_COUNT = 10_000;
 const SYNTHETIC_CEILING_MS = 1_500;
+
+type ThreadTimelineBuildProfileStage =
+  ThreadTimelineBuildProfile["stageTimings"][number]["stage"];
 
 const STAGES: readonly ThreadTimelineBuildProfileStage[] = [
   "event-query",

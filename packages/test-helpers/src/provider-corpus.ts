@@ -20,7 +20,6 @@ import {
   buildThreadEventRow,
   parseStoredThreadEvent,
   reasoningLevelSchema,
-  threadEventScopeKindSchema,
   threadEventTypeSchema,
   threadOriginKindSchema,
   threadScope,
@@ -28,8 +27,24 @@ import {
   threadVisibilitySchema,
   turnScope,
 } from "@bb/domain";
-import type { ThreadEventRow, ThreadEventScope } from "@bb/domain";
+import type {
+  ThreadEventRow,
+  ThreadEventScope,
+  ThreadEventScopeKind,
+} from "@bb/domain";
 import { z } from "zod";
+
+/** The `scope_kind` column; the domain keeps its enum schema private. */
+const corpusScopeKindSchema = z.enum(["thread", "turn"]);
+// Fails to compile if the domain's scope kinds ever diverge from this list.
+const corpusScopeKindCoversDomain: ThreadEventScopeKind extends z.infer<
+  typeof corpusScopeKindSchema
+>
+  ? z.infer<typeof corpusScopeKindSchema> extends ThreadEventScopeKind
+    ? true
+    : false
+  : false = true;
+void corpusScopeKindCoversDomain;
 
 export const PROVIDER_CORPUS_DIR_ENV = "BB_PROVIDER_CORPUS_DIR";
 
@@ -81,7 +96,7 @@ const corpusEventRowSchema = z.object({
   id: z.string().min(1),
   thread_id: z.string().min(1),
   environment_id: z.string().nullable(),
-  scope_kind: threadEventScopeKindSchema,
+  scope_kind: corpusScopeKindSchema,
   turn_id: z.string().nullable(),
   provider_thread_id: z.string().nullable(),
   sequence: z.number().int().nonnegative(),
@@ -117,7 +132,7 @@ export interface CorpusStoredEventRow {
   id: string;
   threadId: string;
   environmentId: string | null;
-  scopeKind: z.infer<typeof threadEventScopeKindSchema>;
+  scopeKind: ThreadEventScopeKind;
   turnId: string | null;
   providerThreadId: string | null;
   sequence: number;

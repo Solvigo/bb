@@ -32,8 +32,8 @@ import {
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   buildThreadTimelineWithProfile,
   type ThreadTimelineBuildProfile,
-  type ThreadTimelinePageRequest,
 } from "../../src/services/threads/timeline.js";
+import type { ThreadTimelinePageRequest } from "../../src/services/threads/timeline-pagination.js";
 import { resolveProviderPlanCommand } from "../../src/services/providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { previewTimelineResponseOutputs } from "../../src/services/threads/timeline-output-preview.js";

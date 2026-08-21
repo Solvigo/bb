@@ -11,6 +11,11 @@
  * for every cell today; a row that changes is a behavior change that needs a
  * PR of its own.
  *
+ * The request travels the real path: a canonical `interaction/request` is
+ * decoded by the bridge-protocol adapter built for the scripted echo bridge
+ * (the same adapter every plugin bridge gets), whose initialize handshake sets
+ * `approvalEnforcedBy`, and a pipe child echoes the runtime's answer back.
+ *
  * Outcomes:
  * - `forward`   the request reaches `onInteractiveRequest` (the user decides)
  * - `auto-deny` the runtime answers `deny` without asking
@@ -20,7 +25,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
 import {
-  pendingInteractionApprovalSubjectSchema,
+  pendingInteractionPayloadSchema,
   permissionEscalationValues,
   permissionModeValues,
   runtimePermissionPolicySchema,
@@ -38,17 +43,16 @@ import {
   parseJsonRpcLine,
   shouldAutoDenyInteractiveRequest,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  DecodedInteractiveRequest,
-  JsonRpcMessage,
-  ProviderInboundRequest,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+import type { JsonRpcMessage } from "@bb/provider-bridge-protocol/bridge-kit";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { ProviderAdapter } from "./provider-adapter.js";
+import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
+import { createProviderForId } from "./provider-registry.js";
 import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
-import { createFakeAdapter } from "./test/fake-adapter.js";
-import { fullRuntimeOptions } from "./test/runtime-test-harness.js";
+import {
+  createScriptedEchoLaunch,
+  fullRuntimeOptions,
+} from "./test/runtime-test-harness.js";
 import type { AgentRuntimeExecutionOptions } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -73,6 +77,7 @@ const SUBJECT_KINDS = [
   "file_change",
   "permission_grant",
   "plan",
+  "tool_use",
 ] as const;
 type SubjectKind = (typeof SUBJECT_KINDS)[number];
 
@@ -87,7 +92,7 @@ type CellKey = `${PolicyKey}|${SubjectKind}|${Enforcer}|${DenyAvailability}`;
 type Outcome = "forward" | "auto-deny" | "encode-error";
 
 // ---------------------------------------------------------------------------
-// The pinned matrix (80 cells)
+// The pinned matrix (100 cells)
 // ---------------------------------------------------------------------------
 
 /**
@@ -95,6 +100,10 @@ type Outcome = "forward" | "auto-deny" | "encode-error";
  * runtime enforce policy AND the turn's escalation is `deny`. Permission mode
  * on its own never auto-decides anything here; `full` has no escalation at all.
  * The subject kind never matters to the runtime.
+ *
+ * The first 80 cells are the pin taken on `main` before the v3 contract; the
+ * `tool_use` cells were added when that contract added the subject (no bridge
+ * produces it until WS5) and were measured the same way.
  */
 const EXPECTED = {
   // accept-edits, escalation ask
@@ -165,6 +174,26 @@ const EXPECTED = {
   "auto/deny|plan|runtime|deny-unavailable": "encode-error",
   "auto/deny|plan|provider|deny-available": "forward",
   "auto/deny|plan|provider|deny-unavailable": "forward",
+  "accept-edits/ask|tool_use|runtime|deny-available": "forward",
+  "accept-edits/ask|tool_use|runtime|deny-unavailable": "forward",
+  "accept-edits/ask|tool_use|provider|deny-available": "forward",
+  "accept-edits/ask|tool_use|provider|deny-unavailable": "forward",
+  "accept-edits/deny|tool_use|runtime|deny-available": "auto-deny",
+  "accept-edits/deny|tool_use|runtime|deny-unavailable": "encode-error",
+  "accept-edits/deny|tool_use|provider|deny-available": "forward",
+  "accept-edits/deny|tool_use|provider|deny-unavailable": "forward",
+  "auto/ask|tool_use|runtime|deny-available": "forward",
+  "auto/ask|tool_use|runtime|deny-unavailable": "forward",
+  "auto/ask|tool_use|provider|deny-available": "forward",
+  "auto/ask|tool_use|provider|deny-unavailable": "forward",
+  "auto/deny|tool_use|runtime|deny-available": "auto-deny",
+  "auto/deny|tool_use|runtime|deny-unavailable": "encode-error",
+  "auto/deny|tool_use|provider|deny-available": "forward",
+  "auto/deny|tool_use|provider|deny-unavailable": "forward",
+  "full/-|tool_use|runtime|deny-available": "forward",
+  "full/-|tool_use|runtime|deny-unavailable": "forward",
+  "full/-|tool_use|provider|deny-available": "forward",
+  "full/-|tool_use|provider|deny-unavailable": "forward",
   // full (no escalation)
   "full/-|command|runtime|deny-available": "forward",
   "full/-|command|runtime|deny-unavailable": "forward",
@@ -205,7 +234,7 @@ const subjectKindCoversUnion: SameUnion<
 > = true;
 const enforcerCoversUnion: SameUnion<
   Enforcer,
-  ProviderAdapter["approvalEnforcedBy"]
+  BridgeProtocolAdapter["approvalEnforcedBy"]
 > = true;
 const permissionModeCoversUnion: SameUnion<
   PolicyKey extends `${infer Mode}/${string}` ? Mode : never,
@@ -280,6 +309,16 @@ function subjectFor(kind: SubjectKind): PendingInteractionApprovalSubject {
         plan: "1. Do the thing",
         planFilePath: null,
       };
+    case "tool_use":
+      return {
+        kind,
+        itemId: "item-tool-use",
+        tool: "mcp__example__deploy",
+        presentation: {
+          label: { pending: "Deploying", completed: "Deployed" },
+          icon: { glyph: "rocket" },
+        },
+      };
   }
 }
 
@@ -303,29 +342,45 @@ function buildPayload(
   };
 }
 
-function adapterFor(
-  enforcer: Enforcer,
+/**
+ * The adapter every plugin bridge gets, built for the scripted echo launch,
+ * after an initialize handshake that sets where approvals are enforced.
+ */
+function adapterFor(enforcer: Enforcer): BridgeProtocolAdapter {
+  const adapter = createProviderForId("fake", {
+    additionalWorkspaceWriteRoots: [],
+    bridgeLaunch: createScriptedEchoLaunch(),
+  });
+  const [initialize] = adapter.buildPostInitializeRequests();
+  if (initialize === undefined) {
+    throw new Error("bridge adapter exposes no initialize handshake");
+  }
+  initialize.onResult({
+    protocolVersion: 2,
+    capabilities: { grammarVersions: [3, 3], approvalEnforcedBy: enforcer },
+  });
+  if (adapter.approvalEnforcedBy !== enforcer) {
+    throw new Error(
+      `handshake did not set approvalEnforcedBy=${enforcer} (got ${adapter.approvalEnforcedBy})`,
+    );
+  }
+  return adapter;
+}
+
+/** A canonical `interaction/request`, as a bridge sends it on the wire. */
+function interactionRequest(
+  id: number,
   payload: ApprovalPendingInteractionPayload,
-): ProviderAdapter {
+): JsonRpcMessage {
   return {
-    ...createFakeAdapter(),
-    approvalEnforcedBy: enforcer,
-    decodeInteractiveRequest(
-      request: ProviderInboundRequest,
-    ): DecodedInteractiveRequest | null {
-      if (
-        request.method !== "matrix/approval" ||
-        (typeof request.id !== "string" && typeof request.id !== "number")
-      ) {
-        return null;
-      }
-      return {
-        requestId: request.id,
-        method: request.method,
-        providerThreadId: "provider-thread",
-        turnId: "turn-1",
-        payload,
-      };
+    jsonrpc: "2.0",
+    id,
+    method: "interaction/request",
+    params: {
+      providerThreadId: "prov-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      payload,
     },
   };
 }
@@ -402,12 +457,7 @@ async function runCell(
     ...fullRuntimeOptions,
     ...policyFor(policyKey),
   };
-  const rawRequest = {
-    jsonrpc: "2.0",
-    id: requestId,
-    method: "matrix/approval",
-    params: {},
-  } satisfies JsonRpcMessage;
+  const rawRequest = interactionRequest(requestId, payload);
   handleRuntimeProviderRequest({
     getActiveTurnId: () => "turn-1",
     getThreadExecutionOptions: () => executionOptions,
@@ -416,10 +466,10 @@ async function runCell(
       contentItems: [{ type: "inputText", text: "unused" }],
       success: true,
     }),
-    parsedId: rawRequest.id,
+    parsedId: requestId,
     parsedMethod: rawRequest.method,
     providerProcess: {
-      adapter: adapterFor(enforcer, payload),
+      adapter: adapterFor(enforcer),
       child: echo.child,
       interactiveRequestScope: `matrix-${requestId}`,
     },
@@ -476,10 +526,16 @@ const CELLS = POLICY_KEYS.flatMap((policyKey) =>
 
 describe("permission decision matrix", () => {
   it("enumerates every cell of the cross product", () => {
-    const subjectKindsInSchema = pendingInteractionApprovalSubjectSchema.options
-      .map((option) => option.shape.kind.value)
-      .sort();
-    expect(subjectKindsInSchema).toEqual([...SUBJECT_KINDS].sort());
+    // The subject union is private to the domain; every local kind must be a
+    // member (the type-level SameUnion guard above proves there are no others).
+    for (const kind of SUBJECT_KINDS) {
+      expect(
+        pendingInteractionPayloadSchema.safeParse(
+          buildPayload(kind, "deny-available"),
+        ).success,
+        `subject kind ${kind}`,
+      ).toBe(true);
+    }
     expect(
       bridgeCapabilitiesSchema.shape.approvalEnforcedBy.def.innerType.options,
     ).toEqual([...ENFORCERS]);
@@ -492,7 +548,7 @@ describe("permission decision matrix", () => {
         ENFORCERS.length *
         DENY_AVAILABILITY.length,
     );
-    expect(CELLS).toHaveLength(80);
+    expect(CELLS).toHaveLength(100);
   });
 
   it("pins the bridge-kit predicate: only escalation=deny auto-denies", () => {

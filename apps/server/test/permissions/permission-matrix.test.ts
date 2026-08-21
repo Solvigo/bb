@@ -8,100 +8,76 @@
  * Both are pinned here as literal tables.
  */
 import {
-  approvalReviewerValues,
   permissionEscalationValues,
   permissionModeValues,
   runtimePermissionPolicySchema,
   runtimePermissionScopeValues,
-  threadTurnInitiatorValues,
+  threadTurnInitiatorSchema,
 } from "@bb/domain";
-import type { Thread, ThreadTurnInitiator } from "@bb/domain";
+import type { RuntimePermissionPolicy, ThreadTurnInitiator } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { resolvePermissionEscalation } from "../../src/services/threads/thread-runtime-config.js";
 
 // ---------------------------------------------------------------------------
-// Escalation by initiator × thread shape
+// Escalation by initiator
 // ---------------------------------------------------------------------------
-
-const THREAD_SHAPES = ["root", "delegated-child", "fork"] as const;
-type ThreadShape = (typeof THREAD_SHAPES)[number];
-
-type EscalationCell = `${ThreadTurnInitiator}|${ThreadShape}`;
 
 /**
  * Only the initiator matters: a user-started turn asks (even on a delegated
  * child, so a sandbox-blocked action surfaces on the parent), and every
- * agent- or system-started turn is denied without a prompt.
+ * agent- or system-started turn is denied without a prompt. The function
+ * once took the thread as well and never branched on it; the pin on `main`
+ * measured root, delegated-child, and fork threads identically, and the
+ * thread argument has since been removed.
  */
 const EXPECTED_ESCALATION = {
-  "user|root": "ask",
-  "user|delegated-child": "ask",
-  "user|fork": "ask",
-  "agent|root": "deny",
-  "agent|delegated-child": "deny",
-  "agent|fork": "deny",
-  "system|root": "deny",
-  "system|delegated-child": "deny",
-  "system|fork": "deny",
-} satisfies Record<EscalationCell, "ask" | "deny">;
+  user: "ask",
+  agent: "deny",
+  system: "deny",
+} satisfies Record<ThreadTurnInitiator, "ask" | "deny">;
 
-function threadOfShape(shape: ThreadShape): Thread {
-  const base: Thread = {
-    id: `thr_${shape}`,
-    projectId: "prj_matrix",
-    environmentId: null,
-    providerId: "codex",
-    title: null,
-    titleFallback: null,
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
-    lastReadAt: null,
-    latestAttentionAt: 1,
-    createdAt: 1,
-    updatedAt: 1,
-  };
-  switch (shape) {
-    case "root":
-      return base;
-    case "delegated-child":
-      return { ...base, parentThreadId: "thr_parent" };
-    case "fork":
-      return { ...base, sourceThreadId: "thr_parent", originKind: "fork" };
-  }
-}
-
-const ESCALATION_CELLS = threadTurnInitiatorValues.flatMap((initiator) =>
-  THREAD_SHAPES.map((shape) => [initiator, shape] as const),
-);
+const threadTurnInitiatorValues = threadTurnInitiatorSchema.options;
 
 describe("permission escalation by turn initiator", () => {
   it("covers every initiator", () => {
     expect(threadTurnInitiatorValues).toEqual(["user", "agent", "system"]);
     expect(Object.keys(EXPECTED_ESCALATION)).toHaveLength(
-      threadTurnInitiatorValues.length * THREAD_SHAPES.length,
+      threadTurnInitiatorValues.length,
     );
   });
 
-  it.each(ESCALATION_CELLS)("%s × %s", (initiator, shape) => {
-    const key: EscalationCell = `${initiator}|${shape}`;
-    expect(
-      resolvePermissionEscalation({ initiator, thread: threadOfShape(shape) }),
-    ).toBe(EXPECTED_ESCALATION[key]);
-  });
+  it.each(threadTurnInitiatorValues.map((initiator) => [initiator] as const))(
+    "%s",
+    (initiator) => {
+      expect(resolvePermissionEscalation({ initiator })).toBe(
+        EXPECTED_ESCALATION[initiator],
+      );
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
 // Runtime permission policy shape: which (mode, scope, reviewer, escalation)
 // combinations the server is allowed to hand the runtime.
 // ---------------------------------------------------------------------------
+
+/**
+ * The reviewer vocabulary lives only inside the policy union (the domain no
+ * longer exports a value list), so it is spelled out here and pinned to the
+ * union at the type level: a new reviewer literal fails this assignment.
+ */
+const approvalReviewerValues = ["user", "automatic"] as const;
+type ReviewerFromPolicy = NonNullable<
+  RuntimePermissionPolicy["approvalReviewer"]
+>;
+const reviewerValuesCoverUnion: [
+  (typeof approvalReviewerValues)[number],
+] extends [ReviewerFromPolicy]
+  ? [ReviewerFromPolicy] extends [(typeof approvalReviewerValues)[number]]
+    ? true
+    : false
+  : false = true;
+void reviewerValuesCoverUnion;
 
 const ESCALATION_INPUTS = [...permissionEscalationValues, null] as const;
 const REVIEWER_INPUTS = [...approvalReviewerValues, null] as const;
