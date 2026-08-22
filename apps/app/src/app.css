@@ -1,6 +1,30 @@
 @import "@fontsource-variable/inter";
 @import "@/components/ui/theme.css";
 
+/*
+ * Tower grey scale — warm greys measured from the Tower blueprint
+ * (Tower-airline.dc.html). A deliberate named design palette, distinct from the
+ * app's neutral --canvas/--ink ramp; used to dress the carved Tower surfaces.
+ * Exposed as Tailwind color utilities: bg-tower-*, text-tower-*, border-tower-*.
+ */
+@theme {
+  --color-tower-bg: #1b1a19; /* darkest — commander chat */
+  --color-tower-surface: #211f1d; /* the rendering surface */
+  --color-tower-panel: #262624; /* panels / cards */
+  --color-tower-raised: #2b2927; /* chat bubble / raised card fill */
+  --color-tower-bright: #302f2c;
+  --color-tower-header: #33322f; /* tab-area header */
+  --color-tower-border: #3a3936;
+  --color-tower-border-strong: #46443f; /* hover / stronger edge */
+  --color-tower-fg: #f5f4ef; /* brightest text */
+  --color-tower-fg-body: #c7c5ba; /* primary body text */
+  --color-tower-fg-muted: #a3a199; /* secondary */
+  --color-tower-fg-dim: #8f8d84; /* labels */
+  --color-tower-fg-faint: #6b6960; /* faintest / stale */
+  --color-tower-accent: #f54e00; /* warm accent — attention only */
+  --color-tower-accent-hover: #ff6a2a;
+}
+
 @layer base {
   /*
    * Keep the real app shell from becoming a second scroll container. These
@@ -434,7 +458,7 @@
       [data-promptbox-voice-active]
     )
     [data-promptbox-main] {
-    height: 3rem;
+    height: 7.5rem;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
@@ -450,9 +474,9 @@
       [data-promptbox-voice-active]
     )
     [data-promptbox-editor-scroll] {
-    height: 3rem !important;
-    min-height: 3rem !important;
-    max-height: 3rem !important;
+    height: 7.5rem !important;
+    min-height: 7.5rem !important;
+    max-height: 7.5rem !important;
     overflow: hidden;
     padding-top: 0;
     padding-bottom: 0;
