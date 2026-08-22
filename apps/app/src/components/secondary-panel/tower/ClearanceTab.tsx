@@ -64,7 +64,7 @@ export function ClearanceTab() {
 
   return (
     <div className="@container grid h-full grid-cols-[minmax(200px,26%)_1fr]">
-      <div className="min-h-0 overflow-y-auto px-3 py-3.5">
+      <div className="min-h-0 overflow-y-auto border-r border-tower-border bg-tower-bg px-3 py-3.5">
         <div className="mb-3 flex items-baseline justify-between px-1">
           <span className={EYEBROW}>Yours to clear</span>
           <span className={EYEBROW}>{CLEARANCE.length}</span>
@@ -82,10 +82,7 @@ export function ClearanceTab() {
                 type="button"
                 onClick={() => setSelectedId(c.id)}
                 className={[
-                  "mb-2 flex w-full flex-col gap-1.5 rounded-[10px] border p-3 text-left",
-                  c.rank === 1
-                    ? "border-l-2 border-l-tower-accent border-tower-border"
-                    : "border-tower-border",
+                  "mb-2 flex w-full flex-col gap-1.5 rounded-[10px] border border-tower-border p-3 text-left",
                   selectedRow ? "bg-tower-bright" : "bg-tower-panel hover:bg-tower-bright",
                 ].join(" ")}
               >
