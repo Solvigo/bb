@@ -30,6 +30,7 @@ import {
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import { FleetOverviewTab } from "./tower/FleetOverviewTab";
+import { ClearanceTab } from "./tower/ClearanceTab";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
@@ -452,15 +453,20 @@ export function ThreadSecondaryPanel({
   // Tower fleet overview is a CLIENT-ONLY view (never synced to the pinned
   // server's strict tab contract). It shows by default and yields to any real
   // fixed view (Info/Diff) or file tab the operator opens.
-  const [showFleetOverview, setShowFleetOverview] = useState(true);
+  // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
+  // contract). "crew" is the default surface; the views show over the empty
+  // new-tab / info states but yield to any real content the operator opens.
+  const [towerView, setTowerView] = useState<"crew" | "clearance" | null>(
+    "crew",
+  );
   const activeTabKind = activeTab?.kind ?? null;
-  // Fleet is the default surface: it shows over the empty new-tab / info states,
-  // but yields to any real content the operator opens (a file, diff, terminal…).
-  const isFleetOverviewActive =
-    showFleetOverview &&
-    (activeTabKind === null ||
-      activeTabKind === "new-tab" ||
-      activeTabKind === "thread-info");
+  const towerViewCanShow =
+    activeTabKind === null ||
+    activeTabKind === "new-tab" ||
+    activeTabKind === "thread-info";
+  const isFleetOverviewActive = towerView === "crew" && towerViewCanShow;
+  const isClearanceActive = towerView === "clearance" && towerViewCanShow;
+  const isTowerViewActive = isFleetOverviewActive || isClearanceActive;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
@@ -658,12 +664,22 @@ export function ThreadSecondaryPanel({
             aria-label="Right panel views"
           >
             <PinnedIconTab
-              ariaLabel="Show fleet overview"
+              ariaLabel="Show crew overview"
               isActive={isFleetOverviewActive}
-              label="Fleet"
+              label="Crew"
               leadingVisual={<Icon name="Layers" />}
-              onClick={() => setShowFleetOverview(true)}
-              title="Fleet overview"
+              onClick={() => setTowerView("crew")}
+              title="Crew overview"
+              usesDesktopChrome={usesDesktopChrome}
+              activeTreatment="fill"
+            />
+            <PinnedIconTab
+              ariaLabel="Show clearance"
+              isActive={isClearanceActive}
+              label="Clearance"
+              leadingVisual={<Icon name="CircleCheck" />}
+              onClick={() => setTowerView("clearance")}
+              title="Yours to clear"
               usesDesktopChrome={usesDesktopChrome}
               activeTreatment="fill"
             />
@@ -671,14 +687,14 @@ export function ThreadSecondaryPanel({
               <PinnedIconTab
                 ariaLabel="Show thread info panel"
                 isActive={
-                  !isFleetOverviewActive &&
+                  !isTowerViewActive &&
                   activeFixedPanel === "thread-info" &&
                   !hasActiveFileTab
                 }
                 label="Info"
                 leadingVisual={<Icon name="Info" />}
                 onClick={() => {
-                  setShowFleetOverview(false);
+                  setTowerView(null);
                   onPanelChange("thread-info");
                 }}
                 title="Thread info"
@@ -695,12 +711,12 @@ export function ThreadSecondaryPanel({
                 }
                 ariaKeyshortcuts={diffShortcut?.ariaKeyshortcuts}
                 isActive={
-                  !isFleetOverviewActive && isDiffPanelActive && !hasActiveFileTab
+                  !isTowerViewActive && isDiffPanelActive && !hasActiveFileTab
                 }
                 label="Diff"
                 leadingVisual={<Icon name="FileDiff" />}
                 onClick={() => {
-                  setShowFleetOverview(false);
+                  setTowerView(null);
                   onPanelChange("git-diff");
                 }}
                 title="Diff"
@@ -818,6 +834,8 @@ export function ThreadSecondaryPanel({
         {browserDeck}
         {isBrowserTabActive ? null : isFleetOverviewActive ? (
           <FleetOverviewTab />
+        ) : isClearanceActive ? (
+          <ClearanceTab />
         ) : hasActiveFileTab ? (
           <div
             className={

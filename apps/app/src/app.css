@@ -25,6 +25,7 @@
   --color-tower-fg-faint: #6b6960; /* faintest / stale */
   --color-tower-accent: #f54e00; /* warm accent — attention only */
   --color-tower-accent-hover: #ff6a2a;
+  --color-tower-accent-tint: #33231a; /* attention surface behind accent text */
 }
 
 @layer base {
