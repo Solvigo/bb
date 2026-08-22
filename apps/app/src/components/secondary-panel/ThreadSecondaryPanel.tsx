@@ -91,7 +91,7 @@ export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 // Shared with the split-workspace host's empty-state panel, which must resize
 // within the same bounds as the real panel it stands in for.
 export const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
-export const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
+export const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 82;
 
 export function isSecondaryPanelLayoutTransition(
   propertyName: string,
