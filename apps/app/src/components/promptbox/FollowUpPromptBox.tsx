@@ -110,7 +110,7 @@ function PromptBoxWithScrollAnchor({
 // (context banner + queued messages) grows, the textarea min-height shrinks
 // by the same amount — total prompt-area height stays constant and the
 // thread timeline does not shift when the context banner mounts.
-const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 120;
+const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 96;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
   FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
   THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT;
@@ -584,7 +584,7 @@ function FollowUpPromptBoxWithComposer({
       ref={composerInteractionRef}
       className="relative z-20"
       data-follow-up-composer=""
-      data-follow-up-composer-expanded={isInteractionExpanded ? "" : undefined}
+      data-follow-up-composer-expanded=""
       onFocusCapture={handleComposerFocus}
     >
       <PromptBoxWithScrollAnchor

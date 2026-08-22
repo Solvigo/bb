@@ -2786,7 +2786,7 @@ export function PromptBoxInternal({
         emitAttachmentFiles(Array.from(event.dataTransfer.files));
       }}
       className={cn(
-        "group/promptbox relative w-full rounded-xl border border-tower-border bg-tower-header shadow-lift",
+        "group/promptbox relative w-full rounded-xl border border-tower-input-border bg-tower-input shadow-lift",
         "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
         showVoiceActionGroup && "rounded-3xl",
         showCompactLayout && "overflow-hidden",

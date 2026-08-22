@@ -16,6 +16,8 @@
   --color-tower-header: #33322f; /* tab-area header */
   --color-tower-border: #3a3936;
   --color-tower-border-strong: #46443f; /* hover / stronger edge */
+  --color-tower-input: #2a2927; /* chat input surface */
+  --color-tower-input-border: #434240; /* chat input border */
   --color-tower-fg: #f5f4ef; /* brightest text */
   --color-tower-fg-body: #c7c5ba; /* primary body text */
   --color-tower-fg-muted: #a3a199; /* secondary */
