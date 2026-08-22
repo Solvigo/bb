@@ -460,10 +460,10 @@ export function ThreadSecondaryPanel({
     "crew",
   );
   const activeTabKind = activeTab?.kind ?? null;
+  // Tower views default over the empty/info state, but yield to a new-tab the
+  // operator explicitly opened (and to any real file/diff/terminal content).
   const towerViewCanShow =
-    activeTabKind === null ||
-    activeTabKind === "new-tab" ||
-    activeTabKind === "thread-info";
+    activeTabKind === null || activeTabKind === "thread-info";
   const isFleetOverviewActive = towerView === "crew" && towerViewCanShow;
   const isClearanceActive = towerView === "clearance" && towerViewCanShow;
   const isTowerViewActive = isFleetOverviewActive || isClearanceActive;

@@ -63,8 +63,8 @@ export function ClearanceTab() {
   const selected = CLEARANCE.find((c) => c.id === selectedId) ?? null;
 
   return (
-    <div className="@container grid h-full grid-cols-[minmax(240px,34%)_1fr] @[560px]:grid-cols-[minmax(240px,34%)_1fr]">
-      <div className="min-h-0 overflow-y-auto border-r border-tower-border px-3 py-3.5">
+    <div className="@container grid h-full grid-cols-[minmax(200px,26%)_1fr]">
+      <div className="min-h-0 overflow-y-auto px-3 py-3.5">
         <div className="mb-3 flex items-baseline justify-between px-1">
           <span className={EYEBROW}>Yours to clear</span>
           <span className={EYEBROW}>{CLEARANCE.length}</span>
