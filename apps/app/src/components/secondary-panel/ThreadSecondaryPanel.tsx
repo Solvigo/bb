@@ -583,32 +583,23 @@ export function ThreadSecondaryPanel({
       style={
         !renderAsDrawer && !isSecondaryPanelResizing
           ? {
-              width: `var(--secondary-swipe-width, ${persistedWidthPercent}cqw)`,
+              // Trim the held width by the card's horizontal inset (left-2 +
+              // right gap) so the floating card clears the column on both sides.
+              width: `calc(var(--secondary-swipe-width, ${persistedWidthPercent}cqw) - 1rem)`,
             }
           : undefined
       }
       className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden bg-sidebar",
+        "flex min-h-0 flex-col overflow-hidden bg-surface-raised-solid",
         // Drawer: fill the drawer shell. Inline: the fixed-width, left-pinned
         // content the panel clips into view (or fills the panel while resizing).
-        renderAsDrawer && "min-w-0 flex-1",
+        renderAsDrawer && "h-full min-w-0 flex-1",
+        // Tower: a floating card inset from the surface, not a full-bleed column.
+        // The inset (not h-full) defines the box, so it floats with a gap.
+        !renderAsDrawer && "rounded-xl border border-border shadow-sm",
         !renderAsDrawer && [
-          "absolute inset-y-0 left-0",
-          // Inside the split-workspace host, the hairline resize handle is the
-          // visible seam; elsewhere the panel carries its own hairline border
-          // (it slides with the panel through the open/close animation).
-          // Collapsing the conversation drops the timeline and the resize
-          // handle to zero width, so this border would land directly on the app
-          // sidebar's own `border-r` and read as one thick double seam. The
-          // sidebar owns that boundary, so give the border up while collapsed.
-          // Collapsing the conversation drops the timeline and the resize
-          // handle to zero width, so this border would land directly on the app
-          // sidebar's own `border-r` and read as one thick 2px seam. The
-          // sidebar owns that boundary, so give the border up while collapsed.
-          hostLayout === null &&
-            !isConversationCollapsed &&
-            "border-l border-border-seam",
-          isSecondaryPanelResizing && "right-0",
+          "absolute inset-y-2 left-2",
+          isSecondaryPanelResizing ? "right-2" : "",
           !isOpen && "pointer-events-none",
         ],
       )}
@@ -785,7 +776,7 @@ export function ThreadSecondaryPanel({
           />
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-sidebar">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-raised-solid">
         {/*
           The browser deck owns native-view visibility/retention and renders
           content only when a browser tab is active. The normal content slot is

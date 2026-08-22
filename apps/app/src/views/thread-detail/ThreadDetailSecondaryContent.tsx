@@ -287,9 +287,10 @@ function ThreadDetailSecondaryContentBody({
           renderAsDrawer={false}
           isConversationCollapsed={isConversationCollapsedActive}
           onToggleConversationCollapse={onToggleConversationCollapse}
-          // The owning thread or workspace header shows a closed panel. Once
-          // open, collapse belongs at the outer edge of the panel toolbar.
-          inlinePanelToggle="button"
+          // Tower: the panel is a permanent floating card in the chat frame, so
+          // it carries no hide or conversation-collapse control.
+          inlinePanelToggle="hidden"
+          showConversationCollapseControl={false}
           // In the split-workspace host, panes' panels share one PanelGroup, so
           // each pane's Panel needs its own layout identity (see the prop doc).
           resizablePanelId={
