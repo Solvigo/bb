@@ -19,6 +19,32 @@ export interface WorkItem {
   state: WorkItemState;
 }
 
+/** One streamed line of an SP's transcript in the DOMAIN column. */
+export interface TranscriptLine {
+  author: string;
+  at: string;
+  text: string;
+}
+
+/** An in-flight work item in the IN FLIGHT column (no percentage — no source). */
+export interface InFlightItem {
+  code: string;
+  note: string;
+  /** e.g. "in flight", "in review", "lost contact" */
+  state: string;
+  /** true tints the state as attention (e.g. lost contact) */
+  attention?: boolean;
+  ageLabel: string;
+}
+
+/** Work-item state tallies shown in the STATUS column footer. */
+export interface LaneCounts {
+  up: number;
+  approach: number;
+  planned: number;
+  ideas: number;
+}
+
 export interface Lane {
   id: string;
   /** Airways rank code — cosmetic label only. */
@@ -26,6 +52,10 @@ export interface Lane {
   name: string;
   /** kind slug for the domain the SP owns */
   domain: string;
+  /** DOMAIN-column sub-line, e.g. "1 airborne · 1 in the hold" */
+  standing: string;
+  /** held-count pill on the lane header, 0 hides it */
+  heldCount: number;
   /** self-authored status line ("what is on my mind, right now") */
   statusLine: string;
   /** minutes since the line was stamped */
@@ -33,8 +63,15 @@ export interface Lane {
   /** minutes since the lane last produced any activity */
   lastActivityMin: number;
   focus: string;
+  /** FOCUS meta line, e.g. "in flight · 40s ago" */
+  focusMeta: string;
   next: string | null;
+  /** NEXT meta line, e.g. "queued · ready to launch" */
+  nextMeta: string;
   items: WorkItem[];
+  transcript: TranscriptLine[];
+  inFlight: InFlightItem[];
+  counts: LaneCounts;
 }
 
 /** A demand on the CLEARANCE surface — pilot-ranked, only #1 wears the accent. */
@@ -75,60 +112,111 @@ export const LANES: Lane[] = [
     rank: "SP",
     name: "tower",
     domain: "UI buildout",
+    standing: "2 airborne · 1 in review",
+    heldCount: 0,
     statusLine: "Building the Tower shell — left chat, right tabbed stack — against the blueprint greys.",
     statusAgeMin: 1,
     lastActivityMin: 1,
-    focus: "Increment 1: the shell, static, on the live loop.",
-    next: "Wire the real ThreadChat mount once the shell reads true.",
+    focus: "Crew overview swimlanes, on the live loop",
+    focusMeta: "in flight · 40s ago",
+    next: "Wire the real ThreadChat mount once the shell reads true",
+    nextMeta: "queued · ready to launch",
     items: [
       { taskId: "tower-shell-1", title: "Tower shell — overview + clearance tabs", state: "in_flight" },
       { taskId: "tower-greys", title: "Tower greys measured from blueprint", state: "in_review" },
       { taskId: "tower-live-loop", title: "Stand up the permanent live loop", state: "accepted" },
     ],
+    transcript: [
+      { author: "TOWER", at: "14:03", text: "Rebuilt the overview as swimlanes: DOMAIN / STATUS / IN FLIGHT, one lane per SP." },
+      { author: "COMMANDER", at: "14:05", text: "Closer. Keep the columns fixed and nobody adds another." },
+      { author: "TOWER", at: "14:21", text: "Understood — three columns, fixed. Steer composer sits under each lane's transcript." },
+    ],
+    inFlight: [
+      { code: "T-900", note: "Swimlane rebuild is on your loop. Ready for your look.", state: "in flight", ageLabel: "40s" },
+      { code: "T-901", note: "Blueprint greys folded into tower-* tokens.", state: "in review", ageLabel: "6m" },
+    ],
+    counts: { up: 2, approach: 1, planned: 1, ideas: 0 },
   },
   {
     id: "prime",
     rank: "SP",
     name: "prime",
     domain: "product",
+    standing: "1 in the hold",
+    heldCount: 1,
     statusLine: "Holding — nothing lands until the buildout plan is ratified.",
     statusAgeMin: 6,
     lastActivityMin: 6,
-    focus: "Standing by on the product surface.",
+    focus: "Standing by on the product surface",
+    focusMeta: "held · 6m ago",
     next: null,
+    nextMeta: "nothing queued",
     items: [{ taskId: "prime-hold", title: "Await buildout plan", state: "queued" }],
+    transcript: [
+      { author: "PRIME", at: "13:40", text: "Held on the product surface until the buildout plan is ratified." },
+      { author: "COMMANDER", at: "13:41", text: "Correct. Hold." },
+    ],
+    inFlight: [
+      { code: "P-207", note: "Awaiting the buildout plan before any product work resumes.", state: "held", ageLabel: "6m" },
+    ],
+    counts: { up: 0, approach: 0, planned: 1, ideas: 0 },
   },
   {
     id: "clearance",
     rank: "SP",
     name: "clearance",
     domain: "the gate",
+    standing: "1 airborne · 1 needs you",
+    heldCount: 0,
     statusLine: "Attention router quiet — one look-judgement waiting on the Commander.",
     statusAgeMin: 3,
     lastActivityMin: 3,
-    focus: "Route what needs the Commander, and only that.",
-    next: "Seal the shell increment's PR once approved.",
+    focus: "Route what needs the Commander, and only that",
+    focusMeta: "in flight · 3m ago",
+    next: "Seal the shell increment's PR once approved",
+    nextMeta: "in review · ready to launch",
     items: [
       { taskId: "clr-router", title: "Attention router — decisions route", state: "in_flight" },
       { taskId: "clr-seal", title: "Boarding-pass seal on work-item PRs", state: "in_review" },
     ],
+    transcript: [
+      { author: "CLEARANCE", at: "13:47", text: "One look-judgement is standing on the Commander; everything else routed itself." },
+      { author: "COMMANDER", at: "13:49", text: "I'll clear it from the Clearance tab." },
+    ],
+    inFlight: [
+      { code: "C-118", note: "Look-judgement waiting on the Commander.", state: "needs you", attention: true, ageLabel: "3m" },
+      { code: "C-119", note: "Boarding-pass seal check on the shell PR.", state: "in review", ageLabel: "12m" },
+    ],
+    counts: { up: 1, approach: 1, planned: 0, ideas: 0 },
   },
   {
     id: "knowledge",
     rank: "SP",
     name: "knowledge",
     domain: "current truth",
+    standing: "1 airborne",
+    heldCount: 0,
     // Deliberately stale: the line was stamped 47m ago, but the lane produced
     // activity only 8m ago — so the line is older than the agent's last move and
     // is marked stale rather than trusted.
     statusLine: "Curating theme:harness — folding the liveness-law revisions into the summary.",
     statusAgeMin: 47,
     lastActivityMin: 8,
-    focus: "Keep one head per subject; curation debt under 20.",
-    next: "Re-curate the theme summary before the next accept.",
+    focus: "Keep one head per subject; curation debt under 20",
+    focusMeta: "in flight · 8m ago",
+    next: "Re-curate the theme summary before the next accept",
+    nextMeta: "queued · curation due",
     items: [
       { taskId: "kn-summary", title: "Re-curate theme summary (curation due)", state: "queued" },
     ],
+    transcript: [
+      { author: "KNOWLEDGE", at: "13:15", text: "Folding the liveness-law revisions (v1→v6) into the theme summary." },
+      { author: "KNOWLEDGE", at: "14:02", text: "Curation debt at 18/20 — summary re-curate due before the next accept." },
+    ],
+    inFlight: [
+      { code: "K-214", note: "Theme summary re-curation, folding six revisions.", state: "in flight", ageLabel: "8m" },
+    ],
+    counts: { up: 1, approach: 0, planned: 1, ideas: 0 },
   },
 ];
 
