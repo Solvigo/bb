@@ -458,7 +458,7 @@
       [data-promptbox-voice-active]
     )
     [data-promptbox-main] {
-    height: 7.5rem;
+    min-height: 7.5rem;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
@@ -474,10 +474,9 @@
       [data-promptbox-voice-active]
     )
     [data-promptbox-editor-scroll] {
-    height: 7.5rem !important;
     min-height: 7.5rem !important;
-    max-height: 7.5rem !important;
-    overflow: hidden;
+    max-height: 60vh !important;
+    overflow-y: auto;
     padding-top: 0;
     padding-bottom: 0;
     padding-right: 3.5rem;
