@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { LANES, type Lane } from "@/views/tower/fixtures";
 
 const COL_LABEL =
@@ -20,15 +21,21 @@ function isStale(lane: Lane): boolean {
 /** DOMAIN column: identity, standing, streamed transcript, steer composer. */
 function DomainColumn({ lane }: { lane: Lane }) {
   const stale = isStale(lane);
+  const [draft, setDraft] = useState("");
   return (
     <div className="flex min-w-0 flex-col border-r border-tower-border">
-      <div className="flex items-start gap-2.5 px-3.5 pb-2.5 pt-3.5">
+      {/* SP identity — a drill-down target into that SP's own view */}
+      <button
+        type="button"
+        title={`Open ${lane.name}`}
+        className="group/sp flex items-start gap-2.5 px-3.5 pb-2.5 pt-3.5 text-left transition-colors hover:bg-tower-bright/60"
+      >
         <span className="mt-px rounded-[5px] border border-tower-border-strong px-[5px] py-px font-mono text-[9px] font-bold tracking-wide text-tower-fg-dim">
           {lane.rank}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate font-semibold text-tower-fg">
+            <span className="truncate font-semibold text-tower-fg group-hover/sp:text-tower-accent-hover">
               {lane.name}
             </span>
             {lane.heldCount > 0 ? (
@@ -41,7 +48,7 @@ function DomainColumn({ lane }: { lane: Lane }) {
             {lane.standing}
           </div>
         </div>
-      </div>
+      </button>
 
       {/* streamed transcript (truncated, never summarised) */}
       <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3.5 pb-3">
@@ -63,15 +70,32 @@ function DomainColumn({ lane }: { lane: Lane }) {
         ) : null}
       </div>
 
-      {/* steer composer (visual for now) */}
-      <div className="border-t border-tower-border p-2.5">
-        <div className="flex items-center gap-2 rounded-lg border border-tower-input-border bg-tower-input px-3 py-2">
-          <span className="min-w-0 flex-1 truncate text-[12px] text-tower-fg-faint">
-            Steer {lane.name}…
-          </span>
-          <span className="font-mono text-[11px] text-tower-fg-faint">↵</span>
+      {/* steer composer — a real focusable input (send is a no-op on fixtures) */}
+      <form
+        className="border-t border-tower-border p-2.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setDraft("");
+        }}
+      >
+        <div className="flex items-center gap-2 rounded-lg border border-tower-input-border bg-tower-input px-3 py-2 transition-colors focus-within:border-tower-fg-dim">
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={`Steer ${lane.name}…`}
+            aria-label={`Steer ${lane.name}`}
+            className="min-w-0 flex-1 bg-transparent text-[12px] text-tower-fg-body outline-none placeholder:text-tower-fg-faint"
+          />
+          <button
+            type="submit"
+            aria-label={`Send to ${lane.name}`}
+            className="font-mono text-[11px] text-tower-fg-faint transition-colors hover:text-tower-fg-body"
+          >
+            ↵
+          </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
@@ -133,9 +157,16 @@ function InFlightColumn({ lane }: { lane: Lane }) {
         <span className="italic text-tower-fg-faint">nothing in flight</span>
       ) : (
         lane.inFlight.map((it) => (
-          <div
+          <button
+            type="button"
             key={it.code}
-            className="rounded-lg border border-tower-border bg-tower-panel px-3 py-2.5"
+            title={`Open ${it.code}`}
+            className={
+              "block w-full rounded-lg border bg-tower-panel px-3 py-2.5 text-left shadow-sm transition-colors hover:bg-tower-bright " +
+              (it.attention
+                ? "border-l-2 border-l-tower-accent border-tower-border"
+                : "border-tower-border")
+            }
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">
@@ -156,7 +187,7 @@ function InFlightColumn({ lane }: { lane: Lane }) {
             >
               {it.state}
             </div>
-          </div>
+          </button>
         ))
       )}
     </div>
@@ -168,8 +199,10 @@ const LANE_GRID = "grid grid-cols-[minmax(240px,26%)_minmax(0,1fr)_minmax(220px,
 export function FleetOverviewTab() {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* fixed column header */}
-      <div className={`${LANE_GRID} shrink-0 border-b border-tower-border px-0`}>
+      {/* fixed column header — sits a shade above the board */}
+      <div
+        className={`${LANE_GRID} shrink-0 border-b border-tower-border bg-tower-panel`}
+      >
         <div className="border-r border-tower-border px-3.5 py-2">
           <span className={COL_LABEL}>Domain</span>
         </div>
@@ -181,12 +214,12 @@ export function FleetOverviewTab() {
         </div>
       </div>
 
-      {/* swimlanes, one per SP */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* swimlanes on a recessed board; each lane lifts on hover */}
+      <div className="min-h-0 flex-1 overflow-y-auto bg-tower-bg">
         {LANES.map((lane) => (
           <div
             key={lane.id}
-            className={`${LANE_GRID} min-h-[220px] border-b border-tower-border`}
+            className={`${LANE_GRID} group/lane min-h-[220px] border-b border-tower-border bg-tower-surface transition-colors hover:bg-tower-panel/60`}
           >
             <DomainColumn lane={lane} />
             <StatusColumn lane={lane} />
