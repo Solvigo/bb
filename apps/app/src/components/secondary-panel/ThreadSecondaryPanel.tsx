@@ -29,6 +29,7 @@ import {
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
+import { FleetOverviewTab } from "./tower/FleetOverviewTab";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
@@ -448,6 +449,18 @@ export function ThreadSecondaryPanel({
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
+  // Tower fleet overview is a CLIENT-ONLY view (never synced to the pinned
+  // server's strict tab contract). It shows by default and yields to any real
+  // fixed view (Info/Diff) or file tab the operator opens.
+  const [showFleetOverview, setShowFleetOverview] = useState(true);
+  const activeTabKind = activeTab?.kind ?? null;
+  // Fleet is the default surface: it shows over the empty new-tab / info states,
+  // but yields to any real content the operator opens (a file, diff, terminal…).
+  const isFleetOverviewActive =
+    showFleetOverview &&
+    (activeTabKind === null ||
+      activeTabKind === "new-tab" ||
+      activeTabKind === "thread-info");
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
@@ -590,13 +603,13 @@ export function ThreadSecondaryPanel({
           : undefined
       }
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden bg-surface-raised-solid",
+        "flex min-h-0 flex-col overflow-hidden bg-tower-surface",
         // Drawer: fill the drawer shell. Inline: the fixed-width, left-pinned
         // content the panel clips into view (or fills the panel while resizing).
         renderAsDrawer && "h-full min-w-0 flex-1",
         // Tower: a floating card inset from the surface, not a full-bleed column.
         // The inset (not h-full) defines the box, so it floats with a gap.
-        !renderAsDrawer && "rounded-xl border border-border shadow-sm",
+        !renderAsDrawer && "rounded-xl border border-tower-input-border shadow-sm",
         !renderAsDrawer && [
           "absolute inset-y-2 left-2",
           isSecondaryPanelResizing ? "right-2" : "",
@@ -644,15 +657,30 @@ export function ThreadSecondaryPanel({
             role="toolbar"
             aria-label="Right panel views"
           >
+            <PinnedIconTab
+              ariaLabel="Show fleet overview"
+              isActive={isFleetOverviewActive}
+              label="Fleet"
+              leadingVisual={<Icon name="Layers" />}
+              onClick={() => setShowFleetOverview(true)}
+              title="Fleet overview"
+              usesDesktopChrome={usesDesktopChrome}
+              activeTreatment="fill"
+            />
             {showInfoTab ? (
               <PinnedIconTab
                 ariaLabel="Show thread info panel"
                 isActive={
-                  activeFixedPanel === "thread-info" && !hasActiveFileTab
+                  !isFleetOverviewActive &&
+                  activeFixedPanel === "thread-info" &&
+                  !hasActiveFileTab
                 }
                 label="Info"
                 leadingVisual={<Icon name="Info" />}
-                onClick={() => onPanelChange("thread-info")}
+                onClick={() => {
+                  setShowFleetOverview(false);
+                  onPanelChange("thread-info");
+                }}
                 title="Thread info"
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"
@@ -666,10 +694,15 @@ export function ThreadSecondaryPanel({
                     : "Show diff panel"
                 }
                 ariaKeyshortcuts={diffShortcut?.ariaKeyshortcuts}
-                isActive={isDiffPanelActive && !hasActiveFileTab}
+                isActive={
+                  !isFleetOverviewActive && isDiffPanelActive && !hasActiveFileTab
+                }
                 label="Diff"
                 leadingVisual={<Icon name="FileDiff" />}
-                onClick={() => onPanelChange("git-diff")}
+                onClick={() => {
+                  setShowFleetOverview(false);
+                  onPanelChange("git-diff");
+                }}
                 title="Diff"
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"
@@ -776,14 +809,16 @@ export function ThreadSecondaryPanel({
           />
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-raised-solid">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-tower-surface">
         {/*
           The browser deck owns native-view visibility/retention and renders
           content only when a browser tab is active. The normal content slot is
           suppressed in that case because the deck fills the region.
         */}
         {browserDeck}
-        {isBrowserTabActive ? null : hasActiveFileTab ? (
+        {isBrowserTabActive ? null : isFleetOverviewActive ? (
+          <FleetOverviewTab />
+        ) : hasActiveFileTab ? (
           <div
             className={
               isTerminalTabActive || fileTabContentFillsRegion

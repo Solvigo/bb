@@ -9,7 +9,7 @@
  */
 @theme {
   --color-tower-bg: #1b1a19; /* darkest — commander chat */
-  --color-tower-surface: #211f1d; /* the rendering surface */
+  --color-tower-surface: #1f1e1d; /* the rendering surface */
   --color-tower-panel: #262624; /* panels / cards */
   --color-tower-raised: #2b2927; /* chat bubble / raised card fill */
   --color-tower-bright: #302f2c;

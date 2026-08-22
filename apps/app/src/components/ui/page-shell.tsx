@@ -44,7 +44,7 @@ function renderStaticFooter(
       <OverflowFade placement="above" tone="background" />
       <div
         className={cn(
-          "mx-auto w-full px-4 pb-4",
+          "mx-auto w-full pb-2 pl-2",
           maxWidthClassName,
           footerClassName,
         )}

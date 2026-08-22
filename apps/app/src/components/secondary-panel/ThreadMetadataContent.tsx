@@ -108,8 +108,6 @@ export function ParentSelectorRow({
   projectId,
   parentThreadDisplayName,
   parentThreads,
-  canAssignToParent,
-  canTakeOverThread,
   isLoadingParentThreads,
   isParentThreadsError,
   updateThreadPending,
@@ -134,7 +132,9 @@ export function ParentSelectorRow({
     (option) => option.value === parentSelectorValue,
   )?.label;
 
-  if (!parentThreadId && !canAssignToParent && !canTakeOverThread) {
+  // Tower: a pilot never has a parent, so the parent row is hidden whenever the
+  // thread has none; it still appears for child / side-chat threads.
+  if (!parentThreadId) {
     return null;
   }
 
@@ -1034,6 +1034,16 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
 
   return (
     <ThreadMetadataCard>
+      <DetailRow
+        label={<DetailRowIconLabel icon="UserRound">Pilot</DetailRowIconLabel>}
+      >
+        <span
+          className="min-w-0 truncate"
+          title={getThreadDisplayTitle(thread)}
+        >
+          {getThreadDisplayTitle(thread)}
+        </span>
+      </DetailRow>
       <ParentSelectorRow
         thread={thread}
         projectId={projectId}
