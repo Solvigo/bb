@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
 
 const EYEBROW =
-  "font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
+  "font-tower-mono text-[10px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
 
 interface Demand {
   id: number;
@@ -50,7 +50,7 @@ function DemandDetail({ item }: { item: Demand | null }) {
       ) : null}
       {item.whatHappened ? (
         <div className="mb-[18px]">
-          <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.1em] text-tower-fg-dim">
+          <div className="mb-1.5 font-tower-mono text-[9.5px] uppercase tracking-[0.1em] text-tower-fg-dim">
             What happened
           </div>
           <div className="text-tower-fg-body">{item.whatHappened}</div>
@@ -58,14 +58,14 @@ function DemandDetail({ item }: { item: Demand | null }) {
       ) : null}
       {item.atRisk ? (
         <div className="mb-[18px]">
-          <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.1em] text-tower-fg-dim">
+          <div className="mb-1.5 font-tower-mono text-[9.5px] uppercase tracking-[0.1em] text-tower-fg-dim">
             At risk
           </div>
           <div className="text-tower-fg-body">{item.atRisk}</div>
         </div>
       ) : null}
       <div className="rounded-[10px] border border-tower-accent bg-tower-accent-tint px-[15px] py-[13px]">
-        <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.1em] text-tower-accent-hover">
+        <div className="mb-1.5 font-tower-mono text-[9.5px] uppercase tracking-[0.1em] text-tower-accent-hover">
           Needs you
         </div>
         <div className="text-tower-fg">
@@ -84,10 +84,10 @@ export function ClearanceTab() {
   const selected = open.find((d) => d.id === selectedId) ?? open[0] ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col font-tower-sans">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-panel px-4 py-2.5">
         <span className={EYEBROW}>Yours to clear</span>
-        <span className="font-mono text-[10px] text-tower-fg-faint">
+        <span className="font-tower-mono text-[10px] text-tower-fg-faint">
           {error ? (
             <span className="text-tower-accent-hover">rpc error · {error}</span>
           ) : (
@@ -120,16 +120,16 @@ export function ClearanceTab() {
                   ].join(" ")}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[10px] font-bold text-tower-fg-dim">
+                    <span className="font-tower-mono text-[10px] font-bold text-tower-fg-dim">
                       #{idx + 1}
                     </span>
                     <span className="font-semibold text-tower-fg">{c.title}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="rounded-full border border-tower-border-strong px-1.5 py-px font-mono text-[9px] uppercase tracking-wide text-tower-fg-dim">
+                    <span className="rounded-full border border-tower-border-strong px-1.5 py-px font-tower-mono text-[9px] uppercase tracking-wide text-tower-fg-dim">
                       {c.kind}
                     </span>
-                    <span className="rounded-full border border-tower-border px-1.5 py-px font-mono text-[9px] uppercase tracking-wide text-tower-fg-faint">
+                    <span className="rounded-full border border-tower-border px-1.5 py-px font-tower-mono text-[9px] uppercase tracking-wide text-tower-fg-faint">
                       {c.audience}
                     </span>
                   </div>

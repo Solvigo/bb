@@ -1,4 +1,6 @@
 @import "@fontsource-variable/inter";
+/* Tower blueprint fonts: IBM Plex Mono (labels/codes/meta) + Manrope (body). */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
 @import "@/components/ui/theme.css";
 
 /*
@@ -26,6 +28,9 @@
   --color-tower-accent: #f54e00; /* warm accent — attention only */
   --color-tower-accent-hover: #ff6a2a;
   --color-tower-accent-tint: #33231a; /* attention surface behind accent text */
+  /* Blueprint fonts */
+  --font-tower-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-tower-sans: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 @layer base {

@@ -2,9 +2,9 @@ import { useState } from "react";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
 
 const COL_LABEL =
-  "font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-tower-fg-dim";
+  "font-tower-mono text-[10px] font-bold uppercase tracking-[0.16em] text-tower-fg-dim";
 const BLOCK_LABEL =
-  "font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-tower-fg-dim";
+  "font-tower-mono text-[9px] font-bold uppercase tracking-[0.12em] text-tower-fg-dim";
 const LANE_GRID =
   "grid grid-cols-[minmax(240px,26%)_minmax(0,1fr)_minmax(220px,30%)]";
 
@@ -84,12 +84,12 @@ function DomainColumn({
   return (
     <div className="flex min-w-0 flex-col border-r border-tower-border">
       <div className="flex items-start gap-2.5 px-3.5 pb-2.5 pt-3.5">
-        <span className="mt-px rounded-[5px] border border-tower-border-strong px-[5px] py-px font-mono text-[9px] font-bold tracking-wide text-tower-fg-dim">
+        <span className="mt-px rounded-[5px] border border-tower-border-strong px-[5px] py-px font-tower-mono text-[9px] font-bold tracking-wide text-tower-fg-dim">
           {row.rank}
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate font-semibold text-tower-fg">{label}</div>
-          <div className="mt-0.5 font-mono text-[10px] text-tower-fg-faint">
+          <div className="mt-0.5 font-tower-mono text-[10px] text-tower-fg-faint">
             {row.parentThreadId ? `child of ${row.parentThreadId}` : "root pilot"}
           </div>
         </div>
@@ -132,7 +132,7 @@ function DomainColumn({
           <button
             type="submit"
             aria-label={`Send to ${label}`}
-            className="font-mono text-[11px] text-tower-fg-faint transition-colors hover:text-tower-fg-body"
+            className="font-tower-mono text-[11px] text-tower-fg-faint transition-colors hover:text-tower-fg-body"
           >
             ↵
           </button>
@@ -159,7 +159,7 @@ function StatusColumn({
             {report ? report.note : <span className="italic text-tower-fg-faint">no report yet</span>}
           </div>
           {report ? (
-            <div className="mt-0.5 font-mono text-[10px] text-tower-fg-faint">
+            <div className="mt-0.5 font-tower-mono text-[10px] text-tower-fg-faint">
               {report.state}
               {report.escalated ? " · mayday" : ""} · {report.at}
             </div>
@@ -172,7 +172,7 @@ function StatusColumn({
           </div>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-tower-fg-dim">
+      <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1 font-tower-mono text-[10px] text-tower-fg-dim">
         <span><span className="text-tower-fg-muted">{counts.up}</span> up</span>
         <span><span className="text-tower-accent-hover">{counts.approach}</span> approach</span>
         <span><span className="text-tower-fg-muted">{counts.planned}</span> planned</span>
@@ -194,12 +194,12 @@ function InFlightColumn({ items }: { items: { taskId: string; state: string; att
             key={it.taskId}
             className="rounded-lg border border-tower-border bg-tower-panel px-3 py-2.5 shadow-sm"
           >
-            <div className="font-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">
+            <div className="font-tower-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">
               {it.taskId}
             </div>
             <div
               className={
-                "mt-1 font-mono text-[9px] font-bold uppercase tracking-wide " +
+                "mt-1 font-tower-mono text-[9px] font-bold uppercase tracking-wide " +
                 (it.attention ? "text-tower-accent-hover" : "text-tower-fg-dim")
               }
             >
@@ -244,10 +244,10 @@ export function FleetOverviewTab() {
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col font-tower-sans">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-panel px-4 py-2.5">
         <span className={COL_LABEL}>Fleet board</span>
-        <span className="font-mono text-[10px] text-tower-fg-faint">
+        <span className="font-tower-mono text-[10px] text-tower-fg-faint">
           {error ? (
             <span className="text-tower-accent-hover">rpc error · {error}</span>
           ) : (
@@ -297,12 +297,12 @@ export function FleetOverviewTab() {
                   className="rounded-[10px] border border-tower-border bg-tower-panel px-3.5 py-3 shadow-sm"
                 >
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="font-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">
+                    <span className="font-tower-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">
                       {it.taskId}
                     </span>
                     <span
                       className={
-                        "font-mono text-[9px] font-bold uppercase tracking-wide " +
+                        "font-tower-mono text-[9px] font-bold uppercase tracking-wide " +
                         (STATE_TONE[it.displayState ?? it.state] ?? "text-tower-fg-dim")
                       }
                     >
