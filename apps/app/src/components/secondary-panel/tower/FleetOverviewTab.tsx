@@ -102,6 +102,8 @@ interface QueueItem {
   title: string;
   state: string;
   displayState: string | null;
+  createdAt: string | null;
+  lastAttempt: string | null;
 }
 interface QueueResult {
   ok: boolean;
@@ -113,29 +115,89 @@ interface PlacedItem {
   title: string;
   col: string; // a COLUMN key, "terminal", or "dropped"
   termLabel?: string;
+  at?: string | null; // last activity (or creation) — drives the flight's age
 }
 
 const UNASSIGNED = "__unassigned__";
 const GRID =
   "grid grid-cols-[minmax(180px,15%)_repeat(7,minmax(112px,1fr))_minmax(150px,14%)]";
 
+// Chain position → a flight's progress %, so a card reads its distance down the
+// runway. Derived from the column, honest (it IS the chain position).
+const COL_PROGRESS: Record<string, number> = {
+  drafted: 6,
+  confirmed: 16,
+  queued: 28,
+  in_flight: 46,
+  in_review: 66,
+  pilot_look: 80,
+  clearance: 92,
+};
+// Three honest buckets from chain state (v2 airline vocabulary):
+const AIRBORNE_COLS = new Set(["in_flight"]); // executing
+const HOLD_COLS = new Set(["drafted", "confirmed", "queued"]); // waiting to launch
+const HELD_COLS = new Set(["in_review", "pilot_look", "clearance"]); // held at a gate
+
+/** A task's flight designator — a stable 3-digit SV number from its id. */
+function svNumber(taskId: string): string {
+  let h = 0;
+  for (let i = 0; i < taskId.length; i++)
+    h = (Math.imul(h, 31) + taskId.charCodeAt(i)) >>> 0;
+  return `SV ${100 + (h % 900)}`;
+}
+
+/** Two-letter flight code from a lane's handle ("surface dispatch" → "SU"). */
+function laneCode(label: string): string {
+  const word = label.replace(/^thr_/, "").replace(/[^a-zA-Z]+/, " ").trim();
+  return (word.slice(0, 2) || label.slice(0, 2)).toUpperCase();
+}
+
+/** Compact "time since" for a flight's age (v2: "40s", "4m", "2h 20m", "1d 03h"). */
+function ageSince(at?: string | null): string | null {
+  if (!at) return null;
+  const ms = Date.now() - new Date(at).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+/** A flight: plane glyph + SV number + age, body, then a runway progress bar + %. */
 function Card({ item }: { item: PlacedItem }) {
-  const attention = item.col === "in_flight" || item.col === "clearance";
+  const pct = COL_PROGRESS[item.col];
+  const age = ageSince(item.at);
   return (
     <div
-      className={
-        "mb-1.5 rounded-[8px] border bg-tower-panel px-2 py-1.5 " +
-        (attention
-          ? "border-l-2 border-l-tower-accent border-tower-border"
-          : "border-tower-border")
-      }
+      className="mb-1.5 rounded-[8px] border border-tower-border bg-tower-panel px-2 py-1.5"
+      title={item.taskId}
     >
-      <div className="truncate font-tower-mono text-[9px] font-bold tracking-wide text-tower-fg-muted">
-        {item.taskId}
+      <div className="flex items-center justify-between gap-1">
+        <span className="min-w-0 truncate font-tower-mono text-[10px] text-tower-fg-body">
+          <span className="text-tower-flight">✈</span> {svNumber(item.taskId)}
+        </span>
+        {age ? (
+          <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-faint">
+            {age}
+          </span>
+        ) : null}
       </div>
-      <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-tower-fg-body">
+      <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-tower-fg-body">
         {item.title}
       </div>
+      {pct != null ? (
+        <div className="mt-1.5">
+          <div className="h-[2px] w-full bg-tower-surface">
+            <div className="h-[2px] bg-tower-fg-muted" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="mt-1 text-right font-tower-mono text-[8.5px] text-tower-fg-muted">
+            {pct}%
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -157,9 +219,44 @@ function Swimlane({
   const inCol = (key: string) => items.filter((it) => it.col === key);
   const terminal = items.filter((it) => it.col === "terminal");
   const dropped = items.filter((it) => it.col === "dropped");
+  const airborne = items.filter((it) => AIRBORNE_COLS.has(it.col)).length;
+  const inHold = items.filter((it) => HOLD_COLS.has(it.col)).length;
+  const held = items.filter((it) => HELD_COLS.has(it.col)).length;
+  const identity = (
+    <>
+      <div className="flex items-center gap-2">
+        <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[8px] bg-tower-bright font-tower-mono text-[9.5px] font-bold text-tower-fg-muted">
+          {laneCode(label)}
+        </span>
+        <span
+          className={
+            "min-w-0 flex-1 truncate text-[12.5px] font-[650] text-tower-fg-body" +
+            (onOpen ? " group-hover/sp:text-tower-accent-hover" : "")
+          }
+        >
+          {label}
+        </span>
+        {held > 0 ? (
+          <span className="shrink-0 rounded-[6px] bg-tower-accent-tint px-1.5 py-0.5 font-tower-mono text-[8.5px] font-semibold uppercase tracking-[0.68px] text-tower-flight-strong">
+            {held} held
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-1.5 truncate font-tower-mono text-[9px] text-tower-flight">
+        {airborne || inHold ? (
+          <>
+            {airborne} airborne
+            {inHold > 0 ? ` · ${inHold} in the hold` : ""}
+          </>
+        ) : (
+          <span className="text-tower-fg-faint">{sub}</span>
+        )}
+      </div>
+    </>
+  );
   return (
     <div className={`${GRID} border-b border-tower-border`}>
-      {/* DOMAIN identity */}
+      {/* DOMAIN identity — v2 lane anatomy */}
       <div className="border-r border-tower-bright p-2.5">
         {onOpen ? (
           <button
@@ -168,22 +265,10 @@ function Swimlane({
             title={`Open ${label}`}
             className="group/sp w-full text-left"
           >
-            <div className="truncate font-semibold text-tower-fg group-hover/sp:text-tower-accent-hover">
-              {label}
-            </div>
-            <div className="mt-0.5 truncate font-tower-mono text-[9px] text-tower-fg-faint">
-              {sub}
-            </div>
+            {identity}
           </button>
         ) : (
-          <div>
-            <div className="truncate font-tower-mono text-[11px] font-bold text-tower-fg">
-              {label}
-            </div>
-            <div className="mt-0.5 font-tower-mono text-[9px] text-tower-fg-faint">
-              {sub}
-            </div>
-          </div>
+          <div>{identity}</div>
         )}
       </div>
       {/* 7 state columns */}
@@ -288,7 +373,13 @@ export function FleetOverviewTab({
     // scoped surface: only this agent's own items
     if (scopeThreadId && owner !== scopeThreadId) continue;
     const list = byRow.get(owner) ?? [];
-    list.push({ taskId: it.taskId, title: it.title, col, termLabel });
+    list.push({
+      taskId: it.taskId,
+      title: it.title,
+      col,
+      termLabel,
+      at: it.lastAttempt ?? it.createdAt,
+    });
     byRow.set(owner, list);
   }
 

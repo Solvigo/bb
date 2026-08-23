@@ -31,6 +31,10 @@
   --color-tower-accent: #f54e00; /* warm accent — attention only */
   --color-tower-accent-hover: #ff6a2a;
   --color-tower-accent-tint: #33231a; /* attention surface behind accent text */
+  /* Flight tones (v2 airline skin) — softer warm hues for airborne/held/flights */
+  --color-tower-flight: #d08a76; /* airborne / plane glyph */
+  --color-tower-flight-strong: #d9825e; /* in-flight emphasis */
+  --color-tower-hold: #d4a84b; /* in the hold / waiting */
   /* Blueprint fonts */
   --font-tower-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-tower-sans: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
