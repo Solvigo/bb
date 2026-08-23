@@ -12,7 +12,7 @@ import { atom } from "jotai";
  *   bb-tower:clearance       → yours to clear
  *   bb-tower:sp/<threadId>   → drill into that SP (board + its focus view)
  */
-export type TowerNavView = "crew" | "clearance";
+export type TowerNavView = "crew" | "clearance" | "knowledge";
 
 export interface TowerNavRequest {
   view: TowerNavView;
@@ -34,7 +34,7 @@ export function parseTowerLink(href: string): Omit<TowerNavRequest, "nonce"> | n
     const id = rest.slice(3).trim();
     return id ? { view: "crew", spThreadId: id } : null;
   }
-  if (rest === "crew" || rest === "clearance") {
+  if (rest === "crew" || rest === "clearance" || rest === "knowledge") {
     return { view: rest };
   }
   return null;

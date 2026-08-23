@@ -27,6 +27,9 @@ export function useCrewRpc<T>(
   const [loading, setLoading] = useState(true);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // Serialize the input so a changed input (a new group/subject/artifactId)
+  // re-runs the fetch effect — refs alone don't retrigger it.
+  const inputKey = JSON.stringify(input ?? null);
   const inputRef = useRef(input);
   inputRef.current = input;
 
@@ -78,7 +81,7 @@ export function useCrewRpc<T>(
       offSignal();
       offConn();
     };
-  }, [pluginId, method]);
+  }, [pluginId, method, inputKey]);
 
   // tick a clock so the displayed age advances between polls
   useEffect(() => {

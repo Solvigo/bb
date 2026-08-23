@@ -31,6 +31,7 @@ import {
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import { FleetOverviewTab } from "./tower/FleetOverviewTab";
 import { ClearanceTab } from "./tower/ClearanceTab";
+import { KnowledgeTab } from "./tower/KnowledgeTab";
 import { towerNavAtom } from "./tower/towerNav";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
@@ -457,7 +458,7 @@ export function ThreadSecondaryPanel({
   // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
   // contract). "crew" is the default surface; the views show over the empty
   // new-tab / info states but yield to any real content the operator opens.
-  const [towerView, setTowerView] = useState<"crew" | "clearance" | null>(
+  const [towerView, setTowerView] = useState<"crew" | "clearance" | "knowledge" | null>(
     "crew",
   );
   // Chat-link navigation: a bb-tower: link in the commander chat sets this atom.
@@ -474,7 +475,8 @@ export function ThreadSecondaryPanel({
     activeTabKind === null || activeTabKind === "thread-info";
   const isFleetOverviewActive = towerView === "crew" && towerViewCanShow;
   const isClearanceActive = towerView === "clearance" && towerViewCanShow;
-  const isTowerViewActive = isFleetOverviewActive || isClearanceActive;
+  const isKnowledgeActive = towerView === "knowledge" && towerViewCanShow;
+  const isTowerViewActive = isFleetOverviewActive || isClearanceActive || isKnowledgeActive;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
@@ -691,6 +693,16 @@ export function ThreadSecondaryPanel({
               usesDesktopChrome={usesDesktopChrome}
               activeTreatment="fill"
             />
+            <PinnedIconTab
+              ariaLabel="Show knowledge"
+              isActive={isKnowledgeActive}
+              label="Knowledge"
+              leadingVisual={<Icon name="Brain" />}
+              onClick={() => setTowerView("knowledge")}
+              title="Knowledge — current truth"
+              usesDesktopChrome={usesDesktopChrome}
+              activeTreatment="fill"
+            />
             {showInfoTab ? (
               <PinnedIconTab
                 ariaLabel="Show thread info panel"
@@ -844,6 +856,8 @@ export function ThreadSecondaryPanel({
           <FleetOverviewTab />
         ) : isClearanceActive ? (
           <ClearanceTab />
+        ) : isKnowledgeActive ? (
+          <KnowledgeTab />
         ) : hasActiveFileTab ? (
           <div
             className={
