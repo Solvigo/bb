@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAtomValue } from "jotai";
 import { wsManager } from "@/lib/ws";
+import { useSendThreadMessage } from "@/hooks/mutations/thread-runtime-mutations";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
@@ -278,13 +279,22 @@ function useThreadTranscript(
         /* keep last — a failed refresh must not blank the transcript */
       }
     };
+    if (!threadId) return;
     void load();
-    const off = wsManager.onPluginSignal((s) => {
+    // Stream it: the thread's own change events drive the rail, so a steer (or
+    // the agent's reply) shows up here without waiting on a crew-plugin signal.
+    wsManager.subscribe({ kind: "thread-detail", threadId });
+    const offChanged = wsManager.onChanged((m) => {
+      if (m.entity === "thread" && (!m.id || m.id === threadId)) void load();
+    });
+    const offSignal = wsManager.onPluginSignal((s) => {
       if (s.pluginId === "crew") void load();
     });
     return () => {
       cancelled = true;
-      off();
+      offChanged();
+      offSignal();
+      wsManager.unsubscribe({ kind: "thread-detail", threadId });
     };
   }, [threadId, laneName]);
   return msgs;
@@ -333,6 +343,78 @@ function TranscriptStream({ msgs }: { msgs: TranscriptMsg[] }) {
         </div>
       ))}
       <div ref={endRef} />
+    </div>
+  );
+}
+
+/** The Steer composer — talk to this lane's agent from the board. It really
+ *  sends: same mutation the thread composer uses, queued if the agent is busy. */
+function SteerComposer({
+  threadId,
+  laneName,
+}: {
+  threadId: string;
+  laneName: string;
+}) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const send = useSendThreadMessage();
+
+  const submit = async () => {
+    const body = text.trim();
+    if (!body || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await send.mutateAsync({
+        id: threadId,
+        input: [{ type: "text", text: body, mentions: [] }],
+        mode: "queue-if-active",
+      });
+      setText("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "could not send");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 shrink-0">
+      <div className="flex items-center gap-1.5 rounded-[8px] border border-tower-input-border bg-tower-input px-2.5 py-1.5 focus-within:border-tower-fg-dim">
+        <input
+          value={text}
+          disabled={sending}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void submit();
+            }
+            // the board is a keyboard surface too — don't let a lane's typing
+            // bubble into whatever shortcuts the shell binds.
+            e.stopPropagation();
+          }}
+          placeholder={`Steer ${laneName}…`}
+          aria-label={`Steer ${laneName}`}
+          className="min-w-0 flex-1 bg-transparent font-tower-sans text-[10.5px] text-tower-fg-body outline-none placeholder:text-tower-fg-dim disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={sending || !text.trim()}
+          aria-label="Send"
+          className="shrink-0 font-tower-mono text-[10px] text-tower-fg-faint hover:text-tower-fg-body disabled:opacity-40"
+        >
+          {sending ? "·" : "↵"}
+        </button>
+      </div>
+      {error ? (
+        <div className="mt-1 font-tower-mono text-[9px] text-tower-accent-hover">
+          not sent · {error}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -496,9 +578,11 @@ function LaneRow({
     .sort((a, b) => (STAGE_RANK[b.col] ?? -1) - (STAGE_RANK[a.col] ?? -1));
 
   return (
-    <div className={`${LANE_GRID} min-h-[220px] border-b border-tower-border`}>
+    <div
+      className={`${LANE_GRID} mx-3 mb-3 min-h-[260px] overflow-hidden rounded-[12px] border border-tower-border bg-tower-panel/40`}
+    >
       {/* ── DOMAIN rail ── */}
-      <div className="flex min-h-0 flex-col border-r border-tower-border px-3 py-3">
+      <div className="flex min-h-0 flex-col border-r border-tower-border px-3.5 py-3.5">
         {onOpen ? (
           <button
             type="button"
@@ -524,24 +608,28 @@ function LaneRow({
             />
           </div>
         )}
-        <div className="mt-2.5 min-h-0 flex-1">
+        {/* the transcript sits INSET — a recessed panel, as in v2 */}
+        <div className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] bg-tower-surface">
           {hasThread ? (
             <TranscriptStream msgs={transcript} />
           ) : (
-            <div className="px-1 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
+            <div className="px-2.5 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
               Undispatched — no flight deck yet.
             </div>
           )}
         </div>
+        {hasThread && threadId ? (
+          <SteerComposer threadId={threadId} laneName={label} />
+        ) : null}
       </div>
 
       {/* ── STATUS story ── */}
-      <div className="border-r border-tower-border px-3.5 py-3">
+      <div className="border-r border-tower-border px-4 py-3.5">
         <StatusZone items={items} escalated={escalated} />
       </div>
 
       {/* ── IN FLIGHT ── */}
-      <div className="flex min-h-0 flex-col gap-1.5 px-3 py-3">
+      <div className="flex min-h-0 flex-col gap-1.5 px-3.5 py-3.5">
         {flights.length > 0 ? (
           flights.map((it) => <Card key={it.taskId} item={it} />)
         ) : (
@@ -703,30 +791,24 @@ export function FleetOverviewTab({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans [zoom:0.9]">
-      {/* header band + zone labels */}
-      <div className="shrink-0 border-b border-tower-border bg-tower-header">
-        <div className="flex items-center justify-between gap-3 px-4 pb-1.5 pt-2.5">
-          <span className={COL_LABEL}>Fleet board</span>
-          <span className="font-tower-mono text-[10px] text-tower-fg-faint">
-            {error ? (
-              <span className="text-tower-accent-hover">rpc error</span>
-            ) : (
-              <>live · as of {ageLabel(age)}</>
-            )}
-          </span>
+      {/* zone labels only — no band of its own: the panel chrome above is the
+          one grey header on this surface. */}
+      <div className={`${LANE_GRID} shrink-0 px-3 pb-1.5 pt-2.5`}>
+        <div className="px-1">
+          <span className={COL_LABEL}>Domain</span>
         </div>
-        <div className={`${LANE_GRID}`}>
-          <div className="px-3 pb-1.5">
-            <span className={COL_LABEL}>Domain</span>
-          </div>
-          <div className="px-3.5 pb-1.5">
-            <span className={COL_LABEL}>Status</span>
-          </div>
-          <div className="px-3 pb-1.5">
-            <span className={COL_LABEL + " !text-tower-accent-hover"}>
-              In flight
+        <div className="px-1">
+          <span className={COL_LABEL}>Status</span>
+        </div>
+        <div className="flex items-baseline justify-between gap-2 px-1">
+          <span className={COL_LABEL + " !text-tower-accent-hover"}>
+            In flight
+          </span>
+          {error ? (
+            <span className="font-tower-mono text-[9px] text-tower-accent-hover">
+              rpc error
             </span>
-          </div>
+          ) : null}
         </div>
       </div>
 
