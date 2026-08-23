@@ -1,8 +1,50 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAtomValue } from "jotai";
+import { wsManager } from "@/lib/ws";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
+
+/** Live (non-archived) thread ids — the crew RPC still lists archived threads,
+ *  so the board filters against this to drop retired/archived crew. Refetched on
+ *  the crew signal so a freshly-ramped SP appears at once. */
+function useLiveThreadIds(): Set<string> | null {
+  const [ids, setIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/v1/threads?archived=false");
+        const d: unknown = await res.json();
+        const list = Array.isArray(d)
+          ? d
+          : ((d as { threads?: unknown[]; data?: unknown[] }).threads ??
+            (d as { data?: unknown[] }).data ??
+            []);
+        if (!cancelled) {
+          setIds(
+            new Set(
+              (list as { id?: string }[])
+                .map((t) => t.id)
+                .filter((x): x is string => typeof x === "string"),
+            ),
+          );
+        }
+      } catch {
+        /* keep the last known set; a failed refresh must not blank the board */
+      }
+    };
+    void load();
+    const off = wsManager.onPluginSignal((s) => {
+      if (s.pluginId === "crew") void load();
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
+  return ids;
+}
 
 const COL_LABEL =
   "font-tower-mono text-[10px] font-bold uppercase tracking-[0.16em] text-tower-fg-dim";
@@ -230,7 +272,13 @@ export function FleetOverviewTab() {
   const work = useCrewRpc<WorkBoardResult>("crew", "crew_work_board");
   const queue = useCrewRpc<QueueResult>("crew", "crew_queue");
 
-  const rows = fleet.data?.rows ?? [];
+  // The fleet board shows the pilot's CREW — the SPs and CMs under it — not the
+  // root pilot threads (the pilot is the left chat), and not archived/retired
+  // threads the crew RPC still lists.
+  const liveIds = useLiveThreadIds();
+  const rows = (fleet.data?.rows ?? []).filter(
+    (r) => r.rank !== "PLT" && (liveIds === null || liveIds.has(r.threadId)),
+  );
   const boardRows = board.data?.rows ?? [];
   const workItems = work.data?.workItems ?? [];
   const queueItems = queue.data?.items ?? [];
