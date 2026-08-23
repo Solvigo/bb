@@ -91,7 +91,11 @@ interface BoardResult {
 }
 interface WorkItem {
   taskId: string;
-  attempts: { threadId: string }[];
+  attempts: {
+    threadId: string;
+    /** the crew plugin's own verdict on whether this attempt is still alive */
+    liveness: string | null;
+  }[];
 }
 interface WorkBoardResult {
   ok: boolean;
@@ -102,8 +106,10 @@ interface QueueItem {
   title: string;
   state: string;
   displayState: string | null;
-  createdAt: string | null;
-  lastAttempt: string | null;
+  dispatchable: boolean;
+  blockedBecause: string | null;
+  /** the attempt this item is running on — absent until it is dispatched */
+  lastAttempt: { threadId: string; state: string; at: string } | null;
 }
 interface QueueResult {
   ok: boolean;
@@ -115,22 +121,16 @@ interface PlacedItem {
   title: string;
   col: string; // a COLUMN key, "terminal", or "dropped"
   termLabel?: string;
-  at?: string | null; // last activity (or creation) — drives the flight's age
+  /** when this flight's current attempt began — null until it is dispatched */
+  attemptAt: string | null;
+  /** the crew plugin's liveness verdict for the attempt, when it has one */
+  liveness: string | null;
+  dispatchable: boolean;
+  blockedBecause: string | null;
 }
 
 const UNASSIGNED = "__unassigned__";
 
-// Chain position → a flight's progress %, so a card reads its distance down the
-// runway. Derived from the column, honest (it IS the chain position).
-const COL_PROGRESS: Record<string, number> = {
-  drafted: 6,
-  confirmed: 16,
-  queued: 28,
-  in_flight: 46,
-  in_review: 66,
-  pilot_look: 80,
-  clearance: 92,
-};
 // Honest buckets from chain state (v2 airline vocabulary):
 const HOLD_COLS = new Set(["drafted", "confirmed", "queued"]); // waiting to launch
 const HELD_COLS = new Set(["in_review", "pilot_look", "clearance"]); // held at a gate
@@ -149,7 +149,7 @@ function laneCode(label: string): string {
   return (word.slice(0, 2) || label.slice(0, 2)).toUpperCase();
 }
 
-/** Compact "time since" for a flight's age (v2: "40s", "4m", "2h 20m", "1d 03h"). */
+/** Compact "time since" (v2: "40s", "4m", "2h 20m", "1d 03h"). */
 function ageSince(at?: string | null): { label: string; ms: number } | null {
   if (!at) return null;
   const ms = Date.now() - new Date(at).getTime();
@@ -163,32 +163,35 @@ function ageSince(at?: string | null): { label: string; ms: number } | null {
   return { label: `${Math.floor(h / 24)}d ${h % 24}h`, ms };
 }
 
-// A flight in the air with no fresh transmission has lost contact (v2's SV 118).
-const SILENT_AFTER_MS = 2 * 60 * 60 * 1000;
+/** A flight has lost contact when the crew plugin says its attempt is gone —
+ *  its own verdict, never a guess from how long the card has been sitting. */
+function hasLostContact(item: PlacedItem): boolean {
+  return (
+    item.col === "in_flight" &&
+    (item.liveness === "dead-or-gone" || item.liveness === "dead")
+  );
+}
 
-/** The flight's status chip — its condition in airline terms, from chain + age. */
-function statusChip(
-  col: string,
-  ageMs: number | null,
-): { label: string; silent: boolean } | null {
-  if (col === "in_flight") {
-    if (ageMs != null && ageMs > SILENT_AFTER_MS)
-      return { label: "lost contact", silent: true };
+/** The flight's status chip — its condition in airline terms, from real state. */
+function statusChip(item: PlacedItem): { label: string; silent: boolean } | null {
+  if (item.col === "in_flight") {
+    if (hasLostContact(item)) return { label: "lost contact", silent: true };
     return { label: "airborne", silent: false };
   }
-  if (col === "queued") return { label: "in the hold", silent: false };
-  if (col === "drafted" || col === "confirmed")
+  if (item.col === "queued") return { label: "in the hold", silent: false };
+  if (item.col === "drafted" || item.col === "confirmed")
     return { label: "planned", silent: false };
-  if (col === "in_review" || col === "pilot_look" || col === "clearance")
+  if (HELD_COLS.has(item.col))
     return { label: "on final approach", silent: false };
   return null;
 }
 
-/** A flight: plane glyph + SV number + age, body, runway progress + %, status chip. */
+/** A flight: plane glyph + SV number + time aloft, body, status chip.
+ *  Time aloft shows only for a dispatched flight — an undispatched item has
+ *  never left the ground, so there is nothing to count. */
 function Card({ item }: { item: PlacedItem }) {
-  const pct = COL_PROGRESS[item.col];
-  const age = ageSince(item.at);
-  const chip = statusChip(item.col, age?.ms ?? null);
+  const aloft = ageSince(item.attemptAt);
+  const chip = statusChip(item);
   const silent = chip?.silent ?? false;
   return (
     <div
@@ -204,9 +207,9 @@ function Card({ item }: { item: PlacedItem }) {
         <span className="min-w-0 truncate font-tower-mono text-[10px] text-tower-fg-body">
           <span className="text-tower-flight">✈</span> {svNumber(item.taskId)}
         </span>
-        {age ? (
+        {aloft ? (
           <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-faint">
-            {age.label}
+            {aloft.label}
           </span>
         ) : null}
       </div>
@@ -218,28 +221,14 @@ function Card({ item }: { item: PlacedItem }) {
       >
         {item.title}
       </div>
-      {pct != null ? (
-        <div className="mt-1.5">
-          <div className="h-[2px] w-full bg-tower-surface">
-            <div className="h-[2px] bg-tower-fg-muted" style={{ width: `${pct}%` }} />
-          </div>
-          <div className="mt-1 flex items-center justify-between gap-1">
-            {chip ? (
-              <span
-                className={
-                  "truncate font-tower-mono text-[8px] uppercase tracking-[0.72px] " +
-                  (silent ? "text-tower-flight" : "text-tower-fg-faint")
-                }
-              >
-                {chip.label}
-              </span>
-            ) : (
-              <span />
-            )}
-            <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-muted">
-              {pct}%
-            </span>
-          </div>
+      {chip ? (
+        <div
+          className={
+            "mt-1.5 truncate font-tower-mono text-[8px] uppercase tracking-[0.72px] " +
+            (silent ? "text-tower-flight" : "text-tower-fg-faint")
+          }
+        >
+          {chip.label}
         </div>
       ) : null}
     </div>
@@ -348,21 +337,6 @@ function TranscriptStream({ msgs }: { msgs: TranscriptMsg[] }) {
   );
 }
 
-/** The Steer composer — talk to this lane from the board (visual for the shell;
- *  wiring the send is the next pass). */
-function SteerComposer({ laneName }: { laneName: string }) {
-  return (
-    <div className="mt-2 flex shrink-0 items-center gap-1.5 rounded-[8px] border border-tower-input-border bg-tower-input px-2.5 py-1.5">
-      <span className="min-w-0 flex-1 truncate font-tower-sans text-[10.5px] text-tower-fg-dim">
-        Steer {laneName}…
-      </span>
-      <span className="shrink-0 font-tower-mono text-[10px] text-tower-fg-faint">
-        ↵
-      </span>
-    </div>
-  );
-}
-
 // ─── the STATUS story zone: FOCUS / NEXT / RISK band / counts ──────────────────
 const STAGE_RANK: Record<string, number> = {
   clearance: 6,
@@ -393,20 +367,17 @@ function StatusZone({
     .filter((it) => STAGE_RANK[it.col] != null && it.col !== "drafted")
     .sort((a, b) => (STAGE_RANK[b.col] ?? -1) - (STAGE_RANK[a.col] ?? -1));
   const focus = active[0] ?? null;
-  const focusChip = focus ? statusChip(focus.col, ageSince(focus.at)?.ms ?? null) : null;
+  const focusChip = focus ? statusChip(focus) : null;
+  const focusAloft = focus ? ageSince(focus.attemptAt) : null;
 
-  // NEXT = the next thing to launch (a hold item), lowest-progress first.
+  // NEXT = the next thing to launch (a hold item), earliest stage first.
   const hold = items
     .filter((it) => HOLD_COLS.has(it.col))
     .sort((a, b) => (STAGE_RANK[a.col] ?? 9) - (STAGE_RANK[b.col] ?? 9));
   const next = hold[0] ?? null;
 
   // RISK = a real, present danger, in priority order.
-  const silent = items.find(
-    (it) =>
-      it.col === "in_flight" &&
-      (ageSince(it.at)?.ms ?? 0) > SILENT_AFTER_MS,
-  );
+  const silent = items.find(hasLostContact);
   const awaitingClearance = items.filter((it) => it.col === "clearance").length;
   let risk: string | null = null;
   if (silent)
@@ -437,7 +408,7 @@ function StatusZone({
             <div className="mt-0.5 font-tower-mono text-[9px] text-tower-fg-muted">
               {svNumber(focus.taskId)}
               {focusChip ? ` · ${focusChip.label}` : ""}
-              {ageSince(focus.at) ? ` · ${ageSince(focus.at)!.label} ago` : ""}
+              {focusAloft ? ` · ${focusAloft.label} ago` : ""}
             </div>
           </>
         ) : (
@@ -454,7 +425,11 @@ function StatusZone({
             <div className="mt-0.5 text-[12px] text-tower-fg-body">
               {next.title}
             </div>
-            <div className={`mt-0.5 ${META}`}>planned · ready to launch</div>
+            <div className={`mt-0.5 ${META}`}>
+              {next.dispatchable
+                ? "ready to launch"
+                : (next.blockedBecause ?? "not ready to launch")}
+            </div>
           </>
         ) : (
           <div className="mt-0.5 text-[11px] italic text-tower-fg-faint">
@@ -558,7 +533,6 @@ function LaneRow({
             </div>
           )}
         </div>
-        {hasThread ? <SteerComposer laneName={label} /> : null}
       </div>
 
       {/* ── STATUS story ── */}
@@ -670,11 +644,16 @@ export function FleetOverviewTab({
     );
   }
 
-  // owner of each task (the thread a dispatched item runs on), and placement.
+  // owner of each task (the thread a dispatched item runs on) + that attempt's
+  // liveness, which is the crew plugin's own verdict — never inferred here.
   const ownerOf = new Map<string, string>();
+  const livenessOf = new Map<string, string | null>();
   for (const w of work.data?.workItems ?? []) {
-    const tid = w.attempts[0]?.threadId;
-    if (tid) ownerOf.set(w.taskId, tid);
+    const attempt = w.attempts[0];
+    if (attempt?.threadId) {
+      ownerOf.set(w.taskId, attempt.threadId);
+      livenessOf.set(w.taskId, attempt.liveness ?? null);
+    }
   }
   const place = (state: string): { col: string; termLabel?: string } => {
     if (COL_KEYS.has(state)) return { col: state };
@@ -694,7 +673,10 @@ export function FleetOverviewTab({
       title: it.title,
       col,
       termLabel,
-      at: it.lastAttempt ?? it.createdAt,
+      attemptAt: it.lastAttempt?.at ?? null,
+      liveness: livenessOf.get(it.taskId) ?? null,
+      dispatchable: it.dispatchable,
+      blockedBecause: it.blockedBecause,
     });
     byRow.set(owner, list);
   }
