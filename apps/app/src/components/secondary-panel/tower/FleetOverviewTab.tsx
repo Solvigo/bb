@@ -119,8 +119,6 @@ interface PlacedItem {
 }
 
 const UNASSIGNED = "__unassigned__";
-const GRID =
-  "grid grid-cols-[minmax(180px,15%)_repeat(7,minmax(112px,1fr))_minmax(150px,14%)]";
 
 // Chain position → a flight's progress %, so a card reads its distance down the
 // runway. Derived from the column, honest (it IS the chain position).
@@ -133,8 +131,7 @@ const COL_PROGRESS: Record<string, number> = {
   pilot_look: 80,
   clearance: 92,
 };
-// Three honest buckets from chain state (v2 airline vocabulary):
-const AIRBORNE_COLS = new Set(["in_flight"]); // executing
+// Honest buckets from chain state (v2 airline vocabulary):
 const HOLD_COLS = new Set(["drafted", "confirmed", "queued"]); // waiting to launch
 const HELD_COLS = new Set(["in_review", "pilot_look", "clearance"]); // held at a gate
 
@@ -249,27 +246,355 @@ function Card({ item }: { item: PlacedItem }) {
   );
 }
 
-/** One swimlane: a DOMAIN identity cell + the 7 state columns + the terminal rail. */
-function Swimlane({
+// ─── the transcript: the SP's real thread stream, in the DOMAIN rail ───────────
+interface TranscriptMsg {
+  id: string;
+  author: string; // "CONTROLLER" (up) or the lane's own name (down)
+  up: boolean; // an inbound instruction from above vs the agent's own voice
+  at: number;
+  text: string;
+}
+
+/** Live thread transcript (conversation rows) for one lane's DOMAIN rail. */
+function useThreadTranscript(
+  threadId: string,
+  laneName: string,
+): TranscriptMsg[] {
+  const [msgs, setMsgs] = useState<TranscriptMsg[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/v1/threads/${threadId}/timeline`);
+        const d = (await res.json()) as {
+          rows?: {
+            id: string;
+            kind: string;
+            role: string;
+            text?: string | null;
+            createdAt: number;
+          }[];
+        };
+        const rows = (d.rows ?? [])
+          .filter((r) => r.kind === "conversation" && (r.text ?? "").trim())
+          .map((r) => ({
+            id: r.id,
+            up: r.role === "user",
+            author: r.role === "user" ? "CONTROLLER" : laneName.toUpperCase(),
+            at: r.createdAt,
+            text: (r.text ?? "").trim(),
+          }));
+        if (!cancelled) setMsgs(rows);
+      } catch {
+        /* keep last — a failed refresh must not blank the transcript */
+      }
+    };
+    void load();
+    const off = wsManager.onPluginSignal((s) => {
+      if (s.pluginId === "crew") void load();
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [threadId, laneName]);
+  return msgs;
+}
+
+function hhmm(at: number): string {
+  const d = new Date(at);
+  const h = `${d.getHours()}`.padStart(2, "0");
+  const m = `${d.getMinutes()}`.padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+/** The transcript stream — flat author/time/body lines, newest at the bottom. */
+function TranscriptStream({ msgs }: { msgs: TranscriptMsg[] }) {
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [msgs.length]);
+  if (msgs.length === 0) {
+    return (
+      <div className="min-h-0 flex-1 px-1 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
+        No transmissions yet.
+      </div>
+    );
+  }
+  return (
+    <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-1 py-1.5">
+      {msgs.map((m) => (
+        <div key={m.id}>
+          <div className="mb-0.5 flex items-baseline gap-1.5">
+            <span
+              className={
+                "font-tower-mono text-[8.5px] uppercase tracking-[0.51px] " +
+                (m.up ? "text-tower-flight-strong" : "text-tower-fg-muted")
+              }
+            >
+              {m.author}
+            </span>
+            <span className="font-tower-mono text-[8.5px] text-tower-fg-faint">
+              {hhmm(m.at)}
+            </span>
+          </div>
+          <div className="text-[10.5px] leading-snug text-tower-fg-muted">
+            {m.text}
+          </div>
+        </div>
+      ))}
+      <div ref={endRef} />
+    </div>
+  );
+}
+
+/** The Steer composer — talk to this lane from the board (visual for the shell;
+ *  wiring the send is the next pass). */
+function SteerComposer({ laneName }: { laneName: string }) {
+  return (
+    <div className="mt-2 flex shrink-0 items-center gap-1.5 rounded-[8px] border border-tower-input-border bg-tower-input px-2.5 py-1.5">
+      <span className="min-w-0 flex-1 truncate font-tower-sans text-[10.5px] text-tower-fg-dim">
+        Steer {laneName}…
+      </span>
+      <span className="shrink-0 font-tower-mono text-[10px] text-tower-fg-faint">
+        ↵
+      </span>
+    </div>
+  );
+}
+
+// ─── the STATUS story zone: FOCUS / NEXT / RISK band / counts ──────────────────
+const STAGE_RANK: Record<string, number> = {
+  clearance: 6,
+  pilot_look: 5,
+  in_review: 4,
+  in_flight: 3,
+  queued: 2,
+  confirmed: 1,
+  drafted: 0,
+};
+
+function StatusZone({
+  items,
+  escalated,
+}: {
+  items: PlacedItem[];
+  escalated: boolean;
+}) {
+  const up = items.filter((it) => it.col === "in_flight").length;
+  const approach = items.filter((it) => HELD_COLS.has(it.col)).length;
+  const planned = items.filter(
+    (it) => it.col === "queued" || it.col === "confirmed",
+  ).length;
+  const ideas = items.filter((it) => it.col === "drafted").length;
+
+  // FOCUS = the most-advanced active flight (nearest landing).
+  const active = items
+    .filter((it) => STAGE_RANK[it.col] != null && it.col !== "drafted")
+    .sort((a, b) => (STAGE_RANK[b.col] ?? -1) - (STAGE_RANK[a.col] ?? -1));
+  const focus = active[0] ?? null;
+  const focusChip = focus ? statusChip(focus.col, ageSince(focus.at)?.ms ?? null) : null;
+
+  // NEXT = the next thing to launch (a hold item), lowest-progress first.
+  const hold = items
+    .filter((it) => HOLD_COLS.has(it.col))
+    .sort((a, b) => (STAGE_RANK[a.col] ?? 9) - (STAGE_RANK[b.col] ?? 9));
+  const next = hold[0] ?? null;
+
+  // RISK = a real, present danger, in priority order.
+  const silent = items.find(
+    (it) =>
+      it.col === "in_flight" &&
+      (ageSince(it.at)?.ms ?? 0) > SILENT_AFTER_MS,
+  );
+  const awaitingClearance = items.filter((it) => it.col === "clearance").length;
+  let risk: string | null = null;
+  if (silent)
+    risk = `${svNumber(silent.taskId)} has lost contact — still assigned, still burning.`;
+  else if (awaitingClearance > 0)
+    risk = `${awaitingClearance} waiting on your clearance before this domain can move on.`;
+  else if (escalated) risk = "A mayday is standing on this lane.";
+
+  const COUNT: [string, number][] = [
+    ["up", up],
+    ["approach", approach],
+    ["planned", planned],
+    ["ideas", ideas],
+  ];
+  const META = "font-tower-mono text-[9px] text-tower-fg-dim";
+  const EYE =
+    "font-tower-mono text-[8.5px] uppercase tracking-[0.85px] text-tower-fg-dim";
+
+  return (
+    <div className="flex min-h-0 flex-col gap-2.5">
+      <div>
+        <div className={EYE}>Focus</div>
+        {focus ? (
+          <>
+            <div className="mt-0.5 text-[12px] font-semibold text-tower-fg">
+              {focus.title}
+            </div>
+            <div className="mt-0.5 font-tower-mono text-[9px] text-tower-fg-muted">
+              {svNumber(focus.taskId)}
+              {focusChip ? ` · ${focusChip.label}` : ""}
+              {ageSince(focus.at) ? ` · ${ageSince(focus.at)!.label} ago` : ""}
+            </div>
+          </>
+        ) : (
+          <div className="mt-0.5 text-[11px] italic text-tower-fg-faint">
+            Nothing in the air.
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className={EYE}>Next</div>
+        {next ? (
+          <>
+            <div className="mt-0.5 text-[12px] text-tower-fg-body">
+              {next.title}
+            </div>
+            <div className={`mt-0.5 ${META}`}>planned · ready to launch</div>
+          </>
+        ) : (
+          <div className="mt-0.5 text-[11px] italic text-tower-fg-faint">
+            Nothing queued.
+          </div>
+        )}
+      </div>
+
+      {risk ? (
+        <div className="rounded-[9px] bg-tower-silent px-[9px] py-2">
+          <span className="font-tower-mono text-[8.5px] font-bold uppercase tracking-[0.85px] text-tower-flight">
+            Risk
+          </span>{" "}
+          <span className="text-[10.5px] text-tower-fg-body">{risk}</span>
+        </div>
+      ) : null}
+
+      <div className="mt-auto flex items-baseline gap-3 pt-1">
+        {COUNT.map(([label, n]) => (
+          <span key={label} className="flex items-baseline gap-1">
+            <span className="font-tower-mono text-[10px] font-bold text-tower-fg-body">
+              {n}
+            </span>
+            <span className="font-tower-mono text-[8.5px] uppercase tracking-[0.51px] text-tower-fg-muted">
+              {label}
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── the lane row: DOMAIN rail | STATUS story | IN FLIGHT cards ────────────────
+const LANE_GRID =
+  "grid grid-cols-[minmax(210px,19%)_minmax(300px,44%)_1fr]";
+
+/** One swimlane band — v2's fleet-board shell, one per SP. */
+function LaneRow({
+  threadId,
   label,
-  sub,
   onOpen,
   items,
-  showDropped,
+  escalated,
+  hasThread,
 }: {
+  threadId: string | null;
   label: string;
-  sub: string;
   onOpen?: () => void;
   items: PlacedItem[];
-  showDropped: boolean;
+  escalated: boolean;
+  hasThread: boolean;
 }) {
-  const inCol = (key: string) => items.filter((it) => it.col === key);
-  const terminal = items.filter((it) => it.col === "terminal");
-  const dropped = items.filter((it) => it.col === "dropped");
-  const airborne = items.filter((it) => AIRBORNE_COLS.has(it.col)).length;
+  const transcript = useThreadTranscript(
+    hasThread && threadId ? threadId : "",
+    label,
+  );
+  const airborne = items.filter((it) => it.col === "in_flight").length;
   const inHold = items.filter((it) => HOLD_COLS.has(it.col)).length;
   const held = items.filter((it) => HELD_COLS.has(it.col)).length;
-  const identity = (
+  // IN FLIGHT = flights actually in the air or on approach (the mock's right zone).
+  const flights = items
+    .filter((it) => it.col === "in_flight" || HELD_COLS.has(it.col))
+    .sort((a, b) => (STAGE_RANK[b.col] ?? -1) - (STAGE_RANK[a.col] ?? -1));
+
+  return (
+    <div className={`${LANE_GRID} min-h-[220px] border-b border-tower-border`}>
+      {/* ── DOMAIN rail ── */}
+      <div className="flex min-h-0 flex-col border-r border-tower-border px-3 py-3">
+        {onOpen ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            title={`Open ${label}`}
+            className="group/sp shrink-0 text-left"
+          >
+            <LaneIdentity
+              label={label}
+              held={held}
+              airborne={airborne}
+              inHold={inHold}
+              linked
+            />
+          </button>
+        ) : (
+          <div className="shrink-0">
+            <LaneIdentity
+              label={label}
+              held={held}
+              airborne={airborne}
+              inHold={inHold}
+            />
+          </div>
+        )}
+        <div className="mt-2.5 min-h-0 flex-1">
+          {hasThread ? (
+            <TranscriptStream msgs={transcript} />
+          ) : (
+            <div className="px-1 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
+              Undispatched — no flight deck yet.
+            </div>
+          )}
+        </div>
+        {hasThread ? <SteerComposer laneName={label} /> : null}
+      </div>
+
+      {/* ── STATUS story ── */}
+      <div className="border-r border-tower-border px-3.5 py-3">
+        <StatusZone items={items} escalated={escalated} />
+      </div>
+
+      {/* ── IN FLIGHT ── */}
+      <div className="flex min-h-0 flex-col gap-1.5 px-3 py-3">
+        {flights.length > 0 ? (
+          flights.map((it) => <Card key={it.taskId} item={it} />)
+        ) : (
+          <div className="px-1 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
+            No flights in the air.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The lane's identity block — avatar, name, HELD pill, airborne line. */
+function LaneIdentity({
+  label,
+  held,
+  airborne,
+  inHold,
+  linked,
+}: {
+  label: string;
+  held: number;
+  airborne: number;
+  inHold: number;
+  linked?: boolean;
+}) {
+  return (
     <>
       <div className="flex items-center gap-2">
         <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[8px] bg-tower-bright font-tower-mono text-[9.5px] font-bold text-tower-fg-muted">
@@ -278,7 +603,7 @@ function Swimlane({
         <span
           className={
             "min-w-0 flex-1 truncate text-[12.5px] font-[650] text-tower-fg-body" +
-            (onOpen ? " group-hover/sp:text-tower-accent-hover" : "")
+            (linked ? " group-hover/sp:text-tower-accent-hover" : "")
           }
         >
           {label}
@@ -296,63 +621,10 @@ function Swimlane({
             {inHold > 0 ? ` · ${inHold} in the hold` : ""}
           </>
         ) : (
-          <span className="text-tower-fg-faint">{sub}</span>
+          <span className="text-tower-fg-faint">on the ground</span>
         )}
       </div>
     </>
-  );
-  return (
-    <div className={`${GRID} border-b border-tower-border`}>
-      {/* DOMAIN identity — v2 lane anatomy */}
-      <div className="border-r border-tower-bright p-2.5">
-        {onOpen ? (
-          <button
-            type="button"
-            onClick={onOpen}
-            title={`Open ${label}`}
-            className="group/sp w-full text-left"
-          >
-            {identity}
-          </button>
-        ) : (
-          <div>{identity}</div>
-        )}
-      </div>
-      {/* 7 state columns */}
-      {COLUMNS.map((c) => {
-        const cards = inCol(c.key);
-        return (
-          <div key={c.key} className="min-w-0 border-r border-tower-bright p-1.5">
-            {cards.map((it) => (
-              <Card key={it.taskId} item={it} />
-            ))}
-          </div>
-        );
-      })}
-      {/* terminal rail */}
-      <div className="min-w-0 p-1.5">
-        {terminal.map((it) => (
-          <div
-            key={it.taskId}
-            className="mb-1 rounded-full border border-tower-border bg-tower-render px-2 py-0.5 font-tower-mono text-[8.5px] text-tower-fg-dim"
-            title={it.taskId}
-          >
-            {it.termLabel}
-          </div>
-        ))}
-        {showDropped
-          ? dropped.map((it) => (
-              <div
-                key={it.taskId}
-                className="mb-1 rounded-full border border-tower-border px-2 py-0.5 font-tower-mono text-[8.5px] text-tower-fg-faint line-through"
-                title={it.taskId}
-              >
-                dropped
-              </div>
-            ))
-          : null}
-      </div>
-    </div>
   );
 }
 
@@ -366,7 +638,6 @@ export function FleetOverviewTab({
   const work = useCrewRpc<WorkBoardResult>("crew", "crew_work_board");
   const queue = useCrewRpc<QueueResult>("crew", "crew_queue");
   const liveIds = useLiveThreadIds();
-  const [showDropped, setShowDropped] = useState(false);
   const [focusedSp, setFocusedSp] = useState<string | null>(null);
 
   // chat-link nav: bb-tower:sp/<id> focuses; bb-tower:crew returns to the board.
@@ -411,11 +682,9 @@ export function FleetOverviewTab({
     return { col: "terminal", termLabel: TERMINAL_LABEL[state] ?? state };
   };
   const byRow = new Map<string, PlacedItem[]>();
-  let droppedCount = 0;
   for (const it of queue.data?.items ?? []) {
     const state = it.displayState ?? it.state;
     const { col, termLabel } = place(state);
-    if (col === "dropped") droppedCount += 1;
     const owner = ownerOf.get(it.taskId) ?? UNASSIGNED;
     // scoped surface: only this agent's own items
     if (scopeThreadId && owner !== scopeThreadId) continue;
@@ -437,10 +706,9 @@ export function FleetOverviewTab({
     queue.ageSeconds,
   );
   const error = fleet.error ?? board.error ?? work.error ?? queue.error;
-  const reportSub = (threadId: string): string => {
-    const rep = board.data?.rows.find((b) => b.threadId === threadId)?.report;
-    return rep ? `${rep.state}${rep.escalated ? " · mayday" : ""}` : "no report";
-  };
+  const isEscalated = (threadId: string): boolean =>
+    board.data?.rows.find((b) => b.threadId === threadId)?.report?.escalated ??
+    false;
   const unassigned = byRow.get(UNASSIGNED) ?? [];
 
   // footer provenance (v2: "hangar N · logbook N · read HH:MM — N sources").
@@ -452,20 +720,11 @@ export function FleetOverviewTab({
   const responded = sources.filter((s) => !s.error).length;
 
   return (
-    <div className="flex h-full min-h-0 flex-col font-tower-sans [zoom:0.9]">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-surface px-4 py-2.5">
-        <span className={COL_LABEL}>Fleet board · kanban</span>
-        <span className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setShowDropped((v) => !v)}
-            className={
-              "font-tower-mono text-[9px] uppercase tracking-wide " +
-              (showDropped ? "text-tower-fg-muted" : "text-tower-fg-faint")
-            }
-          >
-            {showDropped ? "hide" : "show"} dropped ({droppedCount})
-          </button>
+    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans [zoom:0.9]">
+      {/* header band + zone labels */}
+      <div className="shrink-0 border-b border-tower-border bg-tower-header">
+        <div className="flex items-center justify-between gap-3 px-4 pb-1.5 pt-2.5">
+          <span className={COL_LABEL}>Fleet board</span>
           <span className="font-tower-mono text-[10px] text-tower-fg-faint">
             {error ? (
               <span className="text-tower-accent-hover">rpc error</span>
@@ -473,27 +732,23 @@ export function FleetOverviewTab({
               <>live · as of {ageLabel(age)}</>
             )}
           </span>
-        </span>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto bg-tower-render">
-        {/* column header */}
-        <div className={`${GRID} sticky top-0 z-10 border-b border-tower-border bg-tower-header`}>
-          <div className="border-r border-tower-header-border px-2.5 py-2">
+        </div>
+        <div className={`${LANE_GRID}`}>
+          <div className="px-3 pb-1.5">
             <span className={COL_LABEL}>Domain</span>
           </div>
-          {COLUMNS.map((c) => (
-            <div key={c.key} className="border-r border-tower-header-border px-2 py-2">
-              <span className={COL_LABEL + (c.accent ? " !text-tower-accent-hover" : "")}>
-                {c.label}
-              </span>
-            </div>
-          ))}
-          <div className="px-2 py-2">
-            <span className={COL_LABEL}>Terminal</span>
+          <div className="px-3.5 pb-1.5">
+            <span className={COL_LABEL}>Status</span>
+          </div>
+          <div className="px-3 pb-1.5">
+            <span className={COL_LABEL + " !text-tower-accent-hover"}>
+              In flight
+            </span>
           </div>
         </div>
+      </div>
 
+      <div className="min-h-0 flex-1 overflow-auto">
         {fleet.loading && rows.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">loading crew…</div>
         ) : rows.length === 0 && unassigned.length === 0 ? (
@@ -503,22 +758,24 @@ export function FleetOverviewTab({
         ) : (
           <>
             {rows.map((r) => (
-              <Swimlane
+              <LaneRow
                 key={r.threadId}
+                threadId={r.threadId}
                 label={r.handle ?? r.threadId}
-                sub={reportSub(r.threadId)}
                 onOpen={() => setFocusedSp(r.threadId)}
                 items={byRow.get(r.threadId) ?? []}
-                showDropped={showDropped}
+                escalated={isEscalated(r.threadId)}
+                hasThread
               />
             ))}
             {/* the pilot's undispatched pipeline (not yet handed to an SP) */}
             {!scopeThreadId && unassigned.length > 0 ? (
-              <Swimlane
+              <LaneRow
+                threadId={null}
                 label="Unassigned"
-                sub="not yet dispatched"
                 items={unassigned}
-                showDropped={showDropped}
+                escalated={false}
+                hasThread={false}
               />
             ) : null}
           </>
