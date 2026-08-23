@@ -246,7 +246,7 @@ function InFlightColumn({ items }: { items: { taskId: string; state: string; att
         items.map((it) => (
           <div
             key={it.taskId}
-            className="rounded-lg border border-tower-bright bg-tower-surface px-3 py-2.5"
+            className="rounded-lg border border-tower-bright bg-tower-render px-3 py-2.5"
           >
             <div className="font-tower-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">
               {it.taskId}
@@ -337,8 +337,8 @@ export function FleetOverviewTab() {
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col font-tower-sans">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-surface px-4 py-2.5">
+    <div className="flex h-full min-h-0 flex-col font-tower-sans [zoom:0.9]">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-render px-4 py-2.5">
         <span className={COL_LABEL}>Fleet board</span>
         <span className="font-tower-mono text-[10px] text-tower-fg-faint">
           {error ? (
@@ -350,7 +350,7 @@ export function FleetOverviewTab() {
       </div>
 
       {/* board sits on the surface tone; each lane is a rounded card with a gap */}
-      <div className="min-h-0 flex-1 overflow-y-auto bg-tower-surface p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-tower-render p-3">
         {/* column header, once, above the cards */}
         <div className={`${LANE_GRID} px-1 pb-2`}>
           <div className="px-3"><span className={COL_LABEL}>Domain</span></div>
@@ -393,7 +393,7 @@ export function FleetOverviewTab() {
               {queueItems.map((it) => (
                 <div
                   key={it.taskId}
-                  className="rounded-[10px] border border-tower-bright bg-tower-surface px-3.5 py-3"
+                  className="rounded-[10px] border border-tower-bright bg-tower-render px-3.5 py-3"
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-tower-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">

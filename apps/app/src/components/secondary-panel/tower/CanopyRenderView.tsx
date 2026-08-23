@@ -143,7 +143,7 @@ export function CanopyRenderView({ artifactId }: { artifactId: number }) {
   const unresolved = annos.data?.unresolved ?? 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-tower-surface font-tower-sans">
+    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border px-4 py-2.5">
         <span className="font-tower-mono text-[10px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim">
           Canopy · {render.data?.taskId ?? "artifact"} #{artifactId}

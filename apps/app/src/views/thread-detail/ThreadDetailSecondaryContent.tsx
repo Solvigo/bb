@@ -45,7 +45,7 @@ import {
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
 const COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT = 0;
-const TIMELINE_PANEL_MIN_SIZE_PERCENT = 18;
+const TIMELINE_PANEL_MIN_SIZE_PERCENT = 12;
 
 type ThreadTimelinePaneProps = Omit<
   ComponentProps<typeof ThreadTimelinePane>,

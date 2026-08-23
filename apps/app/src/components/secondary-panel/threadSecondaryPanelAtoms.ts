@@ -28,7 +28,7 @@ function getThreadSecondaryPanelStorageKey({
  * PanelGroup. Persisted across reloads. The default (50) is used when the
  * panel opens for the first time.
  */
-export const DEFAULT_SECONDARY_PANEL_WIDTH_PERCENT = 50;
+export const DEFAULT_SECONDARY_PANEL_WIDTH_PERCENT = 58;
 const secondaryPanelWidthStorage = createLocalStorageSyncStorage<number>({
   parse: (storedValue, initialValue) => {
     if (storedValue === null) return initialValue;

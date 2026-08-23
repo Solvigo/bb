@@ -94,7 +94,7 @@ export function SpFocusView({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-tower-surface font-tower-sans">
+    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans [zoom:0.9]">
       {/* SP header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-tower-border px-4 py-2.5">
         <button

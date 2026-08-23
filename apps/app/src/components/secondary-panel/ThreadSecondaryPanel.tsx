@@ -66,7 +66,6 @@ import {
   ThreadInfoTabContent,
 } from "./ThreadSecondaryPanelTabContent";
 import {
-  CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
@@ -619,13 +618,14 @@ export function ThreadSecondaryPanel({
           : undefined
       }
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden bg-tower-surface",
+        "flex min-h-0 flex-col overflow-hidden bg-tower-render",
         // Drawer: fill the drawer shell. Inline: the fixed-width, left-pinned
         // content the panel clips into view (or fills the panel while resizing).
         renderAsDrawer && "h-full min-w-0 flex-1",
         // Tower: a floating card inset from the surface, not a full-bleed column.
         // The inset (not h-full) defines the box, so it floats with a gap.
-        !renderAsDrawer && "rounded-xl border border-tower-input-border shadow-sm",
+        !renderAsDrawer &&
+          "rounded-xl border border-tower-input-border shadow-[0_6px_24px_rgba(0,0,0,0.45)]",
         !renderAsDrawer && [
           "absolute inset-y-2 left-2",
           isSecondaryPanelResizing ? "right-2" : "",
@@ -640,7 +640,7 @@ export function ThreadSecondaryPanel({
         <div
           data-testid="thread-secondary-panel-top-chrome"
           className={cn(
-            CHROME_ROW_CLASS,
+            "flex h-[46px] items-center",
             "min-w-0 justify-between gap-2 px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
@@ -648,7 +648,7 @@ export function ThreadSecondaryPanel({
         >
           <div
             className={cn(
-              "flex min-w-0 flex-1 items-center gap-1",
+              "flex min-w-0 flex-1 items-center gap-1 text-tower-tab",
               // When this panel owns the window's top-left (conversation
               // collapsed, on either thread surface, with the sidebar
               // collapsed), reserve the traffic-light
@@ -672,6 +672,7 @@ export function ThreadSecondaryPanel({
             // without claiming the unimplemented tab contract.
             role="toolbar"
             aria-label="Right panel views"
+            // header tab-button icon color
           >
             <PinnedIconTab
               ariaLabel="Show crew overview"

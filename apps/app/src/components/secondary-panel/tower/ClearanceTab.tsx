@@ -84,7 +84,7 @@ export function ClearanceTab() {
   const selected = open.find((d) => d.id === selectedId) ?? open[0] ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col font-tower-sans">
+    <div className="flex h-full min-h-0 flex-col font-tower-sans [zoom:0.9]">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-panel px-4 py-2.5">
         <span className={EYEBROW}>Yours to clear</span>
         <span className="font-tower-mono text-[10px] text-tower-fg-faint">
