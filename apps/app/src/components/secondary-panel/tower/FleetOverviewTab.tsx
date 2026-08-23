@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useAtomValue } from "jotai";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
 import { SpFocusView } from "./SpFocusView";
+import { towerNavAtom } from "./towerNav";
 
 const COL_LABEL =
   "font-tower-mono text-[10px] font-bold uppercase tracking-[0.16em] text-tower-fg-dim";
@@ -241,6 +243,15 @@ export function FleetOverviewTab() {
   const error = fleet.error ?? board.error ?? work.error ?? queue.error;
 
   const [focusedSp, setFocusedSp] = useState<string | null>(null);
+
+  // Chat-link navigation: a bb-tower:sp/<id> link focuses that SP; a plain
+  // bb-tower:crew link returns to the board.
+  const towerNav = useAtomValue(towerNavAtom);
+  const lastNavNonce = useRef(0);
+  if (towerNav && towerNav.view === "crew" && towerNav.nonce !== lastNavNonce.current) {
+    lastNavNonce.current = towerNav.nonce;
+    setFocusedSp(towerNav.spThreadId ?? null);
+  }
 
   const reportFor = (threadId: string): BoardReport | null =>
     boardRows.find((b) => b.threadId === threadId)?.report ?? null;

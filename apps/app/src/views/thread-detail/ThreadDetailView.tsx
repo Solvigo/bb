@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
+import {
+  nextNavNonce,
+  parseTowerLink,
+  towerNavAtom,
+} from "@/components/secondary-panel/tower/towerNav";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
@@ -1869,9 +1874,18 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       workspacePreviewRootPath,
     ],
   );
+  const setTowerNav = useSetAtom(towerNavAtom);
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
-    ({ href }) => handleOpenUrlByPreference(href),
-    [handleOpenUrlByPreference],
+    ({ href }) => {
+      // Tower links navigate the right pane instead of opening a URL.
+      const nav = parseTowerLink(href);
+      if (nav) {
+        setTowerNav({ ...nav, nonce: nextNavNonce() });
+        return true;
+      }
+      return handleOpenUrlByPreference(href);
+    },
+    [handleOpenUrlByPreference, setTowerNav],
   );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {

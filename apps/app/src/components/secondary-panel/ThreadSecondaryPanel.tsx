@@ -32,6 +32,7 @@ import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasse
 import { FleetOverviewTab } from "./tower/FleetOverviewTab";
 import { ClearanceTab } from "./tower/ClearanceTab";
 import { CanopyRenderView } from "./tower/CanopyRenderView";
+import { towerNavAtom } from "./tower/towerNav";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
@@ -460,6 +461,13 @@ export function ThreadSecondaryPanel({
   const [towerView, setTowerView] = useState<"crew" | "clearance" | "canopy" | null>(
     "crew",
   );
+  // Chat-link navigation: a bb-tower: link in the commander chat sets this atom.
+  const towerNav = useAtomValue(towerNavAtom);
+  const lastNavNonce = useRef(0);
+  if (towerNav && towerNav.nonce !== lastNavNonce.current) {
+    lastNavNonce.current = towerNav.nonce;
+    if (towerNav.view !== towerView) setTowerView(towerNav.view);
+  }
   const activeTabKind = activeTab?.kind ?? null;
   // Tower views default over the empty/info state, but yield to a new-tab the
   // operator explicitly opened (and to any real file/diff/terminal content).
