@@ -281,7 +281,16 @@ export function FleetOverviewTab() {
   );
   const boardRows = board.data?.rows ?? [];
   const workItems = work.data?.workItems ?? [];
-  const queueItems = queue.data?.items ?? [];
+  // "Unowned" = queued work not dispatched to any SP. An item with a work-board
+  // attempt is owned (it shows in that SP's IN FLIGHT column), so it must not
+  // also appear in the unowned queue.
+  const dispatchedTaskIds = new Set(workItems.map((w) => w.taskId));
+  const queueItems = (queue.data?.items ?? []).filter(
+    (it) =>
+      !dispatchedTaskIds.has(it.taskId) &&
+      it.state !== "dropped" &&
+      it.state !== "accepted",
+  );
   const age = Math.max(
     fleet.ageSeconds,
     board.ageSeconds,
@@ -372,14 +381,14 @@ export function FleetOverviewTab() {
           ))
         )}
 
-        {/* unowned work — its own rounded card */}
-        <div className="mb-2.5 rounded-[14px] bg-tower-panel px-4 py-4">
-          <div className="mb-2">
-            <span className={BLOCK_LABEL}>Queue · unowned · {queueItems.length}</span>
-          </div>
-          {queueItems.length === 0 ? (
-            <span className="italic text-tower-fg-faint">empty — nothing unowned</span>
-          ) : (
+        {/* unowned work — only when there is genuinely undispatched work */}
+        {queueItems.length > 0 ? (
+          <div className="mb-2.5 rounded-[14px] bg-tower-panel px-4 py-4">
+            <div className="mb-2">
+              <span className={BLOCK_LABEL}>
+                Queue · undispatched · {queueItems.length}
+              </span>
+            </div>
             <div className="grid grid-cols-1 gap-2 @[720px]:grid-cols-2">
               {queueItems.map((it) => (
                 <div
@@ -408,8 +417,8 @@ export function FleetOverviewTab() {
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
