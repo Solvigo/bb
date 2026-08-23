@@ -82,7 +82,7 @@ function DomainColumn({
   const [draft, setDraft] = useState("");
   const label = row.handle ?? row.threadId;
   return (
-    <div className="flex min-w-0 flex-col border-r border-tower-border">
+    <div className="flex min-w-0 flex-col border-r border-tower-bright">
       <div className="flex items-start gap-2.5 px-3.5 pb-2.5 pt-3.5">
         <span className="mt-px rounded-[5px] border border-tower-border-strong px-[5px] py-px font-tower-mono text-[9px] font-bold tracking-wide text-tower-fg-dim">
           {row.rank}
@@ -114,7 +114,7 @@ function DomainColumn({
       </div>
 
       <form
-        className="border-t border-tower-border p-2.5"
+        className="border-t border-tower-bright p-2.5"
         onSubmit={(e) => {
           e.preventDefault();
           setDraft("");
@@ -151,7 +151,7 @@ function StatusColumn({
   counts: { up: number; approach: number; planned: number; ideas: number };
 }) {
   return (
-    <div className="flex min-w-0 flex-col justify-between border-r border-tower-border px-4 py-3.5">
+    <div className="flex min-w-0 flex-col justify-between border-r border-tower-bright px-4 py-3.5">
       <div className="space-y-4">
         <div>
           <div className={BLOCK_LABEL}>Focus</div>
@@ -192,7 +192,7 @@ function InFlightColumn({ items }: { items: { taskId: string; state: string; att
         items.map((it) => (
           <div
             key={it.taskId}
-            className="rounded-lg border border-tower-border bg-tower-panel px-3 py-2.5 shadow-sm"
+            className="rounded-lg border border-tower-bright bg-tower-surface px-3 py-2.5"
           >
             <div className="font-tower-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">
               {it.taskId}
@@ -245,7 +245,7 @@ export function FleetOverviewTab() {
 
   return (
     <div className="flex h-full min-h-0 flex-col font-tower-sans">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-panel px-4 py-2.5">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-surface px-4 py-2.5">
         <span className={COL_LABEL}>Fleet board</span>
         <span className="font-tower-mono text-[10px] text-tower-fg-faint">
           {error ? (
@@ -256,11 +256,13 @@ export function FleetOverviewTab() {
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-tower-bg">
-        <div className={`${LANE_GRID} border-b border-tower-border bg-tower-panel`}>
-          <div className="border-r border-tower-border px-3.5 py-2"><span className={COL_LABEL}>Domain</span></div>
-          <div className="border-r border-tower-border px-4 py-2"><span className={COL_LABEL}>Status</span></div>
-          <div className="px-4 py-2"><span className={COL_LABEL}>In flight</span></div>
+      {/* board sits on the surface tone; each lane is a rounded card with a gap */}
+      <div className="min-h-0 flex-1 overflow-y-auto bg-tower-surface p-3">
+        {/* column header, once, above the cards */}
+        <div className={`${LANE_GRID} px-1 pb-2`}>
+          <div className="px-3"><span className={COL_LABEL}>Domain</span></div>
+          <div className="px-4"><span className={COL_LABEL}>Status</span></div>
+          <div className="px-4"><span className={COL_LABEL}>In flight</span></div>
         </div>
 
         {fleet.loading && rows.length === 0 ? (
@@ -273,7 +275,7 @@ export function FleetOverviewTab() {
           rows.map((r) => (
             <div
               key={r.threadId}
-              className={`${LANE_GRID} min-h-[200px] border-b border-tower-border bg-tower-surface transition-colors hover:bg-tower-panel/50`}
+              className={`${LANE_GRID} mb-2.5 min-h-[220px] overflow-hidden rounded-[14px] bg-tower-panel`}
             >
               <DomainColumn row={r} report={reportFor(r.threadId)} />
               <StatusColumn report={reportFor(r.threadId)} counts={countsFor(r.threadId)} />
@@ -282,8 +284,8 @@ export function FleetOverviewTab() {
           ))
         )}
 
-        {/* unowned work — the QUEUE strip (real work items) */}
-        <div className="border-b border-tower-border px-4 py-4">
+        {/* unowned work — its own rounded card */}
+        <div className="mb-2.5 rounded-[14px] bg-tower-panel px-4 py-4">
           <div className="mb-2">
             <span className={BLOCK_LABEL}>Queue · unowned · {queueItems.length}</span>
           </div>
@@ -294,7 +296,7 @@ export function FleetOverviewTab() {
               {queueItems.map((it) => (
                 <div
                   key={it.taskId}
-                  className="rounded-[10px] border border-tower-border bg-tower-panel px-3.5 py-3 shadow-sm"
+                  className="rounded-[10px] border border-tower-bright bg-tower-surface px-3.5 py-3"
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-tower-mono text-[10px] font-bold tracking-wide text-tower-fg-muted">
