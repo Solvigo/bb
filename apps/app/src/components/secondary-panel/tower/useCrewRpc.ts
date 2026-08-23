@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { wsManager } from "@/lib/ws";
 
 /**
- * Polls a Tower plugin's composition RPC — POST /api/v1/plugins/<id>/rpc/<method>.
- * The no-refresh law is satisfied in wave 2 (the publish channel); until then an
- * HONEST poll age beats a fake liveness, so we expose `ageSeconds` for the UI to
- * show plainly. Fixtures are gone — this reads the live disposable instance.
+ * Reads a Tower plugin's composition RPC — POST /api/v1/plugins/<id>/rpc/<method>
+ * — LIVE via the realtime signal channel (no polling). Fetch once on mount, then
+ * refetch on every `plugin-signal` frame for this plugin and on every WS
+ * (re)connect. Signals are ephemeral with no replay, so the connect refetch is
+ * what keeps a surface from going stale after a drop. `ageSeconds` is time since
+ * the last fetch — near-zero while live, honest evidence when the socket is down.
  */
 export interface CrewRpcState<T> {
   data: T | null;
@@ -13,8 +16,6 @@ export interface CrewRpcState<T> {
   /** seconds since the last successful (or failed) fetch, for honest display */
   ageSeconds: number;
 }
-
-const POLL_MS = 5000;
 
 export function useCrewRpc<T>(
   pluginId: string,
@@ -64,10 +65,18 @@ export function useCrewRpc<T>(
       }
     };
     void run();
-    const poll = setInterval(run, POLL_MS);
+    // Live: refetch on every signal for this plugin, and on every (re)connect —
+    // signals are ephemeral, so the connect refetch is the anti-stale guarantee.
+    const offSignal = wsManager.onPluginSignal((signal) => {
+      if (signal.pluginId === pluginId) void run();
+    });
+    const offConn = wsManager.onConnectionStateChange(() => {
+      if (wsManager.getConnectionState() === "connected") void run();
+    });
     return () => {
       cancelled = true;
-      clearInterval(poll);
+      offSignal();
+      offConn();
     };
   }, [pluginId, method]);
 
