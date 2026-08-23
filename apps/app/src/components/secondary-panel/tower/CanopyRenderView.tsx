@@ -86,6 +86,16 @@ export function CanopyRenderView({ artifactId }: { artifactId: number }) {
         | null;
       if (!d || d.channel !== BRIDGE_CHANNEL) return;
       if (typeof d.selector !== "string" || typeof d.quote !== "string") return;
+      // Enforce the bridge contract's own caps — a message whose "quote" is the
+      // whole document (or, e.g., the bridge source) is not a real selection.
+      if (
+        d.selector.length === 0 ||
+        d.selector.length > 512 ||
+        d.quote.length === 0 ||
+        d.quote.length > 2000
+      ) {
+        return;
+      }
       setPending({
         selector: d.selector,
         quote: d.quote,

@@ -23,6 +23,17 @@ interface QueueResult {
   ok: boolean;
   items: QueueItem[];
 }
+interface WorkAttempt {
+  threadId: string;
+}
+interface WorkItem {
+  taskId: string;
+  attempts: WorkAttempt[];
+}
+interface WorkBoardResult {
+  ok: boolean;
+  workItems: WorkItem[];
+}
 
 const STATE_TONE: Record<string, string> = {
   in_flight: "text-tower-accent-hover",
@@ -68,9 +79,19 @@ export function SpFocusView({
   report: BoardReport | null;
   onBack: () => void;
 }) {
-  // The SP's own ordered board — its work items ("lead's order").
+  // The SP's OWN ordered board ("lead's order") — the work dispatched to THIS
+  // thread, not the global queue. Join the work board (per-thread ownership) to
+  // the queue (titles/state).
+  const work = useCrewRpc<WorkBoardResult>("crew", "crew_work_board");
   const queue = useCrewRpc<QueueResult>("crew", "crew_queue");
-  const items = queue.data?.items ?? [];
+  const ownedTaskIds = new Set(
+    (work.data?.workItems ?? [])
+      .filter((w) => w.attempts.some((a) => a.threadId === threadId))
+      .map((w) => w.taskId),
+  );
+  const items = (queue.data?.items ?? []).filter((it) =>
+    ownedTaskIds.has(it.taskId),
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-surface font-tower-sans">

@@ -10,10 +10,9 @@ import { atom } from "jotai";
  * Links:
  *   bb-tower:crew            → the fleet board
  *   bb-tower:clearance       → yours to clear
- *   bb-tower:canopy          → the canopy render tab
  *   bb-tower:sp/<threadId>   → drill into that SP (board + its focus view)
  */
-export type TowerNavView = "crew" | "clearance" | "canopy";
+export type TowerNavView = "crew" | "clearance";
 
 export interface TowerNavRequest {
   view: TowerNavView;
@@ -35,7 +34,7 @@ export function parseTowerLink(href: string): Omit<TowerNavRequest, "nonce"> | n
     const id = rest.slice(3).trim();
     return id ? { view: "crew", spThreadId: id } : null;
   }
-  if (rest === "crew" || rest === "clearance" || rest === "canopy") {
+  if (rest === "crew" || rest === "clearance") {
     return { view: rest };
   }
   return null;
