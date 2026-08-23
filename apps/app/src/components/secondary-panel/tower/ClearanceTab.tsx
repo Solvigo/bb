@@ -4,6 +4,93 @@ import { ageLabel, useCrewRpc } from "./useCrewRpc";
 const EYEBROW =
   "font-tower-mono text-[10px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
 
+type SettleAction = "answer" | "defer" | "moot" | "withdraw";
+const SETTLE_ACTIONS: { action: SettleAction; label: string; primary?: boolean }[] = [
+  { action: "answer", label: "Answer", primary: true },
+  { action: "defer", label: "Defer" },
+  { action: "moot", label: "Moot" },
+  { action: "withdraw", label: "Withdraw" },
+];
+
+async function settleDemand(
+  id: number,
+  action: SettleAction,
+  text: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/v1/plugins/crew/rpc/crew_demand_settle", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, action, text }),
+  });
+  const json = (await res.json()) as {
+    ok?: boolean;
+    result?: { ok?: boolean; error?: string };
+    error?: { message?: string };
+  };
+  if (json.ok && json.result?.ok !== false)
+    return { ok: true };
+  return {
+    ok: false,
+    error: json.result?.error ?? json.error?.message ?? "settle refused",
+  };
+}
+
+/** The operator's settle controls on a demand — the attention surface CLEARS things. */
+function SettleControls({ item }: { item: Demand }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState<SettleAction | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const run = async (action: SettleAction) => {
+    if (action === "answer" && !text.trim()) {
+      setError("An answer needs a line.");
+      return;
+    }
+    setBusy(action);
+    setError(null);
+    const r = await settleDemand(item.id, action, text.trim());
+    setBusy(null);
+    if (r.ok) {
+      setText("");
+    } else {
+      setError(r.error ?? "refused");
+    }
+  };
+  return (
+    <div className="mt-5 border-t border-tower-border pt-4">
+      <div className={`${EYEBROW} mb-2`}>Clear it</div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Your answer (or a one-line why for defer / moot / withdraw)…"
+        className="mb-2 h-16 w-full resize-none rounded-lg border border-tower-input-border bg-tower-input px-3 py-2 text-[12px] text-tower-fg-body outline-none placeholder:text-tower-fg-faint focus:border-tower-fg-dim"
+      />
+      {error ? (
+        <div className="mb-2 font-tower-mono text-[10px] text-tower-accent-hover">
+          refused · {error}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {SETTLE_ACTIONS.map((a) => (
+          <button
+            key={a.action}
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void run(a.action)}
+            className={
+              "rounded-md border px-2.5 py-1 font-tower-mono text-[10px] uppercase tracking-wide disabled:opacity-40 " +
+              (a.primary
+                ? "border-tower-accent bg-tower-accent-tint text-tower-accent-hover"
+                : "border-tower-border text-tower-fg-dim hover:bg-tower-bright")
+            }
+          >
+            {busy === a.action ? "…" : a.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface Demand {
   id: number;
   kind: string;
@@ -72,6 +159,7 @@ function DemandDetail({ item }: { item: Demand | null }) {
           {item.whatToDo ?? "Clear this demand."}
         </div>
       </div>
+      <SettleControls item={item} />
     </div>
   );
 }
