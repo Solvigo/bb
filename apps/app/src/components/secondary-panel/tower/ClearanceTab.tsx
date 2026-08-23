@@ -76,10 +76,17 @@ function DemandDetail({ item }: { item: Demand | null }) {
   );
 }
 
-export function ClearanceTab() {
+export function ClearanceTab({
+  scopeThreadId,
+}: {
+  /** When set, show only demands raised by this agent (its own clearance). */
+  scopeThreadId?: string;
+} = {}) {
   const { data, error, loading, ageSeconds } =
     useCrewRpc<DemandsResult>("crew", "crew_demands");
-  const open = data?.open ?? [];
+  const open = (data?.open ?? []).filter(
+    (d) => !scopeThreadId || d.threadId === scopeThreadId,
+  );
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = open.find((d) => d.id === selectedId) ?? open[0] ?? null;
 

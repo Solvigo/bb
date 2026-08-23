@@ -163,7 +163,12 @@ function ThemeDetail({ theme, curator }: { theme: string; curator: string | null
   );
 }
 
-export function KnowledgeTab() {
+export function KnowledgeTab({
+  scopeTheme,
+}: {
+  /** When set (an agent's own surface), default to that agent's theme. */
+  scopeTheme?: string;
+} = {}) {
   const groupsRpc = useCrewRpc<GroupIndexResult>(
     "knowledge",
     "knowledge_group_index",
@@ -173,7 +178,9 @@ export function KnowledgeTab() {
     .filter((g) => g.group.startsWith("theme:"))
     .map((g) => ({ theme: g.theme, heads: g.heads, curator: g.curator }));
 
-  const [sel, setSel] = useState<string>(PROJECT);
+  const [sel, setSel] = useState<string>(
+    scopeTheme && scopeTheme.length > 0 ? scopeTheme : PROJECT,
+  );
   const selCurator = themes.find((t) => t.theme === sel)?.curator ?? null;
 
   return (

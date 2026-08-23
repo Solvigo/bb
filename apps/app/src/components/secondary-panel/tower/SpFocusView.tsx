@@ -1,9 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
-import { ageLabel, useCrewRpc } from "./useCrewRpc";
-
-const MONO_LABEL =
-  "font-tower-mono text-[9px] font-bold uppercase tracking-[0.12em] text-tower-fg-dim";
+import { TowerRenderSurface } from "./TowerRenderSurface";
 
 interface BoardReport {
   rank: string;
@@ -12,36 +9,6 @@ interface BoardReport {
   note: string;
   at: string;
 }
-interface QueueItem {
-  taskId: string;
-  title: string;
-  intent: string | null;
-  state: string;
-  displayState: string | null;
-}
-interface QueueResult {
-  ok: boolean;
-  items: QueueItem[];
-}
-interface WorkAttempt {
-  threadId: string;
-}
-interface WorkItem {
-  taskId: string;
-  attempts: WorkAttempt[];
-}
-interface WorkBoardResult {
-  ok: boolean;
-  workItems: WorkItem[];
-}
-
-const STATE_TONE: Record<string, string> = {
-  in_flight: "text-tower-accent-hover",
-  in_review: "text-tower-fg-muted",
-  accepted: "text-tower-fg-dim",
-  queued: "text-tower-fg-dim",
-  drafted: "text-tower-fg-faint",
-};
 
 function initials(label: string): string {
   const clean = label.replace(/^thr_/, "");
@@ -58,7 +25,7 @@ class ChatBoundary extends Component<{ children: ReactNode }, { failed: boolean 
     if (this.state.failed) {
       return (
         <div className="grid h-full place-items-center px-6 text-center italic text-tower-fg-faint">
-          This SP&apos;s chat needs a connected thread.
+          This agent&apos;s chat needs a connected thread.
         </div>
       );
     }
@@ -66,6 +33,12 @@ class ChatBoundary extends Component<{ children: ReactNode }, { failed: boolean 
   }
 }
 
+/**
+ * Drilling into an agent = the recursive shell: its chat on the LEFT, its OWN
+ * rendering surface (the same tab host) on the RIGHT. So every agent has a place
+ * to bring things up, and its Crew tab drills into its own sub-crew — the shell
+ * all the way down. The far-left commander chat (outside this) is untouched.
+ */
 export function SpFocusView({
   threadId,
   label,
@@ -79,23 +52,9 @@ export function SpFocusView({
   report: BoardReport | null;
   onBack: () => void;
 }) {
-  // The SP's OWN ordered board ("lead's order") — the work dispatched to THIS
-  // thread, not the global queue. Join the work board (per-thread ownership) to
-  // the queue (titles/state).
-  const work = useCrewRpc<WorkBoardResult>("crew", "crew_work_board");
-  const queue = useCrewRpc<QueueResult>("crew", "crew_queue");
-  const ownedTaskIds = new Set(
-    (work.data?.workItems ?? [])
-      .filter((w) => w.attempts.some((a) => a.threadId === threadId))
-      .map((w) => w.taskId),
-  );
-  const items = (queue.data?.items ?? []).filter((it) =>
-    ownedTaskIds.has(it.taskId),
-  );
-
   return (
-    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans [zoom:0.9]">
-      {/* SP header */}
+    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
+      {/* agent header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-tower-border px-4 py-2.5">
         <button
           type="button"
@@ -116,8 +75,8 @@ export function SpFocusView({
         </span>
       </div>
 
-      {/* split: SP chat left, SP-focused board right */}
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(320px,44%)_1fr]">
+      {/* the recursive shell: agent chat left, its own rendering surface right */}
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(300px,38%)_1fr]">
         <div className="flex min-h-0 flex-col border-r border-tower-border">
           <ChatBoundary>
             <EmbeddedThreadChat
@@ -143,57 +102,7 @@ export function SpFocusView({
             />
           </ChatBoundary>
         </div>
-
-        <div className="min-h-0 overflow-y-auto p-3">
-          <div className="mb-2 flex items-baseline justify-between px-1">
-            <span className={MONO_LABEL}>{label} board · lead&apos;s order</span>
-            <span className="font-tower-mono text-[10px] text-tower-fg-faint">
-              {queue.error ? "rpc error" : `live · as of ${ageLabel(queue.ageSeconds)}`}
-            </span>
-          </div>
-          {items.length === 0 ? (
-            <div className="px-1 py-4 italic text-tower-fg-faint">
-              no ordered work yet
-            </div>
-          ) : (
-            <ol className="space-y-2">
-              {items.map((it, idx) => (
-                <li
-                  key={it.taskId}
-                  className="flex gap-3 rounded-[10px] bg-tower-panel px-3.5 py-3"
-                >
-                  <span className="font-tower-mono text-[13px] font-bold text-tower-fg-dim">
-                    {idx + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span
-                        className={
-                          "font-tower-mono text-[9px] font-bold uppercase tracking-wide " +
-                          (STATE_TONE[it.displayState ?? it.state] ??
-                            "text-tower-fg-dim")
-                        }
-                      >
-                        {(it.displayState ?? it.state).replace(/_/g, " ")}
-                      </span>
-                      <span className="font-tower-mono text-[10px] text-tower-fg-faint">
-                        {it.taskId}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-[13px] font-medium text-tower-fg">
-                      {it.title}
-                    </div>
-                    {it.intent ? (
-                      <div className="mt-0.5 text-[12px] leading-snug text-tower-fg-muted">
-                        {it.intent}
-                      </div>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
+        <TowerRenderSurface scopeThreadId={threadId} scopeLabel={label} />
       </div>
     </div>
   );

@@ -266,7 +266,13 @@ function InFlightColumn({ items }: { items: { taskId: string; state: string; att
   );
 }
 
-export function FleetOverviewTab() {
+export function FleetOverviewTab({
+  scopeThreadId,
+}: {
+  /** When set, show only this SP's OWN crew (its direct children) — the
+   *  recursive shell: each agent's rendering surface shows its own fleet. */
+  scopeThreadId?: string;
+} = {}) {
   const fleet = useCrewRpc<FleetResult>("crew", "crew_fleet");
   const board = useCrewRpc<BoardResult>("crew", "crew_board");
   const work = useCrewRpc<WorkBoardResult>("crew", "crew_work_board");
@@ -277,7 +283,10 @@ export function FleetOverviewTab() {
   // threads the crew RPC still lists.
   const liveIds = useLiveThreadIds();
   const rows = (fleet.data?.rows ?? []).filter(
-    (r) => r.rank !== "PLT" && (liveIds === null || liveIds.has(r.threadId)),
+    (r) =>
+      r.rank !== "PLT" &&
+      (liveIds === null || liveIds.has(r.threadId)) &&
+      (scopeThreadId ? r.parentThreadId === scopeThreadId : true),
   );
   const boardRows = board.data?.rows ?? [];
   const workItems = work.data?.workItems ?? [];
@@ -362,7 +371,9 @@ export function FleetOverviewTab() {
           <div className="px-4 py-6 italic text-tower-fg-faint">loading crew…</div>
         ) : rows.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">
-            No crew threads yet on this instance.
+            {scopeThreadId
+              ? "No crew under this agent yet."
+              : "No crew threads yet on this instance."}
           </div>
         ) : (
           rows.map((r) => (
