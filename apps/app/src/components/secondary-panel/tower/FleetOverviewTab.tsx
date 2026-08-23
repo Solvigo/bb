@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
+import { SpFocusView } from "./SpFocusView";
 
 const COL_LABEL =
   "font-tower-mono text-[10px] font-bold uppercase tracking-[0.16em] text-tower-fg-dim";
@@ -75,25 +76,34 @@ const STATE_TONE: Record<string, string> = {
 function DomainColumn({
   row,
   report,
+  onOpen,
 }: {
   row: FleetRow;
   report: BoardReport | null;
+  onOpen: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const label = row.handle ?? row.threadId;
   return (
     <div className="flex min-w-0 flex-col border-r border-tower-bright">
-      <div className="flex items-start gap-2.5 px-3.5 pb-2.5 pt-3.5">
+      <button
+        type="button"
+        onClick={onOpen}
+        title={`Open ${label}`}
+        className="group/sp flex items-start gap-2.5 px-3.5 pb-2.5 pt-3.5 text-left transition-colors hover:bg-tower-bright/50"
+      >
         <span className="mt-px rounded-[5px] border border-tower-border-strong px-[5px] py-px font-tower-mono text-[9px] font-bold tracking-wide text-tower-fg-dim">
           {row.rank}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold text-tower-fg">{label}</div>
+          <div className="truncate font-semibold text-tower-fg group-hover/sp:text-tower-accent-hover">
+            {label}
+          </div>
           <div className="mt-0.5 font-tower-mono text-[10px] text-tower-fg-faint">
             {row.parentThreadId ? `child of ${row.parentThreadId}` : "root pilot"}
           </div>
         </div>
-      </div>
+      </button>
 
       <div className="min-h-[64px] flex-1 space-y-2.5 overflow-y-auto px-3.5 pb-3">
         {report ? (
@@ -230,8 +240,23 @@ export function FleetOverviewTab() {
   );
   const error = fleet.error ?? board.error ?? work.error ?? queue.error;
 
+  const [focusedSp, setFocusedSp] = useState<string | null>(null);
+
   const reportFor = (threadId: string): BoardReport | null =>
     boardRows.find((b) => b.threadId === threadId)?.report ?? null;
+
+  if (focusedSp) {
+    const r = rows.find((x) => x.threadId === focusedSp);
+    return (
+      <SpFocusView
+        threadId={focusedSp}
+        label={r?.handle ?? focusedSp}
+        domain={r?.parentThreadId ? "domain lead" : "root pilot"}
+        report={reportFor(focusedSp)}
+        onBack={() => setFocusedSp(null)}
+      />
+    );
+  }
   const inFlightFor = (threadId: string) =>
     workItems
       .filter((w) => w.attempts.some((a) => a.threadId === threadId))
@@ -277,7 +302,11 @@ export function FleetOverviewTab() {
               key={r.threadId}
               className={`${LANE_GRID} mb-2.5 min-h-[220px] overflow-hidden rounded-[14px] bg-tower-panel`}
             >
-              <DomainColumn row={r} report={reportFor(r.threadId)} />
+              <DomainColumn
+                row={r}
+                report={reportFor(r.threadId)}
+                onOpen={() => setFocusedSp(r.threadId)}
+              />
               <StatusColumn report={reportFor(r.threadId)} counts={countsFor(r.threadId)} />
               <InFlightColumn items={inFlightFor(r.threadId)} />
             </div>
