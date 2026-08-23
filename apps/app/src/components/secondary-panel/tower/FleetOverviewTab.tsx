@@ -443,6 +443,14 @@ export function FleetOverviewTab({
   };
   const unassigned = byRow.get(UNASSIGNED) ?? [];
 
+  // footer provenance (v2: "hangar N · logbook N · read HH:MM — N sources").
+  const hangar = rows.length; // lanes on the board
+  const logbook = (queue.data?.items ?? []).filter(
+    (it) => (it.displayState ?? it.state) !== "dropped",
+  ).length; // flights on record (dropped excluded)
+  const sources = [fleet, board, work, queue];
+  const responded = sources.filter((s) => !s.error).length;
+
   return (
     <div className="flex h-full min-h-0 flex-col font-tower-sans [zoom:0.9]">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border bg-tower-surface px-4 py-2.5">
@@ -515,6 +523,22 @@ export function FleetOverviewTab({
             ) : null}
           </>
         )}
+      </div>
+
+      {/* footer provenance strip — the airline logbook line */}
+      <div className="flex shrink-0 items-center gap-2.5 border-t border-tower-border bg-tower-surface px-4 py-1.5 font-tower-mono text-[9px] text-tower-fg-faint">
+        <span>hangar {hangar}</span>
+        <span>·</span>
+        <span>logbook {logbook}</span>
+        <span>·</span>
+        <span>
+          read {ageLabel(age)} — {responded}/{sources.length} sources
+          {responded < sources.length ? (
+            <span className="text-tower-accent-hover"> · degraded</span>
+          ) : (
+            " responded"
+          )}
+        </span>
       </div>
     </div>
   );
