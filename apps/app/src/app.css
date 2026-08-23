@@ -35,6 +35,7 @@
   --color-tower-flight: #d08a76; /* airborne / plane glyph */
   --color-tower-flight-strong: #d9825e; /* in-flight emphasis */
   --color-tower-hold: #d4a84b; /* in the hold / waiting */
+  --color-tower-silent: #33211d; /* silent / lost-contact flight card tint */
   /* Blueprint fonts */
   --font-tower-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-tower-sans: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

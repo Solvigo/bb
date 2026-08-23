@@ -153,26 +153,54 @@ function laneCode(label: string): string {
 }
 
 /** Compact "time since" for a flight's age (v2: "40s", "4m", "2h 20m", "1d 03h"). */
-function ageSince(at?: string | null): string | null {
+function ageSince(at?: string | null): { label: string; ms: number } | null {
   if (!at) return null;
   const ms = Date.now() - new Date(at).getTime();
   if (!Number.isFinite(ms) || ms < 0) return null;
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) return { label: `${s}s`, ms };
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
+  if (m < 60) return { label: `${m}m`, ms };
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ${m % 60}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
+  if (h < 24) return { label: `${h}h ${m % 60}m`, ms };
+  return { label: `${Math.floor(h / 24)}d ${h % 24}h`, ms };
 }
 
-/** A flight: plane glyph + SV number + age, body, then a runway progress bar + %. */
+// A flight in the air with no fresh transmission has lost contact (v2's SV 118).
+const SILENT_AFTER_MS = 2 * 60 * 60 * 1000;
+
+/** The flight's status chip — its condition in airline terms, from chain + age. */
+function statusChip(
+  col: string,
+  ageMs: number | null,
+): { label: string; silent: boolean } | null {
+  if (col === "in_flight") {
+    if (ageMs != null && ageMs > SILENT_AFTER_MS)
+      return { label: "lost contact", silent: true };
+    return { label: "airborne", silent: false };
+  }
+  if (col === "queued") return { label: "in the hold", silent: false };
+  if (col === "drafted" || col === "confirmed")
+    return { label: "planned", silent: false };
+  if (col === "in_review" || col === "pilot_look" || col === "clearance")
+    return { label: "on final approach", silent: false };
+  return null;
+}
+
+/** A flight: plane glyph + SV number + age, body, runway progress + %, status chip. */
 function Card({ item }: { item: PlacedItem }) {
   const pct = COL_PROGRESS[item.col];
   const age = ageSince(item.at);
+  const chip = statusChip(item.col, age?.ms ?? null);
+  const silent = chip?.silent ?? false;
   return (
     <div
-      className="mb-1.5 rounded-[8px] border border-tower-border bg-tower-panel px-2 py-1.5"
+      className={
+        "mb-1.5 rounded-[8px] border px-2 py-1.5 " +
+        (silent
+          ? "border-tower-border bg-tower-silent"
+          : "border-tower-border bg-tower-panel")
+      }
       title={item.taskId}
     >
       <div className="flex items-center justify-between gap-1">
@@ -181,11 +209,16 @@ function Card({ item }: { item: PlacedItem }) {
         </span>
         {age ? (
           <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-faint">
-            {age}
+            {age.label}
           </span>
         ) : null}
       </div>
-      <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-tower-fg-body">
+      <div
+        className={
+          "mt-1 line-clamp-2 text-[11px] leading-snug " +
+          (silent ? "text-tower-flight" : "text-tower-fg-body")
+        }
+      >
         {item.title}
       </div>
       {pct != null ? (
@@ -193,8 +226,22 @@ function Card({ item }: { item: PlacedItem }) {
           <div className="h-[2px] w-full bg-tower-surface">
             <div className="h-[2px] bg-tower-fg-muted" style={{ width: `${pct}%` }} />
           </div>
-          <div className="mt-1 text-right font-tower-mono text-[8.5px] text-tower-fg-muted">
-            {pct}%
+          <div className="mt-1 flex items-center justify-between gap-1">
+            {chip ? (
+              <span
+                className={
+                  "truncate font-tower-mono text-[8px] uppercase tracking-[0.72px] " +
+                  (silent ? "text-tower-flight" : "text-tower-fg-faint")
+                }
+              >
+                {chip.label}
+              </span>
+            ) : (
+              <span />
+            )}
+            <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-muted">
+              {pct}%
+            </span>
           </div>
         </div>
       ) : null}
