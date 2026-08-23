@@ -31,6 +31,7 @@ import {
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import { FleetOverviewTab } from "./tower/FleetOverviewTab";
 import { ClearanceTab } from "./tower/ClearanceTab";
+import { CanopyRenderView } from "./tower/CanopyRenderView";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
@@ -456,7 +457,7 @@ export function ThreadSecondaryPanel({
   // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
   // contract). "crew" is the default surface; the views show over the empty
   // new-tab / info states but yield to any real content the operator opens.
-  const [towerView, setTowerView] = useState<"crew" | "clearance" | null>(
+  const [towerView, setTowerView] = useState<"crew" | "clearance" | "canopy" | null>(
     "crew",
   );
   const activeTabKind = activeTab?.kind ?? null;
@@ -466,7 +467,8 @@ export function ThreadSecondaryPanel({
     activeTabKind === null || activeTabKind === "thread-info";
   const isFleetOverviewActive = towerView === "crew" && towerViewCanShow;
   const isClearanceActive = towerView === "clearance" && towerViewCanShow;
-  const isTowerViewActive = isFleetOverviewActive || isClearanceActive;
+  const isCanopyActive = towerView === "canopy" && towerViewCanShow;
+  const isTowerViewActive = isFleetOverviewActive || isClearanceActive || isCanopyActive;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
@@ -683,6 +685,16 @@ export function ThreadSecondaryPanel({
               usesDesktopChrome={usesDesktopChrome}
               activeTreatment="fill"
             />
+            <PinnedIconTab
+              ariaLabel="Show canopy render"
+              isActive={isCanopyActive}
+              label="Canopy"
+              leadingVisual={<Icon name="FileText" />}
+              onClick={() => setTowerView("canopy")}
+              title="Canopy render (read-only)"
+              usesDesktopChrome={usesDesktopChrome}
+              activeTreatment="fill"
+            />
             {showInfoTab ? (
               <PinnedIconTab
                 ariaLabel="Show thread info panel"
@@ -834,6 +846,8 @@ export function ThreadSecondaryPanel({
         {browserDeck}
         {isBrowserTabActive ? null : isFleetOverviewActive ? (
           <FleetOverviewTab />
+        ) : isCanopyActive ? (
+          <CanopyRenderView artifactId={1} />
         ) : isClearanceActive ? (
           <ClearanceTab />
         ) : hasActiveFileTab ? (
