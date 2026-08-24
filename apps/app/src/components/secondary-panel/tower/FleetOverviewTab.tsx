@@ -641,8 +641,8 @@ export function FleetOverviewTab({
     return (
       <SpFocusView
         threadId={focusedSp}
-        label={r?.handle ?? focusedSp}
-        domain={r?.parentThreadId ? "domain lead" : "root pilot"}
+        label={leadName(r?.handle ?? focusedSp)}
+        domain={r?.parentThreadId ? "lead" : "commander"}
         report={
           board.data?.rows.find((b) => b.threadId === focusedSp)?.report ?? null
         }
