@@ -12,6 +12,7 @@ import { useLiveThreads } from "./useLiveThreads";
 import { useSortieActivity } from "./useSortieActivity";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
+import { useRouteState } from "@/hooks/useRouteState";
 import { PlatedInsignia, RankInsignia } from "./RankInsignia";
 
 // The 7 chain columns (states); verbs are the transitions between them.
@@ -615,6 +616,12 @@ export function FleetOverviewTab({
   const work = useCrewRpc<WorkBoardResult>("crew", "crew_work_board");
   const queue = useCrewRpc<QueueResult>("crew", "crew_queue");
   const liveIds = useLiveThreads();
+  // A board belongs to the crew whose thread it is opened in. Without this it
+  // rendered the rig's WHOLE queue, so a freshly created crew opened showing
+  // another crew's work — the first thing the Captain saw in a brand new crew
+  // was somebody else's backlog.
+  const { threadId: openInThreadId } = useRouteState();
+  const crewRootThreadId = scopeThreadId ?? openInThreadId ?? null;
   const [focusedSp, setFocusedSp] = useState<string | null>(null);
 
   // chat-link nav: bb-tower:sp/<id> focuses; bb-tower:crew returns to the board.
@@ -637,7 +644,7 @@ export function FleetOverviewTab({
           liveIds.has(r.threadId) &&
           // a lead's own board carries what it DISPATCHED, never itself:
           // a lead is never the pilot of an item.
-          (scopeThreadId ? r.parentThreadId === scopeThreadId : true),
+          (crewRootThreadId ? r.parentThreadId === crewRootThreadId : true),
       );
 
   if (focusedSp) {
@@ -673,13 +680,18 @@ export function FleetOverviewTab({
     if (state === "dropped") return { col: "dropped" };
     return { col: "terminal", termLabel: TERMINAL_LABEL[state] ?? state };
   };
+  // Work belongs to this crew when a lead of this crew owns it. crew_work_items
+  // carries NO crew column (task_id, title, intent, acceptance, brief, state,
+  // ord, created_by, created_at, dropped_reason), so a crew is derived from its
+  // own leads rather than read from the store — see the finding routed for bb.
+  const ownedByCrew = new Set(rows.map((r) => r.threadId));
   const byRow = new Map<string, PlacedItem[]>();
   for (const it of queue.data?.items ?? []) {
     const state = it.displayState ?? it.state;
     const { col, termLabel } = place(state);
     const owner = ownerOf.get(it.taskId) ?? UNASSIGNED;
     // scoped surface: only this agent's own items
-    if (scopeThreadId && owner !== scopeThreadId) continue;
+    if (crewRootThreadId && !ownedByCrew.has(owner)) continue;
     const list = byRow.get(owner) ?? [];
     list.push({
       taskId: it.taskId,
@@ -749,7 +761,7 @@ export function FleetOverviewTab({
               />
             ))}
             {/* the commander's undispatched pipeline (not yet handed to a lead) */}
-            {!scopeThreadId && unassigned.length > 0 ? (
+            {!crewRootThreadId && unassigned.length > 0 ? (
               <LeadCard
                 threadId={null}
                 projectId=""

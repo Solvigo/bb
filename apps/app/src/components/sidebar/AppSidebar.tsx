@@ -72,7 +72,7 @@ interface AppSidebarProps {
 }
 
 const SIDEBAR_THREADS_LABEL_CLASS =
-  "px-4 pb-1 font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim group-data-[collapsible=icon]:hidden";
+  "cursor-pointer select-none px-4 py-1 font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim hover:text-tower-fg-body group-data-[collapsible=icon]:hidden";
 
 export function AppSidebar({
   onResizeMouseDown,
@@ -308,18 +308,26 @@ export function AppSidebar({
             own section below, so every existing route still works — they are
             simply no longer the first thing the operator sees. */}
         <CrewSidebarSection onNavigate={closeOnMobile} />
+        {/* Crews are THE object. Raw threads live behind ONE collapsed
+            disclosure — the list keeps its own heading, so adding another here
+            duplicated it. Every route still works; threads are simply not the
+            first thing the operator reads. */}
         <SidebarContent>
-          <div className={SIDEBAR_THREADS_LABEL_CLASS}>Threads</div>
-          {threadListProvider ? (
+          <details className="group/threads min-h-0" data-testid="sidebar-threads-disclosure">
+            <summary className={SIDEBAR_THREADS_LABEL_CLASS}>
+              All threads
+            </summary>
+            {threadListProvider ? (
             <PluginThreadList
               slot={threadListProvider}
               builtInFallback={builtInThreadList}
               searchQuery={threadSearch.query}
               onNavigate={threadSearch.onExternalThreadOpen}
             />
-          ) : (
-            builtInThreadList
-          )}
+            ) : (
+              builtInThreadList
+            )}
+          </details>
         </SidebarContent>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />

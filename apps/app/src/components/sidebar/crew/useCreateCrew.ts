@@ -1,11 +1,21 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import charter from "./crewSetupCharter.md?raw";
+import { AGENT_PROVIDER } from "@/lib/agentProvider";
 
-/** A commander runs on the reasoning tier; the retired provider is never it. */
-const COMMANDER_PROVIDER_ID = "claude-code";
-/** Used only when the provider's model catalog is too slow to answer. */
-const COMMANDER_FALLBACK_MODEL = "claude-opus-5[1m]";
+/** A setup thread keeps this title until its crew is named — that is how a
+ *  second press finds the unfinished interview instead of starting another. */
+const SETUP_THREAD_TITLE = "New crew · setup";
+
+async function readJson<T>(url: string): Promise<T | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Pressing NEW CREW spawns a fresh COMMANDER thread seeded with the setup
@@ -31,6 +41,27 @@ export function useCreateCrew(): {
     setError(null);
     void (async () => {
       try {
+        // IDEMPOTENCY: a second press must RESUME the unfinished setup rather
+        // than leave another husk on the rail. Three "New crew · setup" crews
+        // with no leads is what repeated presses produced before this.
+        const existing = await readJson<unknown>(
+          "/api/v1/threads?archived=false",
+        );
+        const threads = (
+          Array.isArray(existing)
+            ? existing
+            : ((existing as { threads?: unknown[] })?.threads ??
+              (existing as { data?: unknown[] })?.data ??
+              [])
+        ) as { id: string; title?: string | null; parentThreadId?: string | null }[];
+        const unfinished = threads.find(
+          (t) => !t.parentThreadId && t.title === SETUP_THREAD_TITLE,
+        );
+        if (unfinished) {
+          navigate(`/threads/${unfinished.id}`);
+          return;
+        }
+
         // The commander needs a repo-backed project so its leads get real
         // worktrees; fall back to whatever project exists rather than failing.
         const projects = (await (
@@ -45,48 +76,34 @@ export function useCreateCrew(): {
           return;
         }
 
-        const start = (model?: string) =>
-          fetch("/api/v1/threads", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              projectId,
-              origin: "app",
-              title: "New crew · setup",
-              // Pin the provider rather than taking the project default: the
-              // default here resolved to a RETIRED provider whose token no
-              // longer refreshes, so the commander failed on its first turn
-              // before it could say a word.
-              providerId: COMMANDER_PROVIDER_ID,
-              ...(model ? { model } : {}),
-              environment: { type: "project-default" },
-              input: [{ type: "text", text: charter, mentions: [] }],
-            }),
-          });
-
-        let res = await start();
+        const res = await fetch("/api/v1/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            origin: "app",
+            title: SETUP_THREAD_TITLE,
+            // Provider AND model together, from the one shared path. Pinning
+            // only the provider still lets the instance resolve its default
+            // MODEL — which may belong to a dead provider, which is how this
+            // fault survived being "fixed" once already.
+            providerId: AGENT_PROVIDER.providerId,
+            model: AGENT_PROVIDER.model,
+            // The setup thread INTERVIEWS and calls verbs. It never touches a
+            // repo, so it gets no workspace: provisioning one made the
+            // Captain wait ~10 minutes for pnpm before his commander could
+            // say a word. Repos are provisioned at DISPATCH, where a wait
+            // belongs to a sortie that actually needs one.
+            environment: { type: "host", workspace: { type: "personal" } },
+            input: [{ type: "text", text: charter, mentions: [] }],
+          }),
+        });
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as {
-            code?: string;
             message?: string;
           } | null;
-          // Resolving the provider's default model can time out on a loaded
-          // machine. Naming a model skips that lookup, so retry once rather
-          // than failing the Captain's first press.
-          if (body?.code === "model_catalog_unavailable") {
-            res = await start(COMMANDER_FALLBACK_MODEL);
-          }
-          if (!res.ok) {
-            const retryBody = (await res.json().catch(() => null)) as {
-              message?: string;
-            } | null;
-            setError(
-              retryBody?.message ??
-                body?.message ??
-                `Could not start the crew (${res.status}).`,
-            );
-            return;
-          }
+          setError(body?.message ?? `Could not start the crew (${res.status}).`);
+          return;
         }
         const thread = (await res.json()) as { id: string };
         navigate(`/threads/${thread.id}`);
