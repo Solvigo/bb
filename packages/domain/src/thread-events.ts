@@ -37,6 +37,21 @@ export const threadTurnInitiatorValues = ["user", "agent", "system"] as const;
 export const threadTurnInitiatorSchema = z.enum(threadTurnInitiatorValues);
 export type ThreadTurnInitiator = z.infer<typeof threadTurnInitiatorSchema>;
 
+// WHO ASKED FOR THIS ONE TURN, which `initiator` cannot answer: a human
+// steering a thread from an external board and an agent-orchestration CLI
+// tasking that same thread both arrive as `initiator: "user"`, because such a
+// CLI sends as the operator. Absent is the only default there can be — every
+// client that never sets it keeps its current behaviour exactly.
+//
+// The values name the ASKER, not the mechanism, because "steer" alone already
+// means two other things on the same request: `mode: "steer-if-active"` (which
+// `resolveSendMode` answers with "steer") and `turnRequestTarget.kind: "steer"`
+// both mean INJECT INTO THE RUNNING TURN, which an operator-steer need not be
+// and a crew-tasking may well be.
+export const turnOriginValues = ["operator-steer", "crew-tasking"] as const;
+export const turnOriginSchema = z.enum(turnOriginValues);
+export type TurnOrigin = z.infer<typeof turnOriginSchema>;
+
 // One value per Family-B system-message action, plus an explicit `unlabeled`
 // for legacy/pre-taxonomy messages (rendered generically). `unlabeled` beats a
 // nullable field: its meaning is self-documenting and avoids `null`-as-default.
@@ -136,6 +151,10 @@ export const turnRequestEventDataSchema = z.object({
   continuationOfRequestId: clientTurnRequestIdSchema.optional(),
   source: z.enum(["spawn", "tell"]),
   initiator: threadTurnInitiatorSchema,
+  // Optional at the persisted-event level for the same reason the taxonomy
+  // fields below are: events written before the field existed must still parse,
+  // and an unmarked turn is a real state rather than a missing value.
+  origin: turnOriginSchema.optional(),
   // Non-null only when initiator === "agent". The invariant is enforced by
   // writer typings rather than a schema refine so legacy persisted events
   // (initiator: "agent", senderThreadId: null from before the field

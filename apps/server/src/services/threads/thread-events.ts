@@ -31,6 +31,7 @@ import type {
   ProvisioningTranscriptEntry,
   RecordedThreadExecutionOptions,
   SystemThreadProvisioningStatus,
+  TurnOrigin,
   TurnRequestEventData,
   TurnRequestTarget,
   ThreadEventType,
@@ -65,6 +66,10 @@ export interface ClientTurnRequestedEventArgs {
   initiator: ThreadTurnInitiator;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
+  // The caller's own account of who asked for this turn. Stamped on the request
+  // event because that event is the only per-turn record of the input, and the
+  // parent-notify policy has to read it a whole turn later.
+  origin?: TurnOrigin;
   requestMethod: "thread/start" | "turn/start";
   senderThreadId: string | null;
   source: "spawn" | "tell";
@@ -247,6 +252,7 @@ function buildClientTurnRequestedEventData(
       ? { continuationOfRequestId: args.continuationOfRequestId }
       : {}),
     senderThreadId: args.senderThreadId,
+    ...(args.origin !== undefined ? { origin: args.origin } : {}),
     // Stamp the Family-B taxonomy fields when present. Omitted entirely for
     // non-system turns so legacy events keep parsing via the schema's optional
     // defaults (unlabeled / null) rather than carrying redundant payload.
@@ -674,6 +680,7 @@ export function parseStoredTurnRequestEvent(
         : {}),
       source: event.source,
       initiator: event.initiator,
+      origin: event.origin,
       senderThreadId: event.senderThreadId,
       systemMessageKind: event.systemMessageKind,
       systemMessageSubject: event.systemMessageSubject,
@@ -990,6 +997,27 @@ export function getLastExecutionOptions(
         threadId: row.threadId,
         type: row.type,
       }).execution
+    : null;
+}
+
+/**
+ * The origin the client marked on the input that fed this turn, or null when it
+ * marked none. Resolves through the turn's own accepted input, so a steered turn
+ * answers with the origin of the LAST input accepted into it.
+ */
+export function getTurnOrigin(
+  deps: Pick<AppDeps, "db">,
+  args: { threadId: string; turnId: string },
+): TurnOrigin | null {
+  const row = getStoredTurnRequestEventForTurn(deps.db, args);
+
+  return row
+    ? (parseStoredTurnRequestEvent({
+        data: row.data,
+        sequence: row.sequence,
+        threadId: row.threadId,
+        type: row.type,
+      }).origin ?? null)
     : null;
 }
 

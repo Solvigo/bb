@@ -38,6 +38,7 @@ import {
   maybePruneActiveThreadEventHistory,
 } from "../services/system/event-pruning.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
+import { getTurnOrigin } from "../services/threads/thread-events.js";
 import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
 import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
@@ -176,6 +177,9 @@ interface AddParentTurnNotificationFollowUpArgs {
   failedParentNotificationThreadIds: Set<string>;
   followUps: EventEffectFollowUp[];
   thread: NonNullable<ReturnType<typeof getThread>>;
+  // The turn whose completion is being reported, or null where there is no turn
+  // to attribute (a provider process that exited outside one).
+  turnId: string | null;
   turnStatus: ThreadEventTurnStatus;
 }
 
@@ -340,9 +344,26 @@ function notifyInsertedEventThreads(
 }
 
 function addParentTurnNotificationFollowUp(
+  deps: Pick<AppDeps, "db">,
   args: AddParentTurnNotificationFollowUpArgs,
 ): void {
   if (!isParentNotifiableChildThread(args.thread)) {
+    return;
+  }
+  // THE SAME EXEMPTION, ONE TURN WIDE. `isParentNotifiableChildThread` excludes
+  // forks and side chats because they are branches their user reads directly —
+  // but it can only key on the thread's static origin, and a user steering a
+  // delegated thread from an external board is that same read-directly case for
+  // the length of one turn. `initiator` cannot stand in for this: an
+  // orchestration CLI sends as the operator, so an `operator-steer` and a
+  // `crew-tasking` both record `initiator: "user"`.
+  if (
+    args.turnId !== null &&
+    getTurnOrigin(deps, {
+      threadId: args.thread.id,
+      turnId: args.turnId,
+    }) === "operator-steer"
+  ) {
     return;
   }
   if (args.turnStatus === "failed") {
@@ -436,10 +457,11 @@ async function applyEventEffects(
               turnId,
             });
           if (!alreadyHandledByCommandFailure) {
-            addParentTurnNotificationFollowUp({
+            addParentTurnNotificationFollowUp(deps, {
               failedParentNotificationThreadIds,
               followUps,
               thread: turnCompleted.thread,
+              turnId,
               turnStatus: event.status,
             });
           }
@@ -474,10 +496,14 @@ async function applyEventEffects(
           threadId: entry.threadId,
         });
         if (outcome.applied) {
-          addParentTurnNotificationFollowUp({
+          addParentTurnNotificationFollowUp(deps, {
             failedParentNotificationThreadIds,
             followUps,
             thread,
+            // A provider process exiting is not a turn outcome and carries no
+            // turn scope, so there is no per-turn origin to read: a run that
+            // died still reports, whoever asked for it.
+            turnId: null,
             turnStatus: "failed",
           });
         }

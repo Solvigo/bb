@@ -11,6 +11,7 @@ import type {
   ResolvedThreadExecutionOptions,
   Thread,
   ThreadTurnInitiator,
+  TurnOrigin,
   TurnRequestTarget,
 } from "@bb/domain";
 import type { SendMessageRequest } from "@bb/server-contract";
@@ -122,6 +123,7 @@ interface AppendAndQueueSendThreadMessageArgs {
   initiator: ThreadTurnInitiator;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
+  origin?: TurnOrigin;
   queueInTransaction: SendThreadMessageQueueRequest;
   requestId: ClientTurnRequestId;
   senderThreadId: string | null;
@@ -322,6 +324,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   initiator,
   input,
   inputGroups,
+  origin,
   queueInTransaction,
   requestId,
   senderThreadId,
@@ -343,6 +346,7 @@ function appendAndQueueSendThreadMessageInTransaction({
             ...(inputGroups !== undefined ? { inputGroups } : {}),
             execution,
             initiator,
+            ...(origin !== undefined ? { origin } : {}),
             senderThreadId,
             requestMethod: "turn/start",
             source: "tell",
@@ -475,6 +479,7 @@ export async function sendThreadMessage(
       initiator,
       input,
       inputGroups,
+      ...(payload.origin !== undefined ? { origin: payload.origin } : {}),
       senderThreadId,
       thread,
     })
@@ -532,6 +537,7 @@ export async function sendThreadMessage(
       initiator,
       input,
       inputGroups,
+      ...(payload.origin !== undefined ? { origin: payload.origin } : {}),
       queueInTransaction: ({ tx }) => {
         const dispatchKind = prepareReadyThreadTurnDispatch({
           command,
@@ -625,6 +631,7 @@ export async function sendThreadMessage(
     initiator,
     input,
     inputGroups,
+    ...(payload.origin !== undefined ? { origin: payload.origin } : {}),
     queueInTransaction: () => {
       return { threadBecameActive: false };
     },
