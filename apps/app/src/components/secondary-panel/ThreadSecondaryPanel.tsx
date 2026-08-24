@@ -625,7 +625,12 @@ export function ThreadSecondaryPanel({
         // Tower: a floating card inset from the surface, not a full-bleed column.
         // The inset (not h-full) defines the box, so it floats with a gap.
         !renderAsDrawer &&
-          "rounded-xl border border-tower-input-border shadow-[0_6px_24px_rgba(0,0,0,0.45)]",
+          // A soft drop, deliberately with NO horizontal bleed: the panel's own
+          // wrapper must keep `overflow-clip` (that clip IS the open/close reveal
+          // animation), so a shadow that spread sideways would be sliced off
+          // against the conversation column. The negative spread pulls the blur
+          // back in so the shadow falls below the card rather than beside it.
+          "rounded-xl border border-tower-input-border shadow-[0_6px_18px_-10px_rgba(0,0,0,0.55)]",
         !renderAsDrawer && [
           "absolute inset-y-2 left-2",
           isSecondaryPanelResizing ? "right-2" : "",
