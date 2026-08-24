@@ -1,0 +1,31 @@
+{
+  "name": "bb-plugin-agent-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Per-thread isolated headless browser sessions, streamed as MJPEG over a plugin HTTP route.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Agent Browser",
+    "description": "Per-thread isolated headless browser sessions, streamed as MJPEG over a plugin HTTP route.",
+    "branding": {
+      "icon": "Globe"
+    },
+    "server": "./server.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}
