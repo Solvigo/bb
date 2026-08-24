@@ -160,7 +160,7 @@ function Card({ item }: { item: PlacedItem }) {
         "mb-1.5 rounded-[8px] border px-2 py-1.5 " +
         (silent
           ? "border-tower-border bg-tower-silent"
-          : "border-tower-border bg-tower-panel")
+          : "border-tower-border bg-tower-raised")
       }
       title={item.taskId}
     >
@@ -281,7 +281,7 @@ function StatusZone({
         <div className={EYE}>Next</div>
         {next ? (
           <>
-            <div className="mt-0.5 text-[12px] text-tower-fg-body">
+            <div className="mt-0.5 text-[11.5px] text-tower-fg-body">
               {next.title}
             </div>
             <div className={`mt-0.5 ${META}`}>
@@ -324,7 +324,7 @@ function StatusZone({
 
 // ─── the lane row: DOMAIN rail | STATUS story | IN FLIGHT cards ────────────────
 const LANE_GRID =
-  "grid grid-cols-[minmax(340px,36%)_minmax(240px,30%)_1fr]";
+  "grid grid-cols-[minmax(300px,32%)_minmax(240px,31%)_1fr]";
 // A lane is a fixed band, never as tall as its transcript: each zone scrolls
 // inside it, so one talkative agent cannot push the rest of the fleet offscreen.
 const LANE_HEIGHT = "h-[440px]";
@@ -419,7 +419,7 @@ function LaneRow({
 
   return (
     <div
-      className={`${LANE_GRID} ${LANE_HEIGHT} mx-3 mb-3 overflow-hidden rounded-[12px] border border-tower-border bg-tower-panel/40`}
+      className={`${LANE_GRID} ${LANE_HEIGHT} mx-4 mb-4 overflow-hidden rounded-[14px] border border-tower-border-strong bg-tower-panel`}
     >
       {/* ── DOMAIN rail ── */}
       <div className="flex min-h-0 flex-col border-r border-tower-border px-3.5 py-3.5">
@@ -450,19 +450,19 @@ function LaneRow({
         )}
         {/* the flight deck sits INSET — a recessed panel, as in v2 — and
             scrolls inside the band rather than growing it */}
-        <div className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] bg-tower-surface">
-          {hasThread && threadId ? (
+        {hasThread && threadId ? (
+          <div className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] border border-tower-border bg-tower-surface p-1 [zoom:0.85]">
             <LaneFlightDeck
               threadId={threadId}
               projectId={projectId}
               providerId={providerId}
             />
-          ) : (
-            <div className="px-2.5 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
-              Undispatched — no flight deck yet.
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="mt-2.5 font-tower-mono text-[9px] italic text-tower-fg-faint">
+            Undispatched — no flight deck yet.
+          </div>
+        )}
       </div>
 
       {/* ── STATUS story ── */}
@@ -632,7 +632,7 @@ export function FleetOverviewTab({
   const responded = sources.filter((s) => !s.error).length;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans [zoom:0.9]">
+    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
       {/* zone labels only — no band of its own: the panel chrome above is the
           one grey header on this surface. */}
       <div className={`${LANE_GRID} shrink-0 px-3 pb-1.5 pt-2.5`}>
