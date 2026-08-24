@@ -707,7 +707,7 @@ export function FleetOverviewTab({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto pt-3">
+      <div className="@container/board min-h-0 flex-1 overflow-auto pt-3">
         {(fleet.loading || !crewKnown) && rows.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">loading leads…</div>
         ) : rows.length === 0 && unassigned.length === 0 ? (
@@ -719,10 +719,16 @@ export function FleetOverviewTab({
         ) : (
           // Two lead cards per row, as the sheet lays them out. A nested
           // surface has half the width, so it stacks instead.
+          // The sheet lays lead cards out two per row AT ITS OWN CARD WIDTH of
+          // 691px. Below ~1400px of surface, two-up gives each card ~400px —
+          // 42% narrower than the design, which crushes the stage ticks into
+          // "IN FLIG…". So the count follows the CONTAINER, not the viewport:
+          // one full-width band per lead until two can each have their designed
+          // width. Honouring a layout means honouring its proportions.
           <div
             className={
               "grid gap-4 px-4 pb-4 " +
-              (isScoped ? "grid-cols-1" : "grid-cols-1 2xl:grid-cols-2")
+              (isScoped ? "grid-cols-1" : "grid-cols-1 @[1400px]/board:grid-cols-2")
             }
           >
             {rows.map((r) => (
