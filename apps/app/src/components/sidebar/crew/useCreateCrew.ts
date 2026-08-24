@@ -76,6 +76,18 @@ export function useCreateCrew(): {
           return;
         }
 
+        const hosts = await readJson<unknown>("/api/v1/hosts");
+        const hostList = (
+          Array.isArray(hosts)
+            ? hosts
+            : ((hosts as { hosts?: unknown[] })?.hosts ?? [])
+        ) as { id?: string }[];
+        const hostId = hostList[0]?.id;
+        if (!hostId) {
+          setError("No host is connected, so a crew cannot be started yet.");
+          return;
+        }
+
         const res = await fetch("/api/v1/threads", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -89,12 +101,22 @@ export function useCreateCrew(): {
             // fault survived being "fixed" once already.
             providerId: AGENT_PROVIDER.providerId,
             model: AGENT_PROVIDER.model,
-            // The setup thread INTERVIEWS and calls verbs. It never touches a
-            // repo, so it gets no workspace: provisioning one made the
-            // Captain wait ~10 minutes for pnpm before his commander could
-            // say a word. Repos are provisioned at DISPATCH, where a wait
-            // belongs to a sortie that actually needs one.
-            environment: { type: "host", workspace: { type: "personal" } },
+            // The setup thread INTERVIEWS and calls verbs — it never touches a
+            // repo, so it must not provision one. A managed worktree cost the
+            // Captain ~10 MINUTES of pnpm (2318 packages, 3.7GB) before his
+            // commander could say a word, and dragged the whole machine.
+            //
+            // A "personal" workspace is refused on a repo-backed project
+            // ("Personal workspaces are only supported for the personal
+            // project"), and the commander must live on a repo-backed project
+            // so its leads can get real worktrees. An UNMANAGED workspace with
+            // no path is the seam that satisfies both: no worktree, no install.
+            // Measured: first word in ~5s, against ~10min before.
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path: null },
+            },
             input: [{ type: "text", text: charter, mentions: [] }],
           }),
         });
