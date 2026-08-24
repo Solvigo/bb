@@ -654,7 +654,20 @@
    * the platform's transient scrollbar behavior without making content reflow
    * as the thumb appears.
    */
-  .thread-scrollbar,
+  /*
+   * The thread reading surface scrolls without a scrollbar at all: the gutter
+   * the thin bar reserved was shifting the conversation sideways, and a chat
+   * column has its own obvious scroll affordance in the content itself.
+   * `transient-scrollbar` keeps the fade-in behaviour for other surfaces.
+   */
+  .thread-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .thread-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .transient-scrollbar {
     scrollbar-color: transparent transparent;
   }

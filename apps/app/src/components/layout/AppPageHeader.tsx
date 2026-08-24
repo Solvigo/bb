@@ -1,12 +1,11 @@
 import { useState, type ReactNode, type Ref } from "react";
-import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
+import { SidebarTrigger } from "@/components/ui/sidebar.js";
+import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import {
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
-  BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
   CHROME_ROW_CLASS,
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
@@ -69,6 +68,19 @@ interface AppPageHeaderProps {
   ownsWindowTopLeft?: boolean;
 }
 
+/** The sidebar toggle, sitting with the page's other header controls. */
+function HeaderSidebarTrigger() {
+  const shortcut = useAppCommandShortcut("sidebar.toggle");
+  return (
+    <SidebarTrigger
+      aria-label={
+        shortcut ? `Toggle sidebar (${shortcut.label})` : "Toggle sidebar"
+      }
+      aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
+    />
+  );
+}
+
 export function AppPageHeader({
   center,
   actions,
@@ -77,8 +89,6 @@ export function AppPageHeader({
   isWindowDragRegion = true,
   ownsWindowTopLeft = true,
 }: AppPageHeaderProps) {
-  const isSidebarShowing = useIsSidebarShowing();
-  const isCompactViewport = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
@@ -86,8 +96,11 @@ export function AppPageHeader({
     desktopInfo,
     windowState: desktopWindowState,
   });
-  const shouldReserveSidebarTrigger =
-    ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing);
+  // The sidebar toggle now rides the header's right edge (below) instead of a
+  // pinned top-left overlay, so nothing needs reserving on the left. It stays
+  // visible whether the sidebar is open or closed, as the overlay did — the
+  // affordance should never disappear out from under the operator.
+  const showSidebarTrigger = ownsWindowTopLeft;
   return (
     <header
       ref={headerRef}
@@ -119,10 +132,9 @@ export function AppPageHeader({
           // header, so keep the reserve stable across open/closed drawer state
           // instead of shifting content behind the overlay.
           "transition-[padding] duration-200 ease-linear",
-          shouldReserveSidebarTrigger &&
-            (reserveMacosTrafficLights
-              ? MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
-              : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS),
+          reserveMacosTrafficLights && ownsWindowTopLeft
+            ? MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
+            : null,
         )}
       >
         {center ? (
@@ -134,7 +146,7 @@ export function AppPageHeader({
         ) : (
           <div className="min-w-0 flex-1" />
         )}
-        {actions ? (
+        {actions || showSidebarTrigger ? (
           <div
             className={cn(
               "flex shrink-0 items-center gap-1",
@@ -142,6 +154,7 @@ export function AppPageHeader({
             )}
           >
             {actions}
+            {showSidebarTrigger ? <HeaderSidebarTrigger /> : null}
           </div>
         ) : null}
       </div>
