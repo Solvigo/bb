@@ -11,7 +11,7 @@ import { KnowledgeTab } from "./KnowledgeTab";
  * to that agent — its own chat + its own rendering surface. This is that surface:
  * a tab host (Crew / Clearance / Knowledge) scoped to one agent, so every agent
  * has a place to bring things up, recursively (its Crew tab drills into its own
- * sub-crew, which opens their surfaces again).
+ * sorties, which open their surfaces again).
  *
  * It wears the SAME chrome as the pilot's own surface — the shared PinnedIconTab
  * in a 38px row — rather than a lookalike. A recursion is only honest if the

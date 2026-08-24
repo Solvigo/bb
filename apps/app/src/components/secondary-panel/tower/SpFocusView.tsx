@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import { TowerRenderSurface } from "./TowerRenderSurface";
 import { useLiveThreads } from "./useLiveThreads";
+import { PlatedInsignia } from "./RankInsignia";
 
 interface BoardReport {
   rank: string;
@@ -9,11 +10,6 @@ interface BoardReport {
   escalated: boolean;
   note: string;
   at: string;
-}
-
-function initials(label: string): string {
-  const clean = label.replace(/^thr_/, "");
-  return clean.slice(0, 2).toUpperCase();
 }
 
 /** The SP's chat needs backend queries; keep the frame if they fail (no server). */
@@ -35,9 +31,9 @@ class ChatBoundary extends Component<{ children: ReactNode }, { failed: boolean 
 }
 
 /**
- * Drilling into an agent = the recursive shell: its chat on the LEFT, its OWN
+ * Drilling into a LEAD = the recursive shell: its chat on the LEFT, its OWN
  * rendering surface (the same tab host) on the RIGHT. So every agent has a place
- * to bring things up, and its Crew tab drills into its own sub-crew — the shell
+ * to bring things up, and its Crew tab drills into its own sorties — the shell
  * all the way down. The far-left commander chat (outside this) is untouched.
  */
 export function SpFocusView({
@@ -68,11 +64,13 @@ export function SpFocusView({
           onClick={onBack}
           className="rounded-md border border-tower-border px-2 py-0.5 font-tower-mono text-[10px] text-tower-fg-dim transition-colors hover:bg-tower-bright hover:text-tower-fg-body"
         >
-          ‹ board
+          ‹ fleet
         </button>
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-tower-bright font-tower-mono text-[10px] font-bold text-tower-fg-muted">
-          {initials(label)}
-        </span>
+        <PlatedInsignia
+          rank="lead"
+          state={report?.state === "working" ? "working" : "waiting"}
+          plate={26}
+        />
         <span className="font-semibold text-tower-fg">{label}</span>
         <span className="font-tower-mono text-[11px] text-tower-fg-faint">
           {domain}
@@ -83,8 +81,8 @@ export function SpFocusView({
       </div>
 
       {/* the recursive shell: agent chat left, its own rendering surface right */}
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(300px,38%)_1fr]">
-        <div className="flex min-h-0 flex-col border-r border-tower-border">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(240px,26%)_1fr] gap-0">
+        <div className="flex min-h-0 flex-col">
           <ChatBoundary>
             <EmbeddedThreadChat
               variant="compact"
@@ -109,7 +107,13 @@ export function SpFocusView({
             />
           </ChatBoundary>
         </div>
-        <TowerRenderSurface scopeThreadId={threadId} scopeLabel={label} />
+        {/* the lead's own rendering area — the same floating card the
+            commander's surface is, so the recursion holds visually too */}
+        <div className="min-h-0 p-2 pl-0">
+          <div className="h-full min-h-0 overflow-hidden rounded-xl border border-tower-input-border bg-tower-render shadow-[0_6px_18px_-10px_rgba(0,0,0,0.55)]">
+            <TowerRenderSurface scopeThreadId={threadId} scopeLabel={label} />
+          </div>
+        </div>
       </div>
     </div>
   );

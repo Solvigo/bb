@@ -9,6 +9,7 @@ import { useAtomValue } from "jotai";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import { useCrewRpc } from "./useCrewRpc";
 import { useLiveThreads } from "./useLiveThreads";
+import { useSortieActivity } from "./useSortieActivity";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
 import { PlatedInsignia, RankInsignia } from "./RankInsignia";
@@ -58,6 +59,8 @@ interface WorkItem {
   taskId: string;
   attempts: {
     threadId: string;
+    /** the sortie's own name — the agent actually flying this item */
+    handle: string | null;
     /** the crew plugin's own verdict on whether this attempt is still alive */
     liveness: string | null;
   }[];
@@ -90,6 +93,10 @@ interface PlacedItem {
   attemptAt: string | null;
   /** the crew plugin's liveness verdict for the attempt, when it has one */
   liveness: string | null;
+  /** the thread this sortie runs on — null until a sortie is dispatched */
+  attemptThreadId: string | null;
+  /** the sortie flying this item; null when none has been dispatched yet */
+  sortie: string | null;
   dispatchable: boolean;
   blockedBecause: string | null;
 }
@@ -99,6 +106,12 @@ const UNASSIGNED = "__unassigned__";
 // Honest buckets from chain state (v2 airline vocabulary):
 const HOLD_COLS = new Set(["drafted", "confirmed", "queued"]); // waiting to launch
 const HELD_COLS = new Set(["in_review", "pilot_look", "clearance"]); // held at a gate
+
+/** An operator-facing agent name: the ranks are Commander, Lead and Sortie, so
+ *  substrate prefixes (sp-, plt-, cm-) never reach a label. */
+function leadName(handle: string): string {
+  return handle.replace(/^(sp|plt|cm)[-_]/i, "");
+}
 
 /** A task's flight designator — a stable 3-digit SV number from its id. */
 function svNumber(taskId: string): string {
@@ -153,6 +166,8 @@ function Card({ item }: { item: PlacedItem }) {
   const chip = statusChip(item);
   const silent = chip?.silent ?? false;
   const stageIndex = STAGES.findIndex((st) => st.key === STAGE_OF[item.col]);
+  // What this sortie is actually doing, straight from its own transcript.
+  const activity = useSortieActivity(item.attemptThreadId);
   return (
     <div
       className={
@@ -166,6 +181,10 @@ function Card({ item }: { item: PlacedItem }) {
       <div className="flex items-center justify-between gap-1">
         <span className="min-w-0 truncate font-tower-mono text-[10px] text-tower-fg-body">
           {svNumber(item.taskId)}
+          {/* the SORTIE flying this item — a lead never flies one itself */}
+          {item.sortie ? (
+            <span className="text-tower-fg-muted"> · {leadName(item.sortie)}</span>
+          ) : null}
         </span>
         {aloft ? (
           <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-faint">
@@ -202,6 +221,29 @@ function Card({ item }: { item: PlacedItem }) {
               title={`${svNumber(item.taskId)} — ${chip?.label ?? "planned"}`}
             />
           </span>
+        </div>
+      ) : null}
+      {/* the sortie's last line of activity — its own transcript, live */}
+      {activity ? (
+        <div className="mt-1.5 flex items-start gap-1.5 rounded-[8px] bg-tower-surface px-2 py-1.5">
+          <span
+            className={
+              "mt-px shrink-0 font-tower-mono text-[8px] uppercase tracking-[0.6px] " +
+              (activity.working
+                ? "text-tower-flight-strong"
+                : "text-tower-fg-faint")
+            }
+          >
+            {activity.working ? "live" : "last"}
+          </span>
+          <span className="line-clamp-2 min-w-0 flex-1 font-tower-mono text-[9.5px] leading-snug text-tower-fg-body">
+            {activity.line}
+          </span>
+        </div>
+      ) : null}
+      {!item.sortie && STAGE_OF[item.col] === "in_flight" ? (
+        <div className="mt-1.5 font-tower-mono text-[8.5px] italic text-tower-fg-faint">
+          no sortie dispatched
         </div>
       ) : null}
       {chip ? (
@@ -258,7 +300,7 @@ const SUB_STATE: Record<string, string> = {
   drafted: "draft",
   confirmed: "confirmed",
   queued: "queued",
-  in_review: "SP review",
+  in_review: "lead review",
   pilot_look: "pilot look",
 };
 
@@ -589,6 +631,8 @@ export function FleetOverviewTab({
         (r) =>
           r.rank !== "PLT" &&
           liveIds.has(r.threadId) &&
+          // a lead's own board carries what it DISPATCHED, never itself:
+          // a lead is never the pilot of an item.
           (scopeThreadId ? r.parentThreadId === scopeThreadId : true),
       );
 
@@ -611,11 +655,13 @@ export function FleetOverviewTab({
   // liveness, which is the crew plugin's own verdict — never inferred here.
   const ownerOf = new Map<string, string>();
   const livenessOf = new Map<string, string | null>();
+  const sortieOf = new Map<string, string | null>();
   for (const w of work.data?.workItems ?? []) {
     const attempt = w.attempts[0];
     if (attempt?.threadId) {
       ownerOf.set(w.taskId, attempt.threadId);
       livenessOf.set(w.taskId, attempt.liveness ?? null);
+      sortieOf.set(w.taskId, attempt.handle ?? null);
     }
   }
   const place = (state: string): { col: string; termLabel?: string } => {
@@ -637,6 +683,8 @@ export function FleetOverviewTab({
       col,
       termLabel,
       attemptAt: it.lastAttempt?.at ?? null,
+      attemptThreadId: it.lastAttempt?.threadId ?? null,
+      sortie: sortieOf.get(it.taskId) ?? null,
       liveness: livenessOf.get(it.taskId) ?? null,
       dispatchable: it.dispatchable,
       blockedBecause: it.blockedBecause,
@@ -661,10 +709,12 @@ export function FleetOverviewTab({
 
       <div className="min-h-0 flex-1 overflow-auto pt-3">
         {(fleet.loading || !crewKnown) && rows.length === 0 ? (
-          <div className="px-4 py-6 italic text-tower-fg-faint">loading crew…</div>
+          <div className="px-4 py-6 italic text-tower-fg-faint">loading leads…</div>
         ) : rows.length === 0 && unassigned.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">
-            {scopeThreadId ? "No crew or work under this agent yet." : "No crew yet."}
+            {scopeThreadId
+              ? "No sorties dispatched by this lead yet — its work items exist on the fleet board but no sortie has been spawned to fly them."
+              : "No leads yet."}
           </div>
         ) : (
           // Two lead cards per row, as the sheet lays them out. A nested
@@ -681,14 +731,14 @@ export function FleetOverviewTab({
                 threadId={r.threadId}
                 projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
                 providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
-                label={r.handle ?? r.threadId}
+                label={leadName(r.handle ?? r.threadId)}
                 onOpen={() => setFocusedSp(r.threadId)}
                 items={byRow.get(r.threadId) ?? []}
                 escalated={isEscalated(r.threadId)}
                 hasThread
               />
             ))}
-            {/* the pilot's undispatched pipeline (not yet handed to a lead) */}
+            {/* the commander's undispatched pipeline (not yet handed to a lead) */}
             {!scopeThreadId && unassigned.length > 0 ? (
               <LeadCard
                 threadId={null}
