@@ -8,6 +8,7 @@ import {
   type SystemMessageSubject,
   type Thread,
   type ThreadTurnInitiator,
+  type TurnOrigin,
   type TurnRequestTarget,
 } from "@bb/domain";
 import type { StartedOnBehalfOf } from "@bb/server-contract";
@@ -71,6 +72,7 @@ interface RequestThreadReprovisionArgs {
   input: PromptInput[];
   inputGroups?: PromptInput[][];
   initiator: ThreadTurnInitiator;
+  origin?: TurnOrigin;
   provisioningId: string;
   senderThreadId: string | null;
   systemMessageKind?: SystemMessageKind;
@@ -318,6 +320,7 @@ export function requestThreadReprovision(
               : {}),
             execution: args.execution,
             initiator: args.initiator,
+            origin: args.origin,
             senderThreadId: args.senderThreadId,
             systemMessageKind: args.systemMessageKind,
             systemMessageSubject: args.systemMessageSubject,

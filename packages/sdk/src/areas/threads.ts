@@ -505,6 +505,7 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
   return {
     input: args.input,
     mode: args.mode,
+    origin: args.origin,
     model: args.model,
     permissionMode: args.permissionMode,
     reasoningLevel: args.reasoningLevel,

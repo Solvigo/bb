@@ -25,6 +25,7 @@ import {
   threadTimelinePendingTodosSchema,
   threadVisibilitySchema,
   threadWithRuntimeSchema,
+  turnOriginSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
 import {
@@ -214,6 +215,11 @@ export const sendMessageRequestSchema = z.object({
   permissionMode: permissionModeInputSchema.optional(),
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   mode: sendMessageModeSchema,
+  /**
+   * Who asked for this turn, for the policies that must tell an operator's own
+   * steer from a tool's tasking. Optional: absent is today's behaviour.
+   */
+  origin: turnOriginSchema.optional(),
   senderThreadId: z.string().min(1).optional(),
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;

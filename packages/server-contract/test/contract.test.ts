@@ -148,6 +148,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "A send omits origin unless the caller wants to declare who asked for the turn; absent means unmarked, which is the pre-existing notify behaviour.",
+    fields: ["sendMessageRequestSchema.origin"],
+  },
+  {
+    reason:
       "Environment PATCH requests omit metadata fields that should be left unchanged; null explicitly clears nullable values.",
     fields: [
       "updateEnvironmentRequestSchema.mergeBaseBranch",

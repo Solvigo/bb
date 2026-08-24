@@ -6,6 +6,7 @@ import type {
   SystemMessageSubject,
   Thread,
   ThreadTurnInitiator,
+  TurnOrigin,
 } from "@bb/domain";
 import { createThreadProvisioningId } from "@bb/db";
 import type { DbTransaction } from "@bb/db";
@@ -45,6 +46,10 @@ export interface DispatchTurnDuringReprovisionArgs {
   input: PromptInput[];
   inputGroups?: PromptInput[][];
   onStarted?: () => void;
+  // Threaded onto the deferred `client/turn/requested` event exactly as the
+  // taxonomy fields below are: a turn dispatched while the workspace is being
+  // restored is still the same turn its caller marked.
+  origin?: TurnOrigin;
   senderThreadId: string | null;
   // Family-B taxonomy fields for `initiator: "system"` reprovision dispatches.
   // Threaded onto the deferred `client/turn/requested` event the reprovision
@@ -180,6 +185,7 @@ export async function dispatchTurnDuringReprovision(
           inputGroups: args.inputGroups,
           execution: args.execution,
           initiator: args.initiator,
+          origin: args.origin,
           provisioningId,
           senderThreadId: args.senderThreadId,
           systemMessageKind: args.systemMessageKind,
