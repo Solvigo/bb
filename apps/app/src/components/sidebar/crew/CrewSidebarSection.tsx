@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -6,7 +6,7 @@ import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia"
 import { useCrews, type Crew } from "./useCrews";
 import { useCreateCrew } from "./useCreateCrew";
 
-const SECTION_LABEL =
+export const SIDEBAR_SECTION_LABEL_CLASS =
   "px-2 font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
 
 function CrewEntry({
@@ -94,12 +94,15 @@ function CrewEntry({
  * route still works; they are simply no longer the first thing the operator
  * sees.
  */
-export function CrewSidebarSection({ onNavigate }: { onNavigate?: () => void }) {
-  const { crews, loaded, failed, reload } = useCrews();
+/**
+ * The one action the rail is built around. Pressing it stands up a commander
+ * that interviews the operator; pressing it twice resumes that interview rather
+ * than leaving a second half-built crew behind.
+ */
+export function NewCrewButton() {
   const { createCrew, creating, error } = useCreateCrew();
-
   return (
-    <div className="flex flex-col gap-1 px-2 pb-2 group-data-[collapsible=icon]:hidden">
+    <div className="flex flex-col gap-1 px-2 group-data-[collapsible=icon]:hidden">
       <button
         type="button"
         onClick={createCrew}
@@ -123,8 +126,32 @@ export function CrewSidebarSection({ onNavigate }: { onNavigate?: () => void }) 
       {error ? (
         <p className="px-1 text-xs text-tower-accent-hover">{error}</p>
       ) : null}
+    </div>
+  );
+}
 
-      <div className={cn(SECTION_LABEL, "mt-2")}>Crews</div>
+/**
+ * The rail's primary object is the CREW, not the thread: one entry per crew —
+ * its commander, expanding to the leads reporting to it. Raw threads keep a
+ * collapsed disclosure at the very bottom, so every existing route still works;
+ * they are simply no longer what the operator reads first.
+ */
+export function CrewSidebarSection({
+  headerTrailing,
+  onNavigate,
+}: {
+  /** Sits on the Crews heading — search belongs beside what it searches. */
+  headerTrailing?: ReactNode;
+  onNavigate?: () => void;
+}) {
+  const { crews, loaded, failed, reload } = useCrews();
+
+  return (
+    <div className="flex flex-col gap-1 px-2 pb-2 group-data-[collapsible=icon]:hidden">
+      <div className="mt-2 mb-0.5 flex items-center justify-between gap-2">
+        <span className={SIDEBAR_SECTION_LABEL_CLASS}>Crews</span>
+        {headerTrailing}
+      </div>
       {!loaded ? (
         <p className="px-2 py-1 text-xs italic text-muted-foreground">
           Reading the fleet…

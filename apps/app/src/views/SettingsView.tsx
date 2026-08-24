@@ -46,6 +46,8 @@ import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
+import { ConnectionsSettingsSection } from "@/components/settings/ConnectionsSettingsSection";
+import { DefaultsSettingsSection } from "@/components/settings/DefaultsSettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
@@ -1181,6 +1183,10 @@ export function SettingsView() {
     );
   } else if (activeSection === "plugins") {
     content = <PluginsSettingsSection />;
+  } else if (activeSection === "connections") {
+    content = <ConnectionsSettingsSection />;
+  } else if (activeSection === "defaults") {
+    content = <DefaultsSettingsSection />;
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
   } else if (activeSection === "archived") {

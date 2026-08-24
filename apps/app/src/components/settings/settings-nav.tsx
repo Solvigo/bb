@@ -30,6 +30,8 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "PackageReceive", id: "updates", label: "Updates" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "Layers", id: "plugins", label: "Plugins" },
+  { icon: "ElectricPlugs", id: "connections", label: "Connections" },
+  { icon: "SlidersHorizontal", id: "defaults", label: "Defaults" },
   { icon: "MessageSquare", id: "community", label: "Community" },
   { icon: "Archive", id: "archived", label: "Archived threads" },
 ] as const satisfies readonly {

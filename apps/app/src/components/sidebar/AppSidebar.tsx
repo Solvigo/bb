@@ -17,18 +17,21 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
-import { CrewSidebarSection } from "./crew/CrewSidebarSection";
+import {
+  CrewSidebarSection,
+  NewCrewButton,
+  SIDEBAR_SECTION_LABEL_CLASS,
+} from "./crew/CrewSidebarSection";
+import { BrandLockup } from "./crew/BrandLockup";
+import { PlatformSection } from "./crew/PlatformSection";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
@@ -250,19 +253,15 @@ export function AppSidebar({
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
       <Sidebar ref={sidebarRef} onKeyDown={threadSearch.onKeyDown}>
         {showTopReserve ? (
-          /* Top reserve that keeps the sidebar's content (New Thread / New
-             Projects) anchored below the title-bar chrome, mirroring
-             the page-header height on the content side. The sidebar toggle is
-             pinned at the app's top-left for every chrome (see AppLayout's
-             SidebarTriggerOverlay), so this row hosts no trigger of its own — it
-             stays mounted in every sidebar state, including while the panel
-             collapses off-canvas, so the content holds its vertical position
-             instead of riding up under the pinned toggle during the animation.
-             On desktop it doubles as the window-drag strip. The Back/Forward
-             route-history controls live on the right of this chrome row, clear
-             of the pinned toggle/traffic lights on the left and the resize
-             handle on the right; they opt out of the desktop drag region so
-             clicks register. */
+          /* Top reserve that keeps the sidebar's content anchored below the
+             title-bar chrome, mirroring the page-header height on the content
+             side. The sidebar toggle is pinned at the app's top-left for every
+             chrome (see AppLayout's SidebarTriggerOverlay), so this row hosts no
+             trigger of its own — it stays mounted in every sidebar state,
+             including while the panel collapses off-canvas, so the content holds
+             its vertical position instead of riding up under the pinned toggle
+             during the animation. On desktop it doubles as the window-drag
+             strip. */
           <div
             data-testid="app-sidebar-top-reserve-row"
             className={cn(
@@ -270,48 +269,43 @@ export function AppSidebar({
               "shrink-0 justify-end px-2",
               usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             )}
-          >
-            <SidebarHistoryNavigationControls
-              onNavigate={closeOnMobile}
-              className={cn(
-                "group-data-[collapsible=icon]:hidden",
-                usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
-              )}
-            />
-          </div>
-        ) : null}
-        <div
-          data-testid="app-sidebar-primary-actions"
-          className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
-        >
-          <ProjectListActionButtons
-            splitEnabled={threadSplitsEnabled}
-            newThreadSplit={newThreadSplit}
-            onNewChat={handleNewChat}
-            threadSearch={{
-              activeDescendantId: threadSearch.activeDescendantId,
-              inputRef: threadSearch.inputRef,
-              isActive: threadSearch.isActive,
-              onActivate: threadSearch.onActivate,
-              onClose: threadSearch.onClose,
-              onQueryChange: threadSearch.onQueryChange,
-              query: threadSearch.query,
-            }}
           />
+        ) : null}
+        {/* The mark is the first thing in the rail, then the one action the
+            rail is built around. */}
+        <div className="shrink-0 pt-1 group-data-[collapsible=icon]:hidden">
+          <BrandLockup />
         </div>
-        <PluginNavSidebarItems
+        <div className="shrink-0 pb-1">
+          <NewCrewButton />
+        </div>
+        <PlatformSection
+          labelClassName={SIDEBAR_SECTION_LABEL_CLASS}
           onNavigate={closeOnMobile}
-          splitEnabled={threadSplitsEnabled}
-          toolsRoutePath={toolsRoutePath}
         />
-        {/* The sidebar's primary object is the CREW. Raw threads keep their
-            own section below, so every existing route still works — they are
-            simply no longer the first thing the operator sees. */}
-        <CrewSidebarSection onNavigate={closeOnMobile} />
+        <CrewSidebarSection
+          onNavigate={closeOnMobile}
+          headerTrailing={
+            <ProjectListActionButtons
+              showNewThread={false}
+              splitEnabled={threadSplitsEnabled}
+              newThreadSplit={newThreadSplit}
+              onNewChat={handleNewChat}
+              threadSearch={{
+                activeDescendantId: threadSearch.activeDescendantId,
+                inputRef: threadSearch.inputRef,
+                isActive: threadSearch.isActive,
+                onActivate: threadSearch.onActivate,
+                onClose: threadSearch.onClose,
+                onQueryChange: threadSearch.onQueryChange,
+                query: threadSearch.query,
+              }}
+            />
+          }
+        />
         {/* Crews are THE object. Raw threads live behind ONE collapsed
-            disclosure — the list keeps its own heading, so adding another here
-            duplicated it. Every route still works; threads are simply not the
-            first thing the operator reads. */}
+            disclosure at the very bottom — the escape hatch to anything the
+            crew view has not surfaced. */}
         <SidebarContent>
           <details className="group/threads min-h-0" data-testid="sidebar-threads-disclosure">
             <summary className={SIDEBAR_THREADS_LABEL_CLASS}>
