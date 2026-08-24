@@ -14,6 +14,7 @@ import {
   type ReasoningLevel,
   type ServiceTier,
   type ThreadRuntimeDisplayStatus,
+  type TurnOrigin,
 } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type {
@@ -221,6 +222,14 @@ interface EmbeddedThreadChatSharedProps {
    * presentation; "page" centers the conversation at reading width.
    */
   measure?: "panel" | "page";
+  /**
+   * Who is sending, when this surface knows. The Tower passes "operator-steer"
+   * for a chat the operator drives directly, so steering a delegated agent does
+   * not wake its parent — the parent is only there to be told about work it
+   * delegated, and the operator is reading this thread already. Omitted keeps
+   * today's behaviour, which is what every other surface wants.
+   */
+  turnOrigin?: TurnOrigin;
 }
 
 export interface EmbeddedThreadChatComposerModeProps extends EmbeddedThreadChatSharedProps {
@@ -311,6 +320,7 @@ function EmbeddedThreadChatWithComposer({
   onOpenLocalFileLink,
   onSendToMainMessage,
   workspaceRootPath,
+  turnOrigin,
   layout = "contained",
   measure = "panel",
   surfaceTone = "background",
@@ -609,6 +619,7 @@ function EmbeddedThreadChatWithComposer({
           id: threadId,
           input,
           mode: "queue-if-active",
+          ...(turnOrigin !== undefined ? { origin: turnOrigin } : {}),
           ...executionRequestFields,
         });
       }
@@ -619,6 +630,7 @@ function EmbeddedThreadChatWithComposer({
       executionRequestFields,
       sendThreadMessage,
       threadId,
+      turnOrigin,
     ],
   );
   const sendOrQueueInput = composer.onSendOrQueueInput;

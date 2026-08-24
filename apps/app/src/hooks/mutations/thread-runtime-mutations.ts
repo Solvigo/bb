@@ -169,6 +169,7 @@ export function useSendThreadMessage() {
       reasoningLevel,
       permissionMode,
       mode,
+      origin,
       senderThreadId,
       executionInputSources,
     }: SendThreadMessageMutationRequest) => {
@@ -181,6 +182,9 @@ export function useSendThreadMessage() {
         permissionMode,
         executionInputSources,
         mode,
+        // Who asked for this turn, where the caller can tell. Omitted is
+        // today's behaviour, so every surface that does not know stays as it was.
+        ...(origin !== undefined ? { origin } : {}),
         // Non-null only for cross-thread sends (e.g. a side chat handing a
         // result back); the target renders it as "Message from {sender}".
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),

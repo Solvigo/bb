@@ -1,10 +1,16 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import charter from "./crewSetupCharter.md?raw";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { AGENT_PROVIDER } from "@/lib/agentProvider";
 
 /** A setup thread keeps this title until its crew is named — that is how a
  *  second press finds the unfinished interview instead of starting another. */
+interface ProjectRow {
+  id: string;
+  kind?: string;
+}
+
 const SETUP_THREAD_TITLE = "New crew · setup";
 
 async function readJson<T>(url: string): Promise<T | null> {
@@ -62,19 +68,26 @@ export function useCreateCrew(): {
           return;
         }
 
-        // The commander needs a repo-backed project so its leads get real
-        // worktrees; fall back to whatever project exists rather than failing.
+        // The setup commander only talks, so it belongs on the Personal
+        // project, which is repo-less by construction. The projects read HIDES
+        // Personal unless asked for it — without the flag the first project on
+        // this rig is repo-backed, which is what dragged a full worktree into a
+        // conversation that never needed one.
         const projects = (await (
-          await fetch("/api/v1/projects")
-        ).json()) as { id: string }[] | { projects?: { id: string }[] };
+          await fetch("/api/v1/projects?includePersonal=true")
+        ).json()) as ProjectRow[] | { projects?: ProjectRow[] };
         const list = Array.isArray(projects) ? projects : (projects.projects ?? []);
-        const projectId = list[0]?.id;
+        const projectId =
+            list.find((p) => p.id === PERSONAL_PROJECT_ID)?.id ??
+            list.find((p) => p.kind === "personal")?.id ??
+            list[0]?.id;
         if (!projectId) {
           setError(
-            "No project is registered on this rig yet — a crew needs one so its leads get real worktrees.",
+            "No project is registered on this rig yet, so a crew cannot be started.",
           );
           return;
         }
+        const isPersonalProject = projectId === PERSONAL_PROJECT_ID;
 
         const hosts = await readJson<unknown>("/api/v1/hosts");
         const hostList = (
@@ -106,16 +119,16 @@ export function useCreateCrew(): {
             // Captain ~10 MINUTES of pnpm (2318 packages, 3.7GB) before his
             // commander could say a word, and dragged the whole machine.
             //
-            // A "personal" workspace is refused on a repo-backed project
-            // ("Personal workspaces are only supported for the personal
-            // project"), and the commander must live on a repo-backed project
-            // so its leads can get real worktrees. An UNMANAGED workspace with
-            // no path is the seam that satisfies both: no worktree, no install.
-            // Measured: first word in ~5s, against ~10min before.
+            // On Personal that is guaranteed by construction rather than by
+            // convention: a personal workspace has no repo to clone. Anywhere
+            // else, an unmanaged workspace with no path is the nearest thing —
+            // it provisions nothing, but only because it was asked not to.
             environment: {
               type: "host",
               hostId,
-              workspace: { type: "unmanaged", path: null },
+              workspace: isPersonalProject
+                ? { type: "personal" }
+                : { type: "unmanaged", path: null },
             },
             input: [{ type: "text", text: charter, mentions: [] }],
           }),

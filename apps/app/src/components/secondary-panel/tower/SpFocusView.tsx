@@ -88,6 +88,12 @@ export function SpFocusView({
               variant="compact"
               surfaceTone="background"
               threadId={threadId}
+              // The operator is reading this lead's thread right now, so its
+              // commander does not need waking to be told about it. Without
+              // this, every steer of a lead pinged the commander — the parent
+              // notify exists for delegated work, not for a conversation the
+              // operator is already having.
+              turnOrigin="operator-steer"
               surfaceFallbackKey={`tower-sp-${threadId}`}
               projectId={projectId}
               providerId={providerId}
