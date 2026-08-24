@@ -82,7 +82,7 @@ import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
-import { TabPill } from "@/components/ui/tab-pill";
+import { PinnedIconTab } from "./PinnedIconTab";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 export type {
@@ -966,58 +966,6 @@ interface NewTabButtonProps {
   onOpenNewTab: () => void;
   shortcut: AppShortcutPresentation | null;
   usesDesktopChrome: boolean;
-}
-
-interface PinnedIconTabProps {
-  activeTreatment: "fill" | "underline";
-  ariaLabel: string;
-  ariaKeyshortcuts?: string;
-  isActive: boolean;
-  label: string;
-  leadingVisual: ReactNode;
-  onClick: () => void;
-  title: string;
-  usesDesktopChrome: boolean;
-}
-
-function PinnedIconTab({
-  activeTreatment,
-  ariaLabel,
-  ariaKeyshortcuts,
-  isActive,
-  label,
-  leadingVisual,
-  onClick,
-  title,
-  usesDesktopChrome,
-}: PinnedIconTabProps) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          data-testid={label === "Info" ? "thread-info-tab" : undefined}
-          className={cn(
-            "shrink-0",
-            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-          )}
-        >
-          <TabPill
-            label={label}
-            ariaLabel={ariaLabel}
-            ariaKeyshortcuts={ariaKeyshortcuts}
-            iconOnly
-            leadingVisual={leadingVisual}
-            title={title}
-            isActive={isActive}
-            activeTreatment={activeTreatment}
-            onSelect={onClick}
-            closeAction={null}
-          />
-        </div>
-      </TooltipTrigger>
-      <TooltipContent>{title}</TooltipContent>
-    </Tooltip>
-  );
 }
 
 function NewTabButton({

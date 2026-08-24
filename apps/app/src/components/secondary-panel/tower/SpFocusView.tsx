@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from "react";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import { TowerRenderSurface } from "./TowerRenderSurface";
+import { useLiveThreads } from "./useLiveThreads";
 
 interface BoardReport {
   rank: string;
@@ -52,6 +53,12 @@ export function SpFocusView({
   report: BoardReport | null;
   onBack: () => void;
 }) {
+  // The agent's REAL project and provider. The placeholders these replace made
+  // the composer resolve a model that does not exist on the rig — the same
+  // defect that killed the first fixture crew.
+  const live = useLiveThreads()?.get(threadId);
+  const projectId = live?.projectId ?? "";
+  const providerId = live?.providerId ?? "";
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
       {/* agent header */}
@@ -84,14 +91,14 @@ export function SpFocusView({
               surfaceTone="background"
               threadId={threadId}
               surfaceFallbackKey={`tower-sp-${threadId}`}
-              projectId="proj-tower"
-              providerId="provider-tower"
+              projectId={projectId}
+              providerId={providerId}
               promptContextEnvironmentId={null}
               resolveMentionLink={() => null}
               composer={{
                 draftScope: {
                   kind: "thread",
-                  projectId: "proj-tower",
+                  projectId,
                   threadId,
                 },
                 executionDefaultsThreadId: threadId,

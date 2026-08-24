@@ -7,11 +7,11 @@ import {
 } from "react";
 import { useAtomValue } from "jotai";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
-import { ageLabel, useCrewRpc } from "./useCrewRpc";
+import { useCrewRpc } from "./useCrewRpc";
 import { useLiveThreads } from "./useLiveThreads";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
-import { PlatedInsignia, type Rank } from "./RankInsignia";
+import { PlatedInsignia, RankInsignia, type Rank } from "./RankInsignia";
 
 const COL_LABEL =
   "font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
@@ -155,6 +155,7 @@ function Card({ item }: { item: PlacedItem }) {
   const aloft = ageSince(item.attemptAt);
   const chip = statusChip(item);
   const silent = chip?.silent ?? false;
+  const stageIndex = STAGES.findIndex((st) => st.key === STAGE_OF[item.col]);
   return (
     <div
       className={
@@ -166,13 +167,7 @@ function Card({ item }: { item: PlacedItem }) {
       title={item.taskId}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className="flex min-w-0 items-center gap-1.5 truncate font-tower-mono text-[10px] text-tower-fg-body">
-          <PlatedInsignia
-            rank="sortie"
-            state={item.col === "in_flight" && !silent ? "working" : "waiting"}
-            plate={22}
-            title={`${svNumber(item.taskId)} — ${chip?.label ?? "planned"}`}
-          />
+        <span className="min-w-0 truncate font-tower-mono text-[10px] text-tower-fg-body">
           {svNumber(item.taskId)}
         </span>
         {aloft ? (
@@ -189,14 +184,45 @@ function Card({ item }: { item: PlacedItem }) {
       >
         {item.title}
       </div>
+      {/* The card's own runway: four stage positions, and the aircraft sits at
+          the one it has reached — so how far it has flown is legible before any
+          label is read. */}
+      {stageIndex >= 0 ? (
+        <div className="relative mt-2 mb-1 h-[18px]">
+          <div className="absolute inset-x-0 top-[13px] h-px bg-tower-bright" />
+          <div
+            className="absolute inset-x-0 top-[13px] h-px bg-tower-flight/50"
+            style={{ width: `${((stageIndex + 0.5) / STAGES.length) * 100}%` }}
+          />
+          <span
+            className="absolute top-0 -translate-x-1/2"
+            style={{ left: `${((stageIndex + 0.5) / STAGES.length) * 100}%` }}
+          >
+            <RankInsignia
+              rank="sortie"
+              state={item.col === "in_flight" && !silent ? "working" : "waiting"}
+              size={16}
+              title={`${svNumber(item.taskId)} — ${chip?.label ?? "planned"}`}
+            />
+          </span>
+        </div>
+      ) : null}
       {chip ? (
-        <div
-          className={
-            "mt-1.5 truncate font-tower-mono text-[8px] uppercase tracking-[0.72px] " +
-            (silent ? "text-tower-flight" : "text-tower-fg-faint")
-          }
-        >
-          {chip.label}
+        <div className="mt-1.5 flex items-center justify-between gap-1.5">
+          <span
+            className={
+              "truncate font-tower-mono text-[8px] uppercase tracking-[0.72px] " +
+              (silent ? "text-tower-flight" : "text-tower-fg-faint")
+            }
+          >
+            {chip.label}
+          </span>
+          {/* the fold hides which state this really is, so the card says it */}
+          {SUB_STATE[item.col] ? (
+            <span className="shrink-0 rounded-[5px] border border-tower-border px-1.5 py-px font-tower-mono text-[8px] uppercase tracking-[0.5px] text-tower-fg-muted">
+              {SUB_STATE[item.col]}
+            </span>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -329,9 +355,63 @@ function StatusZone({
   );
 }
 
+
+// ─── the operator fold (ratified) ────────────────────────────────────────────
+// Seven chain states are too many to read, so the board FOLDS to four for the
+// operator while the state machine keeps all ten underneath. A folded card
+// carries a sub-chip naming its TRUE state, so the fold never hides which prep
+// step something is at, nor whose eye it sits under in review — the authority
+// difference lives on the chip, not in a column.
+const STAGES: { key: string; label: string; states: string[] }[] = [
+  { key: "prep", label: "Prep", states: ["drafted", "confirmed", "queued"] },
+  { key: "in_flight", label: "In flight", states: ["in_flight"] },
+  { key: "review", label: "Review", states: ["in_review", "pilot_look"] },
+  { key: "clearance", label: "Clearance", states: ["clearance"] },
+];
+const STAGE_OF: Record<string, string> = Object.fromEntries(
+  STAGES.flatMap((st) => st.states.map((state) => [state, st.key])),
+);
+// What a folded card says about itself. Clearance is his alone and never folds,
+// so it needs no sub-chip.
+const SUB_STATE: Record<string, string> = {
+  drafted: "draft",
+  confirmed: "confirmed",
+  queued: "queued",
+  in_review: "SP review",
+  pilot_look: "pilot look",
+};
+
+/** The runway: four ticks, lit where this lane actually has flights. */
+function StageRunway({ items }: { items: PlacedItem[] }) {
+  return (
+    <div className="mb-2 flex items-center">
+      {STAGES.map((st) => {
+        const live = items.some((it) => STAGE_OF[it.col] === st.key);
+        return (
+          <div
+            key={st.key}
+            className={
+              "flex-1 border-b pb-1.5 text-center font-tower-mono text-[7.5px] uppercase tracking-[0.4px] " +
+              (live
+                ? "border-tower-flight text-tower-flight"
+                : "border-tower-bright text-tower-fg-faint")
+            }
+          >
+            {st.label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── the lane row: DOMAIN rail | STATUS story | IN FLIGHT cards ────────────────
 const LANE_GRID =
   "grid grid-cols-[minmax(260px,27%)_minmax(240px,33%)_1fr]";
+// An agent's own surface is nested inside the pilot's, so it gets a fraction of
+// the width. Same three zones, smaller minimums, or the columns overflow.
+const LANE_GRID_COMPACT =
+  "grid grid-cols-[minmax(170px,30%)_minmax(150px,30%)_1fr]";
 // A lane is a fixed band, never as tall as its transcript: each zone scrolls
 // inside it, so one talkative agent cannot push the rest of the fleet offscreen.
 const LANE_HEIGHT = "h-[440px]";
@@ -406,6 +486,7 @@ function LaneRow({
   items,
   escalated,
   hasThread,
+  compact,
 }: {
   threadId: string | null;
   projectId: string;
@@ -415,18 +496,22 @@ function LaneRow({
   items: PlacedItem[];
   escalated: boolean;
   hasThread: boolean;
+  /** nested inside another agent's surface, so width is tight */
+  compact: boolean;
 }) {
   const airborne = items.filter((it) => it.col === "in_flight").length;
   const inHold = items.filter((it) => HOLD_COLS.has(it.col)).length;
   const held = items.filter((it) => HELD_COLS.has(it.col)).length;
-  // IN FLIGHT = flights actually in the air or on approach (the mock's right zone).
-  const flights = items
-    .filter((it) => it.col === "in_flight" || HELD_COLS.has(it.col))
+  // The fold shows the whole chain inside the lane, most-advanced first; the
+  // terminal rail keeps landed work without giving it a stage of its own.
+  const onBoard = items
+    .filter((it) => STAGE_OF[it.col] != null)
     .sort((a, b) => (STAGE_RANK[b.col] ?? -1) - (STAGE_RANK[a.col] ?? -1));
+  const terminal = items.filter((it) => it.col === "terminal");
 
   return (
     <div
-      className={`${LANE_GRID} ${LANE_HEIGHT} mx-4 mb-4 overflow-hidden rounded-[14px] border border-tower-border-strong bg-tower-panel`}
+      className={`${compact ? LANE_GRID_COMPACT : LANE_GRID} ${compact ? "h-[300px]" : LANE_HEIGHT} mx-4 mb-4 overflow-hidden rounded-[14px] border border-tower-border-strong bg-tower-panel`}
     >
       {/* ── DOMAIN rail ── */}
       <div className="flex min-h-0 flex-col border-r border-tower-border px-3.5 py-3.5">
@@ -488,15 +573,56 @@ function LaneRow({
         <StatusZone items={items} escalated={escalated} />
       </div>
 
-      {/* ── IN FLIGHT ── */}
-      <div className="flex min-h-0 flex-col gap-1.5 px-3.5 py-3.5">
-        {flights.length > 0 ? (
-          flights.map((it) => <Card key={it.taskId} item={it} />)
-        ) : (
+      {/* ── IN FLIGHT: the fold lives INSIDE the lane ── */}
+      <div className="flex min-h-0 flex-col overflow-y-auto px-3.5 py-3.5">
+        <StageRunway items={items} />
+        {onBoard.length === 0 ? (
           <div className="px-1 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
-            No flights in the air.
+            Nothing on the board.
           </div>
+        ) : (
+          STAGES.map((st) => {
+            const inStage = onBoard.filter((it) => STAGE_OF[it.col] === st.key);
+            // An empty stage collapses to its tick rather than an empty column,
+            // so a quiet lane stays calm.
+            if (inStage.length === 0) return null;
+            return (
+              <div key={st.key} className="mb-2">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="font-tower-mono text-[8.5px] uppercase tracking-[0.14em] text-tower-fg-muted">
+                    {st.label}
+                  </span>
+                  <span className="h-px flex-1 bg-tower-border" />
+                  <span className="font-tower-mono text-[8px] text-tower-fg-faint">
+                    {inStage.length}
+                  </span>
+                </div>
+                {inStage.map((it) => (
+                  <Card key={it.taskId} item={it} />
+                ))}
+              </div>
+            );
+          })
         )}
+        {terminal.length > 0 ? (
+          <div className="mt-auto pt-2">
+            <div className="mb-1.5 flex items-center gap-2">
+              <span className="font-tower-mono text-[8.5px] uppercase tracking-[0.14em] text-tower-fg-faint">
+                Terminal
+              </span>
+              <span className="h-px flex-1 bg-tower-border" />
+            </div>
+            {terminal.map((it) => (
+              <div
+                key={it.taskId}
+                title={it.taskId}
+                className="mb-1 inline-flex rounded-full border border-tower-border px-2 py-0.5 font-tower-mono text-[8px] uppercase tracking-[0.6px] text-tower-fg-dim"
+              >
+                {it.termLabel}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -634,31 +760,18 @@ export function FleetOverviewTab({
     byRow.set(owner, list);
   }
 
-  const age = Math.max(
-    fleet.ageSeconds,
-    board.ageSeconds,
-    work.ageSeconds,
-    queue.ageSeconds,
-  );
   const error = fleet.error ?? board.error ?? work.error ?? queue.error;
   const isEscalated = (threadId: string): boolean =>
     board.data?.rows.find((b) => b.threadId === threadId)?.report?.escalated ??
     false;
   const unassigned = byRow.get(UNASSIGNED) ?? [];
-
-  // footer provenance (v2: "hangar N · logbook N · read HH:MM — N sources").
-  const hangar = rows.length; // lanes on the board
-  const logbook = (queue.data?.items ?? []).filter(
-    (it) => (it.displayState ?? it.state) !== "dropped",
-  ).length; // flights on record (dropped excluded)
-  const sources = [fleet, board, work, queue];
-  const responded = sources.filter((s) => !s.error).length;
+  const isScoped = Boolean(scopeThreadId);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
       {/* zone labels only — no band of its own: the panel chrome above is the
           one grey header on this surface. */}
-      <div className={`${LANE_GRID} shrink-0 px-3 pb-1.5 pt-2.5`}>
+      <div className={`${isScoped ? LANE_GRID_COMPACT : LANE_GRID} shrink-0 px-3 pb-1.5 pt-2.5`}>
         <div className="px-1">
           <span className={COL_LABEL}>Domain</span>
         </div>
@@ -697,6 +810,7 @@ export function FleetOverviewTab({
                 items={byRow.get(r.threadId) ?? []}
                 escalated={isEscalated(r.threadId)}
                 hasThread
+                compact={isScoped}
               />
             ))}
             {/* the pilot's undispatched pipeline (not yet handed to an SP) */}
@@ -709,27 +823,13 @@ export function FleetOverviewTab({
                 items={unassigned}
                 escalated={false}
                 hasThread={false}
+                compact={isScoped}
               />
             ) : null}
           </>
         )}
       </div>
 
-      {/* footer provenance strip — the airline logbook line */}
-      <div className="flex shrink-0 items-center gap-2.5 border-t border-tower-border bg-tower-surface px-4 py-1.5 font-tower-mono text-[9px] text-tower-fg-faint">
-        <span>hangar {hangar}</span>
-        <span>·</span>
-        <span>logbook {logbook}</span>
-        <span>·</span>
-        <span>
-          read {ageLabel(age)} — {responded}/{sources.length} sources
-          {responded < sources.length ? (
-            <span className="text-tower-accent-hover"> · degraded</span>
-          ) : (
-            " responded"
-          )}
-        </span>
-      </div>
     </div>
   );
 }
