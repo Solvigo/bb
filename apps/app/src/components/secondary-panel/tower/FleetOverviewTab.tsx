@@ -11,10 +11,7 @@ import { useCrewRpc } from "./useCrewRpc";
 import { useLiveThreads } from "./useLiveThreads";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
-import { PlatedInsignia, RankInsignia, type Rank } from "./RankInsignia";
-
-const COL_LABEL =
-  "font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
+import { PlatedInsignia, RankInsignia } from "./RankInsignia";
 
 // The 7 chain columns (states); verbs are the transitions between them.
 const COLUMNS: { key: string; label: string; accent?: boolean }[] = [
@@ -240,122 +237,6 @@ const STAGE_RANK: Record<string, number> = {
   drafted: 0,
 };
 
-function StatusZone({
-  items,
-  escalated,
-}: {
-  items: PlacedItem[];
-  escalated: boolean;
-}) {
-  const up = items.filter((it) => it.col === "in_flight").length;
-  const approach = items.filter((it) => HELD_COLS.has(it.col)).length;
-  const planned = items.filter(
-    (it) => it.col === "queued" || it.col === "confirmed",
-  ).length;
-  const ideas = items.filter((it) => it.col === "drafted").length;
-
-  // FOCUS = the most-advanced active flight (nearest landing).
-  const active = items
-    .filter((it) => STAGE_RANK[it.col] != null && it.col !== "drafted")
-    .sort((a, b) => (STAGE_RANK[b.col] ?? -1) - (STAGE_RANK[a.col] ?? -1));
-  const focus = active[0] ?? null;
-  const focusChip = focus ? statusChip(focus) : null;
-  const focusAloft = focus ? ageSince(focus.attemptAt) : null;
-
-  // NEXT = the next thing to launch (a hold item), earliest stage first.
-  const hold = items
-    .filter((it) => HOLD_COLS.has(it.col))
-    .sort((a, b) => (STAGE_RANK[a.col] ?? 9) - (STAGE_RANK[b.col] ?? 9));
-  const next = hold[0] ?? null;
-
-  // RISK = a real, present danger, in priority order.
-  const silent = items.find(hasLostContact);
-  const awaitingClearance = items.filter((it) => it.col === "clearance").length;
-  let risk: string | null = null;
-  if (silent)
-    risk = `${svNumber(silent.taskId)} has lost contact — still assigned, still burning.`;
-  else if (awaitingClearance > 0)
-    risk = `${awaitingClearance} waiting on your clearance before this domain can move on.`;
-  else if (escalated) risk = "A mayday is standing on this lane.";
-
-  const COUNT: [string, number][] = [
-    ["up", up],
-    ["approach", approach],
-    ["planned", planned],
-    ["ideas", ideas],
-  ];
-  const META = "font-tower-mono text-[9px] text-tower-fg-dim";
-  const EYE =
-    "font-tower-mono text-[8.5px] uppercase tracking-[0.85px] text-tower-fg-dim";
-
-  return (
-    <div className="flex min-h-0 flex-col gap-2.5">
-      <div>
-        <div className={EYE}>Focus</div>
-        {focus ? (
-          <>
-            <div className="mt-0.5 text-[12px] font-semibold text-tower-fg">
-              {focus.title}
-            </div>
-            <div className="mt-0.5 font-tower-mono text-[9px] text-tower-fg-muted">
-              {svNumber(focus.taskId)}
-              {focusChip ? ` · ${focusChip.label}` : ""}
-              {focusAloft ? ` · ${focusAloft.label} ago` : ""}
-            </div>
-          </>
-        ) : (
-          <div className="mt-0.5 text-[11px] italic text-tower-fg-faint">
-            Nothing in the air.
-          </div>
-        )}
-      </div>
-
-      <div>
-        <div className={EYE}>Next</div>
-        {next ? (
-          <>
-            <div className="mt-0.5 text-[11.5px] text-tower-fg-body">
-              {next.title}
-            </div>
-            <div className={`mt-0.5 ${META}`}>
-              {next.dispatchable
-                ? "ready to launch"
-                : (next.blockedBecause ?? "not ready to launch")}
-            </div>
-          </>
-        ) : (
-          <div className="mt-0.5 text-[11px] italic text-tower-fg-faint">
-            Nothing queued.
-          </div>
-        )}
-      </div>
-
-      {risk ? (
-        <div className="rounded-[9px] bg-tower-silent px-[9px] py-2">
-          <span className="font-tower-mono text-[8.5px] font-bold uppercase tracking-[0.85px] text-tower-flight">
-            Risk
-          </span>{" "}
-          <span className="text-[10.5px] text-tower-fg-body">{risk}</span>
-        </div>
-      ) : null}
-
-      <div className="mt-auto flex items-baseline gap-3 pt-1">
-        {COUNT.map(([label, n]) => (
-          <span key={label} className="flex items-baseline gap-1">
-            <span className="font-tower-mono text-[10px] font-bold text-tower-fg-body">
-              {n}
-            </span>
-            <span className="font-tower-mono text-[8.5px] uppercase tracking-[0.51px] text-tower-fg-muted">
-              {label}
-            </span>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
 // ─── the operator fold (ratified) ────────────────────────────────────────────
 // Seven chain states are too many to read, so the board FOLDS to four for the
 // operator while the state machine keeps all ten underneath. A folded card
@@ -391,7 +272,7 @@ function StageRunway({ items }: { items: PlacedItem[] }) {
           <div
             key={st.key}
             className={
-              "flex-1 border-b pb-1.5 text-center font-tower-mono text-[7.5px] uppercase tracking-[0.4px] " +
+              "min-w-0 flex-1 truncate border-b pb-1.5 text-center font-tower-mono text-[7px] uppercase tracking-[0.2px] " +
               (live
                 ? "border-tower-flight text-tower-flight"
                 : "border-tower-bright text-tower-fg-faint")
@@ -406,16 +287,6 @@ function StageRunway({ items }: { items: PlacedItem[] }) {
 }
 
 // ─── the lane row: DOMAIN rail | STATUS story | IN FLIGHT cards ────────────────
-const LANE_GRID =
-  "grid grid-cols-[minmax(260px,27%)_minmax(240px,33%)_1fr]";
-// An agent's own surface is nested inside the pilot's, so it gets a fraction of
-// the width. Same three zones, smaller minimums, or the columns overflow.
-const LANE_GRID_COMPACT =
-  "grid grid-cols-[minmax(170px,30%)_minmax(150px,30%)_1fr]";
-// A lane is a fixed band, never as tall as its transcript: each zone scrolls
-// inside it, so one talkative agent cannot push the rest of the fleet offscreen.
-const LANE_HEIGHT = "h-[440px]";
-
 /** The lane's live flight deck — bb's own chat on the agent's thread, so the
  *  rail gets the real thing (streaming, thinking, tool calls) and a composer
  *  that steers, instead of a hand-rolled retelling of it. */
@@ -476,8 +347,16 @@ class ChatBoundary extends Component<
   }
 }
 
-/** One swimlane band — v2's fleet-board shell, one per SP. */
-function LaneRow({
+/**
+ * A LEAD CARD — one per agent, two per row.
+ *
+ * Lifted from the Lead Cards sheet: a contained card split into the lead's own
+ * side (identity, its focus and what is next, its live conversation) and its
+ * IN FLIGHT side. Values are the sheet's own — card #1F1E1D on a 1px #302F2C
+ * edge at radius 16, focus block inset at #232322 radius 12, flight cards
+ * #262624 radius 11, and the tool line recessed to #1F1E1D radius 8.
+ */
+function LeadCard({
   threadId,
   projectId,
   providerId,
@@ -486,7 +365,6 @@ function LaneRow({
   items,
   escalated,
   hasThread,
-  compact,
 }: {
   threadId: string | null;
   projectId: string;
@@ -496,25 +374,64 @@ function LaneRow({
   items: PlacedItem[];
   escalated: boolean;
   hasThread: boolean;
-  /** nested inside another agent's surface, so width is tight */
-  compact: boolean;
 }) {
   const airborne = items.filter((it) => it.col === "in_flight").length;
-  const inHold = items.filter((it) => HOLD_COLS.has(it.col)).length;
   const held = items.filter((it) => HELD_COLS.has(it.col)).length;
-  // The fold shows the whole chain inside the lane, most-advanced first; the
-  // terminal rail keeps landed work without giving it a stage of its own.
   const onBoard = items
     .filter((it) => STAGE_OF[it.col] != null)
     .sort((a, b) => (STAGE_RANK[b.col] ?? -1) - (STAGE_RANK[a.col] ?? -1));
   const terminal = items.filter((it) => it.col === "terminal");
 
+  // FOCUS is the most-advanced live flight; NEXT is the next thing to launch.
+  const focus = onBoard[0] ?? null;
+  const focusChip = focus ? statusChip(focus) : null;
+  const focusAloft = focus ? ageSince(focus.attemptAt) : null;
+  const next =
+    items
+      .filter((it) => HOLD_COLS.has(it.col))
+      .sort((a, b) => (STAGE_RANK[a.col] ?? 9) - (STAGE_RANK[b.col] ?? 9))[0] ??
+    null;
+
+  const silent = items.find(hasLostContact);
+  const awaitingClearance = items.filter((it) => it.col === "clearance").length;
+  const risk = silent
+    ? `${svNumber(silent.taskId)} has lost contact — still assigned, still burning.`
+    : awaitingClearance > 0
+      ? `${awaitingClearance} waiting on your clearance before this lead can move on.`
+      : escalated
+        ? "A mayday is standing on this lead."
+        : null;
+
+  const EYE =
+    "font-tower-mono text-[8.5px] uppercase tracking-[0.85px] text-tower-fg-dim";
+
+  const identity = (
+    <div className="flex items-center gap-2.5">
+      <PlatedInsignia
+        rank={hasThread ? "lead" : "sortie"}
+        state={airborne > 0 ? "working" : "waiting"}
+        plate={38}
+      />
+      <span
+        className={
+          "min-w-0 flex-1 truncate text-[18px] font-semibold text-tower-fg" +
+          (onOpen ? " group-hover/sp:text-tower-accent-hover" : "")
+        }
+      >
+        {label}
+      </span>
+      {held > 0 ? (
+        <span className="shrink-0 rounded-[6px] bg-tower-accent-tint px-1.5 py-0.5 font-tower-mono text-[8.5px] font-semibold uppercase tracking-[0.68px] text-tower-flight-strong">
+          {held} held
+        </span>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div
-      className={`${compact ? LANE_GRID_COMPACT : LANE_GRID} ${compact ? "h-[300px]" : LANE_HEIGHT} mx-4 mb-4 overflow-hidden rounded-[14px] border border-tower-border-strong bg-tower-panel`}
-    >
-      {/* ── DOMAIN rail ── */}
-      <div className="flex min-h-0 flex-col border-r border-tower-border px-3.5 py-3.5">
+    <article className="grid min-h-0 grid-cols-[minmax(0,55%)_minmax(0,45%)] overflow-hidden rounded-[16px] border border-tower-bright bg-tower-surface">
+      {/* ── the lead ── */}
+      <div className="flex min-h-0 flex-col gap-3 border-r border-tower-bright p-4">
         {onOpen ? (
           <button
             type="button"
@@ -522,35 +439,53 @@ function LaneRow({
             title={`Open ${label}`}
             className="group/sp shrink-0 text-left"
           >
-            <LaneIdentity
-              label={label}
-              held={held}
-              airborne={airborne}
-              inHold={inHold}
-              rank={hasThread ? "lead" : "sortie"}
-              linked
-            />
+            {identity}
           </button>
         ) : (
-          <div className="shrink-0">
-            <LaneIdentity
-              label={label}
-              held={held}
-              airborne={airborne}
-              inHold={inHold}
-              rank={hasThread ? "lead" : "sortie"}
-            />
-          </div>
+          <div className="shrink-0">{identity}</div>
         )}
-        {/* the flight deck sits INSET — a recessed panel, as in v2 — and
-            scrolls inside the band rather than growing it */}
+
+        {/* what it is on, and what it takes next */}
+        <div className="shrink-0 rounded-[12px] bg-tower-inset px-3.5 py-3">
+          <div className={EYE}>Focus</div>
+          {focus ? (
+            <>
+              <div className="mt-0.5 truncate text-[13px] font-[650] text-tower-fg">
+                {focus.title}
+              </div>
+              <div className="mt-0.5 truncate font-tower-mono text-[9px] text-tower-fg-muted">
+                {svNumber(focus.taskId)}
+                {focusChip ? ` · ${focusChip.label}` : ""}
+                {focusAloft ? ` · ${focusAloft.label} ago` : ""}
+              </div>
+            </>
+          ) : (
+            <div className="mt-0.5 text-[12px] italic text-tower-fg-faint">
+              Nothing in the air.
+            </div>
+          )}
+          <div className="my-2.5 h-px bg-tower-border" />
+          <div className="flex items-baseline gap-2">
+            <span className={`${EYE} shrink-0`}>Next</span>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-tower-fg-body">
+              {next ? next.title : "Nothing queued."}
+            </span>
+          </div>
+        </div>
+
+        {risk ? (
+          <div className="shrink-0 rounded-[10px] bg-tower-silent px-3 py-2">
+            <span className="font-tower-mono text-[8.5px] font-bold uppercase tracking-[0.85px] text-tower-flight">
+              Risk
+            </span>{" "}
+            <span className="text-[10.5px] text-tower-fg-body">{risk}</span>
+          </div>
+        ) : null}
+
+        {/* the lead's live conversation, with its own composer */}
         {hasThread && threadId ? (
           <div
-            className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] border border-tower-border bg-tower-transcript p-1 [zoom:0.85] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
-            // bb's chat paints its own `bg-background` on a couple of inner
-            // elements, which would sit on top of the transcript ground. Rather
-            // than chase those class names, rebind the variable they both read
-            // so every surface inside the deck inherits this ground.
+            className="min-h-0 flex-1 overflow-hidden rounded-[10px] border border-tower-border bg-tower-transcript p-1 [zoom:0.85] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
             style={
               { "--background": "var(--color-tower-transcript)" } as CSSProperties
             }
@@ -562,29 +497,25 @@ function LaneRow({
             />
           </div>
         ) : (
-          <div className="mt-2.5 font-tower-mono text-[9px] italic text-tower-fg-faint">
+          <div className="font-tower-mono text-[9px] italic text-tower-fg-faint">
             Undispatched — no flight deck yet.
           </div>
         )}
       </div>
 
-      {/* ── STATUS story ── */}
-      <div className="border-r border-tower-border px-4 py-3.5">
-        <StatusZone items={items} escalated={escalated} />
-      </div>
-
-      {/* ── IN FLIGHT: the fold lives INSIDE the lane ── */}
-      <div className="flex min-h-0 flex-col overflow-y-auto px-3.5 py-3.5">
+      {/* ── in flight ── */}
+      <div className="flex min-h-0 flex-col overflow-y-auto p-4">
+        <div className="mb-2 shrink-0 font-tower-mono text-[9px] uppercase tracking-[0.14em] text-tower-accent">
+          In flight
+        </div>
         <StageRunway items={items} />
         {onBoard.length === 0 ? (
-          <div className="px-1 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
-            Nothing on the board.
+          <div className="font-tower-mono text-[9px] italic text-tower-fg-faint">
+            No flights in the air.
           </div>
         ) : (
           STAGES.map((st) => {
             const inStage = onBoard.filter((it) => STAGE_OF[it.col] === st.key);
-            // An empty stage collapses to its tick rather than an empty column,
-            // so a quiet lane stays calm.
             if (inStage.length === 0) return null;
             return (
               <div key={st.key} className="mb-2">
@@ -624,60 +555,7 @@ function LaneRow({
           </div>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-/** The lane's identity block — avatar, name, HELD pill, airborne line. */
-function LaneIdentity({
-  label,
-  held,
-  airborne,
-  inHold,
-  linked,
-  rank,
-}: {
-  label: string;
-  held: number;
-  airborne: number;
-  inHold: number;
-  linked?: boolean;
-  /** an assigned lane is a LEAD; the undispatched pipeline commands nothing */
-  rank: Rank;
-}) {
-  return (
-    <>
-      <div className="flex items-center gap-2">
-        <PlatedInsignia
-          rank={rank}
-          state={airborne > 0 ? "working" : "waiting"}
-          plate={34}
-        />
-        <span
-          className={
-            "min-w-0 flex-1 truncate text-[15px] font-[650] text-tower-fg-body" +
-            (linked ? " group-hover/sp:text-tower-accent-hover" : "")
-          }
-        >
-          {label}
-        </span>
-        {held > 0 ? (
-          <span className="shrink-0 rounded-[6px] bg-tower-accent-tint px-1.5 py-0.5 font-tower-mono text-[8.5px] font-semibold uppercase tracking-[0.68px] text-tower-flight-strong">
-            {held} held
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-1.5 truncate font-tower-mono text-[9px] text-tower-flight">
-        {airborne || inHold ? (
-          <>
-            {airborne} airborne
-            {inHold > 0 ? ` · ${inHold} in the hold` : ""}
-          </>
-        ) : (
-          <span className="text-tower-fg-faint">on the ground</span>
-        )}
-      </div>
-    </>
+    </article>
   );
 }
 
@@ -701,12 +579,18 @@ export function FleetOverviewTab({
     setFocusedSp(towerNav.spThreadId ?? null);
   }
 
-  const rows = (fleet.data?.rows ?? []).filter(
-    (r) =>
-      r.rank !== "PLT" &&
-      (liveIds === null || liveIds.has(r.threadId)) &&
-      (scopeThreadId ? r.parentThreadId === scopeThreadId : true),
-  );
+  // Until the live-thread list has loaded we do not KNOW which crew is retired,
+  // and treating "unknown" as "show everything" flashed archived leads onto the
+  // board on every load. Unknown means not yet, so the board waits.
+  const crewKnown = liveIds !== null;
+  const rows = !crewKnown
+    ? []
+    : (fleet.data?.rows ?? []).filter(
+        (r) =>
+          r.rank !== "PLT" &&
+          liveIds.has(r.threadId) &&
+          (scopeThreadId ? r.parentThreadId === scopeThreadId : true),
+      );
 
   if (focusedSp) {
     const r = (fleet.data?.rows ?? []).find((x) => x.threadId === focusedSp);
@@ -769,38 +653,30 @@ export function FleetOverviewTab({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
-      {/* zone labels only — no band of its own: the panel chrome above is the
-          one grey header on this surface. */}
-      <div className={`${isScoped ? LANE_GRID_COMPACT : LANE_GRID} shrink-0 px-3 pb-1.5 pt-2.5`}>
-        <div className="px-1">
-          <span className={COL_LABEL}>Domain</span>
+      {error ? (
+        <div className="shrink-0 px-4 pt-3 font-tower-mono text-[9px] text-tower-accent-hover">
+          rpc error · {error}
         </div>
-        <div className="px-1">
-          <span className={COL_LABEL}>Status</span>
-        </div>
-        <div className="flex items-baseline justify-between gap-2 px-1">
-          <span className={COL_LABEL + " !text-tower-accent-hover"}>
-            In flight
-          </span>
-          {error ? (
-            <span className="font-tower-mono text-[9px] text-tower-accent-hover">
-              rpc error
-            </span>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        {fleet.loading && rows.length === 0 ? (
+      <div className="min-h-0 flex-1 overflow-auto pt-3">
+        {(fleet.loading || !crewKnown) && rows.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">loading crew…</div>
         ) : rows.length === 0 && unassigned.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">
             {scopeThreadId ? "No crew or work under this agent yet." : "No crew yet."}
           </div>
         ) : (
-          <>
+          // Two lead cards per row, as the sheet lays them out. A nested
+          // surface has half the width, so it stacks instead.
+          <div
+            className={
+              "grid gap-4 px-4 pb-4 " +
+              (isScoped ? "grid-cols-1" : "grid-cols-1 2xl:grid-cols-2")
+            }
+          >
             {rows.map((r) => (
-              <LaneRow
+              <LeadCard
                 key={r.threadId}
                 threadId={r.threadId}
                 projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
@@ -810,12 +686,11 @@ export function FleetOverviewTab({
                 items={byRow.get(r.threadId) ?? []}
                 escalated={isEscalated(r.threadId)}
                 hasThread
-                compact={isScoped}
               />
             ))}
-            {/* the pilot's undispatched pipeline (not yet handed to an SP) */}
+            {/* the pilot's undispatched pipeline (not yet handed to a lead) */}
             {!scopeThreadId && unassigned.length > 0 ? (
-              <LaneRow
+              <LeadCard
                 threadId={null}
                 projectId=""
                 providerId=""
@@ -823,10 +698,9 @@ export function FleetOverviewTab({
                 items={unassigned}
                 escalated={false}
                 hasThread={false}
-                compact={isScoped}
               />
             ) : null}
-          </>
+          </div>
         )}
       </div>
 

@@ -37,6 +37,7 @@
   --color-tower-hold: #d4a84b; /* in the hold / waiting */
   --color-tower-silent: #33211d; /* silent / lost-contact flight card tint */
   --color-tower-transcript: #201e1d; /* the lane transcript stream ground */
+  --color-tower-inset: #232322; /* lead-card inset blocks (focus / next) */
   /* Blueprint fonts */
   --font-tower-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-tower-sans: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
