@@ -95,7 +95,7 @@ function CrewEntry({
  * sees.
  */
 export function CrewSidebarSection({ onNavigate }: { onNavigate?: () => void }) {
-  const { crews, loaded } = useCrews();
+  const { crews, loaded, failed, reload } = useCrews();
   const { createCrew, creating, error } = useCreateCrew();
 
   return (
@@ -128,6 +128,17 @@ export function CrewSidebarSection({ onNavigate }: { onNavigate?: () => void }) 
       {!loaded ? (
         <p className="px-2 py-1 text-xs italic text-muted-foreground">
           Reading the fleet…
+        </p>
+      ) : failed && crews.length === 0 ? (
+        <p className="px-2 py-1 text-xs text-muted-foreground">
+          Couldn&apos;t read the fleet.{" "}
+          <button
+            type="button"
+            onClick={reload}
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Try again
+          </button>
         </p>
       ) : crews.length === 0 ? (
         <p className="px-2 py-1 text-xs italic text-muted-foreground">

@@ -60,11 +60,15 @@ import {
   useThreadPendingInteractions,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
-import { isTransientReadError } from "@/hooks/queries/query-helpers";
+import {
+  isNotFoundReadError,
+  isTransientReadError,
+} from "@/hooks/queries/query-helpers";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { ThreadNotFound } from "./ThreadNotFound.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import {
   ThreadActionsMenu,
@@ -424,19 +428,12 @@ export function resolveHostFilePreviewLinkRootPath({
   return null;
 }
 
-function ThreadDetailNotFound() {
-  return (
-    <PageShell contentClassName="min-h-full items-center justify-center">
-      <p className="py-12 text-center text-sm text-destructive">Not found</p>
-    </PageShell>
-  );
-}
 
 function RoutedThreadDetailView() {
   const { projectId, threadId } = useRouteState();
 
   if (!projectId || !threadId) {
-    return <ThreadDetailNotFound />;
+    return <ThreadNotFound reason="bad-link" />;
   }
 
   return (
@@ -522,6 +519,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isFetching,
     isLoadingError,
     error,
+    refetch: refetchThread,
   } = useThread(threadId ?? "", {
     enabled: hasThreadDetailBootstrapSettled,
     // A successful bootstrap just populated this exact query with a fresh
@@ -2188,11 +2186,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   }
   if (!thread || thread.projectId !== projectId) {
     return (
-      <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-destructive">
-          {error ? "Failed to load thread." : "Not found"}
-        </p>
-      </PageShell>
+      <ThreadNotFound
+        onRetry={
+          error && !isNotFoundReadError(error)
+            ? () => void refetchThread()
+            : undefined
+        }
+        projectId={projectId}
+        reason={error && !isNotFoundReadError(error) ? "load-failed" : "missing"}
+      />
     );
   }
   const canAssignToParent = isThreadRoot;
