@@ -1,50 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { Component, useRef, useState, type ReactNode } from "react";
 import { useAtomValue } from "jotai";
-import { wsManager } from "@/lib/ws";
-import { useSendThreadMessage } from "@/hooks/mutations/thread-runtime-mutations";
+import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
+import { useLiveThreads } from "./useLiveThreads";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
-
-/** Live (non-archived) thread ids — the crew RPC still lists archived threads,
- *  so the board filters against this to drop retired crew. */
-function useLiveThreadIds(): Set<string> | null {
-  const [ids, setIds] = useState<Set<string> | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetch("/api/v1/threads?archived=false");
-        const d: unknown = await res.json();
-        const list = Array.isArray(d)
-          ? d
-          : ((d as { threads?: unknown[]; data?: unknown[] }).threads ??
-            (d as { data?: unknown[] }).data ??
-            []);
-        if (!cancelled) {
-          setIds(
-            new Set(
-              (list as { id?: string }[])
-                .map((t) => t.id)
-                .filter((x): x is string => typeof x === "string"),
-            ),
-          );
-        }
-      } catch {
-        /* keep the last set; a failed refresh must not blank the board */
-      }
-    };
-    void load();
-    const off = wsManager.onPluginSignal((s) => {
-      if (s.pluginId === "crew") void load();
-    });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, []);
-  return ids;
-}
 
 const COL_LABEL =
   "font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
@@ -236,189 +196,6 @@ function Card({ item }: { item: PlacedItem }) {
   );
 }
 
-// ─── the transcript: the SP's real thread stream, in the DOMAIN rail ───────────
-interface TranscriptMsg {
-  id: string;
-  author: string; // "CONTROLLER" (up) or the lane's own name (down)
-  up: boolean; // an inbound instruction from above vs the agent's own voice
-  at: number;
-  text: string;
-}
-
-/** Live thread transcript (conversation rows) for one lane's DOMAIN rail. */
-function useThreadTranscript(
-  threadId: string,
-  laneName: string,
-): TranscriptMsg[] {
-  const [msgs, setMsgs] = useState<TranscriptMsg[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/v1/threads/${threadId}/timeline`);
-        const d = (await res.json()) as {
-          rows?: {
-            id: string;
-            kind: string;
-            role: string;
-            text?: string | null;
-            createdAt: number;
-          }[];
-        };
-        const rows = (d.rows ?? [])
-          .filter((r) => r.kind === "conversation" && (r.text ?? "").trim())
-          .map((r) => ({
-            id: r.id,
-            up: r.role === "user",
-            author: r.role === "user" ? "CONTROLLER" : laneName.toUpperCase(),
-            at: r.createdAt,
-            text: (r.text ?? "").trim(),
-          }));
-        if (!cancelled) setMsgs(rows);
-      } catch {
-        /* keep last — a failed refresh must not blank the transcript */
-      }
-    };
-    if (!threadId) return;
-    void load();
-    // Stream it: the thread's own change events drive the rail, so a steer (or
-    // the agent's reply) shows up here without waiting on a crew-plugin signal.
-    wsManager.subscribe({ kind: "thread-detail", threadId });
-    const offChanged = wsManager.onChanged((m) => {
-      if (m.entity === "thread" && (!m.id || m.id === threadId)) void load();
-    });
-    const offSignal = wsManager.onPluginSignal((s) => {
-      if (s.pluginId === "crew") void load();
-    });
-    return () => {
-      cancelled = true;
-      offChanged();
-      offSignal();
-      wsManager.unsubscribe({ kind: "thread-detail", threadId });
-    };
-  }, [threadId, laneName]);
-  return msgs;
-}
-
-function hhmm(at: number): string {
-  const d = new Date(at);
-  const h = `${d.getHours()}`.padStart(2, "0");
-  const m = `${d.getMinutes()}`.padStart(2, "0");
-  return `${h}:${m}`;
-}
-
-/** The transcript stream — flat author/time/body lines, newest at the bottom. */
-function TranscriptStream({ msgs }: { msgs: TranscriptMsg[] }) {
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
-  }, [msgs.length]);
-  if (msgs.length === 0) {
-    return (
-      <div className="min-h-0 flex-1 px-1 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
-        No transmissions yet.
-      </div>
-    );
-  }
-  return (
-    <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-1 py-1.5">
-      {msgs.map((m) => (
-        <div key={m.id}>
-          <div className="mb-0.5 flex items-baseline gap-1.5">
-            <span
-              className={
-                "font-tower-mono text-[8.5px] uppercase tracking-[0.51px] " +
-                (m.up ? "text-tower-flight-strong" : "text-tower-fg-muted")
-              }
-            >
-              {m.author}
-            </span>
-            <span className="font-tower-mono text-[8.5px] text-tower-fg-faint">
-              {hhmm(m.at)}
-            </span>
-          </div>
-          <div className="text-[10.5px] leading-snug text-tower-fg-muted">
-            {m.text}
-          </div>
-        </div>
-      ))}
-      <div ref={endRef} />
-    </div>
-  );
-}
-
-/** The Steer composer — talk to this lane's agent from the board. It really
- *  sends: same mutation the thread composer uses, queued if the agent is busy. */
-function SteerComposer({
-  threadId,
-  laneName,
-}: {
-  threadId: string;
-  laneName: string;
-}) {
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const send = useSendThreadMessage();
-
-  const submit = async () => {
-    const body = text.trim();
-    if (!body || sending) return;
-    setSending(true);
-    setError(null);
-    try {
-      await send.mutateAsync({
-        id: threadId,
-        input: [{ type: "text", text: body, mentions: [] }],
-        mode: "queue-if-active",
-      });
-      setText("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "could not send");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <div className="mt-2 shrink-0">
-      <div className="flex items-center gap-1.5 rounded-[8px] border border-tower-input-border bg-tower-input px-2.5 py-1.5 focus-within:border-tower-fg-dim">
-        <input
-          value={text}
-          disabled={sending}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void submit();
-            }
-            // the board is a keyboard surface too — don't let a lane's typing
-            // bubble into whatever shortcuts the shell binds.
-            e.stopPropagation();
-          }}
-          placeholder={`Steer ${laneName}…`}
-          aria-label={`Steer ${laneName}`}
-          className="min-w-0 flex-1 bg-transparent font-tower-sans text-[10.5px] text-tower-fg-body outline-none placeholder:text-tower-fg-dim disabled:opacity-50"
-        />
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={sending || !text.trim()}
-          aria-label="Send"
-          className="shrink-0 font-tower-mono text-[10px] text-tower-fg-faint hover:text-tower-fg-body disabled:opacity-40"
-        >
-          {sending ? "·" : "↵"}
-        </button>
-      </div>
-      {error ? (
-        <div className="mt-1 font-tower-mono text-[9px] text-tower-accent-hover">
-          not sent · {error}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 // ─── the STATUS story zone: FOCUS / NEXT / RISK band / counts ──────────────────
 const STAGE_RANK: Record<string, number> = {
   clearance: 6,
@@ -547,11 +324,76 @@ function StatusZone({
 
 // ─── the lane row: DOMAIN rail | STATUS story | IN FLIGHT cards ────────────────
 const LANE_GRID =
-  "grid grid-cols-[minmax(210px,19%)_minmax(300px,44%)_1fr]";
+  "grid grid-cols-[minmax(340px,36%)_minmax(240px,30%)_1fr]";
+// A lane is a fixed band, never as tall as its transcript: each zone scrolls
+// inside it, so one talkative agent cannot push the rest of the fleet offscreen.
+const LANE_HEIGHT = "h-[440px]";
+
+/** The lane's live flight deck — bb's own chat on the agent's thread, so the
+ *  rail gets the real thing (streaming, thinking, tool calls) and a composer
+ *  that steers, instead of a hand-rolled retelling of it. */
+function LaneFlightDeck({
+  threadId,
+  projectId,
+  providerId,
+}: {
+  threadId: string;
+  projectId: string;
+  providerId: string;
+}) {
+  return (
+    <ChatBoundary>
+      {/* a definite height, so the chat scrolls its own history and keeps its
+          composer in view instead of overflowing the band */}
+      <div className="flex h-full min-h-0 flex-col [&>*]:min-h-0 [&>*]:flex-1">
+      <EmbeddedThreadChat
+        variant="compact"
+        surfaceTone="background"
+        threadId={threadId}
+        surfaceFallbackKey={`tower-lane-${threadId}`}
+        projectId={projectId}
+        providerId={providerId}
+        promptContextEnvironmentId={null}
+        resolveMentionLink={() => null}
+        composer={{
+          draftScope: { kind: "thread", projectId, threadId },
+          executionDefaultsThreadId: threadId,
+          executionResetKey: threadId,
+          permissionPolicy: "snapshot",
+          environmentSummary: null,
+        }}
+      />
+      </div>
+    </ChatBoundary>
+  );
+}
+
+/** A lane's chat needs backend queries; keep the band if they fail. */
+class ChatBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="grid h-full place-items-center px-3 text-center font-tower-mono text-[9px] italic text-tower-fg-faint">
+          This lane&apos;s flight deck needs a connected thread.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /** One swimlane band — v2's fleet-board shell, one per SP. */
 function LaneRow({
   threadId,
+  projectId,
+  providerId,
   label,
   onOpen,
   items,
@@ -559,16 +401,14 @@ function LaneRow({
   hasThread,
 }: {
   threadId: string | null;
+  projectId: string;
+  providerId: string;
   label: string;
   onOpen?: () => void;
   items: PlacedItem[];
   escalated: boolean;
   hasThread: boolean;
 }) {
-  const transcript = useThreadTranscript(
-    hasThread && threadId ? threadId : "",
-    label,
-  );
   const airborne = items.filter((it) => it.col === "in_flight").length;
   const inHold = items.filter((it) => HOLD_COLS.has(it.col)).length;
   const held = items.filter((it) => HELD_COLS.has(it.col)).length;
@@ -579,7 +419,7 @@ function LaneRow({
 
   return (
     <div
-      className={`${LANE_GRID} mx-3 mb-3 min-h-[260px] overflow-hidden rounded-[12px] border border-tower-border bg-tower-panel/40`}
+      className={`${LANE_GRID} ${LANE_HEIGHT} mx-3 mb-3 overflow-hidden rounded-[12px] border border-tower-border bg-tower-panel/40`}
     >
       {/* ── DOMAIN rail ── */}
       <div className="flex min-h-0 flex-col border-r border-tower-border px-3.5 py-3.5">
@@ -608,19 +448,21 @@ function LaneRow({
             />
           </div>
         )}
-        {/* the transcript sits INSET — a recessed panel, as in v2 */}
+        {/* the flight deck sits INSET — a recessed panel, as in v2 — and
+            scrolls inside the band rather than growing it */}
         <div className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] bg-tower-surface">
-          {hasThread ? (
-            <TranscriptStream msgs={transcript} />
+          {hasThread && threadId ? (
+            <LaneFlightDeck
+              threadId={threadId}
+              projectId={projectId}
+              providerId={providerId}
+            />
           ) : (
             <div className="px-2.5 py-2 font-tower-mono text-[9px] italic text-tower-fg-faint">
               Undispatched — no flight deck yet.
             </div>
           )}
         </div>
-        {hasThread && threadId ? (
-          <SteerComposer threadId={threadId} laneName={label} />
-        ) : null}
       </div>
 
       {/* ── STATUS story ── */}
@@ -699,7 +541,7 @@ export function FleetOverviewTab({
   const board = useCrewRpc<BoardResult>("crew", "crew_board");
   const work = useCrewRpc<WorkBoardResult>("crew", "crew_work_board");
   const queue = useCrewRpc<QueueResult>("crew", "crew_queue");
-  const liveIds = useLiveThreadIds();
+  const liveIds = useLiveThreads();
   const [focusedSp, setFocusedSp] = useState<string | null>(null);
 
   // chat-link nav: bb-tower:sp/<id> focuses; bb-tower:crew returns to the board.
@@ -825,6 +667,8 @@ export function FleetOverviewTab({
               <LaneRow
                 key={r.threadId}
                 threadId={r.threadId}
+                projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
+                providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
                 label={r.handle ?? r.threadId}
                 onOpen={() => setFocusedSp(r.threadId)}
                 items={byRow.get(r.threadId) ?? []}
@@ -836,6 +680,8 @@ export function FleetOverviewTab({
             {!scopeThreadId && unassigned.length > 0 ? (
               <LaneRow
                 threadId={null}
+                projectId=""
+                providerId=""
                 label="Unassigned"
                 items={unassigned}
                 escalated={false}

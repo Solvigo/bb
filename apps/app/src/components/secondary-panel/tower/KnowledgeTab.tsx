@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
+import { useLiveThreads } from "./useLiveThreads";
 
 /**
  * Knowledge tab — the project's knowledge, organised the way it is owned:
@@ -50,6 +51,11 @@ interface HeadResult {
 }
 
 const PROJECT = "__project__";
+
+interface FleetResult {
+  ok: boolean;
+  rows: { threadId: string; handle: string | null; rank: string }[];
+}
 
 /** The board head for a theme (its curated summary), or the project overview. */
 function boardSubject(theme: string): string {
@@ -174,9 +180,45 @@ export function KnowledgeTab({
     "knowledge_group_index",
   );
   const groups = groupsRpc.data?.groups ?? [];
-  const themes = groups
-    .filter((g) => g.group.startsWith("theme:"))
-    .map((g) => ({ theme: g.theme, heads: g.heads, curator: g.curator }));
+  // The domains are the LIVE SPs on the board: each agent owns a theme, so the
+  // rail follows the fleet rather than only what happens to be written down.
+  // A theme with no live SP still shows (a retired domain keeps its record),
+  // and a live SP with nothing recorded still shows — that is curation debt,
+  // and hiding it is how a domain quietly owes knowledge nobody can see.
+  const fleet = useCrewRpc<FleetResult>("crew", "crew_fleet");
+  const liveIds = useLiveThreads();
+  const recorded = new Map(
+    groups
+      .filter((g) => g.group.startsWith("theme:"))
+      .map((g) => [g.theme, g] as const),
+  );
+  const domains = (fleet.data?.rows ?? [])
+    .filter(
+      (r) =>
+        r.rank !== "PLT" &&
+        r.handle &&
+        (liveIds === null || liveIds.has(r.threadId)),
+    )
+    .map((r) => r.handle as string);
+  const themes = [
+    ...domains.map((theme) => {
+      const g = recorded.get(theme);
+      return {
+        theme,
+        heads: g?.heads ?? 0,
+        curator: g?.curator ?? null,
+        live: true,
+      };
+    }),
+    ...[...recorded.values()]
+      .filter((g) => !domains.includes(g.theme))
+      .map((g) => ({
+        theme: g.theme,
+        heads: g.heads,
+        curator: g.curator,
+        live: false,
+      })),
+  ];
 
   const [sel, setSel] = useState<string>(
     scopeTheme && scopeTheme.length > 0 ? scopeTheme : PROJECT,
@@ -242,7 +284,11 @@ export function KnowledgeTab({
                     </span>
                   </span>
                   <span className="font-tower-mono text-[9px] text-tower-fg-faint">
-                    {t.curator ?? "no curator"}
+                    {t.live
+                      ? t.heads === 0
+                        ? "nothing recorded yet"
+                        : (t.curator ?? "no curator")
+                      : "no crew on this domain"}
                   </span>
                 </button>
               );
