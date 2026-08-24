@@ -1,0 +1,26 @@
+{
+  "name": "bb-plugin-stream-probe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Spike probe: does a plugin http.route hold a long-lived, incrementally flushed MJPEG response open?",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Stream Probe",
+    "description": "Spike probe: does a plugin http.route hold a long-lived, incrementally flushed MJPEG response open?",
+    "branding": {
+      "icon": "Activity"
+    },
+    "server": "./server.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}
