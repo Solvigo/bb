@@ -17,6 +17,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import { CrewSidebarSection } from "./crew/CrewSidebarSection";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
@@ -69,6 +70,9 @@ interface AppSidebarProps {
   settingsRoutePath: string;
   toolsRoutePath?: string;
 }
+
+const SIDEBAR_THREADS_LABEL_CLASS =
+  "px-4 pb-1 font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim group-data-[collapsible=icon]:hidden";
 
 export function AppSidebar({
   onResizeMouseDown,
@@ -300,7 +304,12 @@ export function AppSidebar({
           splitEnabled={threadSplitsEnabled}
           toolsRoutePath={toolsRoutePath}
         />
+        {/* The sidebar's primary object is the CREW. Raw threads keep their
+            own section below, so every existing route still works — they are
+            simply no longer the first thing the operator sees. */}
+        <CrewSidebarSection onNavigate={closeOnMobile} />
         <SidebarContent>
+          <div className={SIDEBAR_THREADS_LABEL_CLASS}>Threads</div>
           {threadListProvider ? (
             <PluginThreadList
               slot={threadListProvider}
