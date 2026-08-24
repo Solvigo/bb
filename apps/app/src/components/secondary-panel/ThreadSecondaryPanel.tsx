@@ -645,7 +645,10 @@ export function ThreadSecondaryPanel({
         <div
           data-testid="thread-secondary-panel-top-chrome"
           className={cn(
-            "flex h-[46px] items-center",
+            // Ends level with the conversation header: that header is 48px from
+            // the top, and this card is inset 8px with a 1px edge, so the row
+            // plus its own bottom border has to come to 39px.
+            "flex h-[38px] items-center",
             "min-w-0 justify-between gap-2 px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
