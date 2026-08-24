@@ -314,7 +314,9 @@ function StageRunway({ items }: { items: PlacedItem[] }) {
           <div
             key={st.key}
             className={
-              "min-w-0 flex-1 truncate border-b pb-1.5 text-center font-tower-mono text-[7px] uppercase tracking-[0.2px] " +
+              // No truncate and no tracking: a ratified stage name must read in
+              // full at two-up width, so it is sized to fit rather than clipped.
+              "min-w-0 flex-1 whitespace-nowrap border-b pb-1.5 text-center font-tower-mono text-[6.5px] uppercase " +
               (live
                 ? "border-tower-flight text-tower-flight"
                 : "border-tower-bright text-tower-fg-faint")
@@ -471,7 +473,7 @@ function LeadCard({
   );
 
   return (
-    <article className="grid min-h-0 grid-cols-[minmax(0,55%)_minmax(0,45%)] overflow-hidden rounded-[16px] border border-tower-bright bg-tower-surface">
+    <article className="grid min-h-[560px] grid-cols-[minmax(0,55%)_minmax(0,45%)] overflow-hidden rounded-[16px] border border-tower-bright bg-tower-surface">
       {/* ── the lead ── */}
       <div className="flex min-h-0 flex-col gap-3 border-r border-tower-bright p-4">
         {onOpen ? (
@@ -719,16 +721,16 @@ export function FleetOverviewTab({
         ) : (
           // Two lead cards per row, as the sheet lays them out. A nested
           // surface has half the width, so it stacks instead.
-          // The sheet lays lead cards out two per row AT ITS OWN CARD WIDTH of
-          // 691px. Below ~1400px of surface, two-up gives each card ~400px —
-          // 42% narrower than the design, which crushes the stage ticks into
-          // "IN FLIG…". So the count follows the CONTAINER, not the viewport:
-          // one full-width band per lead until two can each have their designed
-          // width. Honouring a layout means honouring its proportions.
+          // Two lead cards per row (the Captain's preference and the sheet's own
+          // annotation), with the height the pair costs in width given back
+          // vertically. The stage ticks are sized to stay readable at this
+          // narrower zone — the earlier two-up truncated them, which is what
+          // made it look wrong, not the pairing itself. A nested surface has
+          // half the width again, so it stacks.
           <div
             className={
               "grid gap-4 px-4 pb-4 " +
-              (isScoped ? "grid-cols-1" : "grid-cols-1 @[1400px]/board:grid-cols-2")
+              (isScoped ? "grid-cols-1" : "grid-cols-1 @[720px]/board:grid-cols-2")
             }
           >
             {rows.map((r) => (
