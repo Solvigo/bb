@@ -4,10 +4,11 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "generate:brand-icons": "node scripts/generate-brand-icons.mjs && node scripts/generate-pwa-icons.mjs",
     "generate:pwa-icons": "node scripts/generate-pwa-icons.mjs",
     "generate:pwa-icons:check": "node scripts/generate-pwa-icons.mjs --check",
-    "dev": "node scripts/generate-pwa-icons.mjs && vite --config vite.dev.config.ts --configLoader runner",
-    "build": "node scripts/generate-pwa-icons.mjs && vite build --logLevel warn && node ../../scripts/precompress-app-dist.mjs dist",
+    "dev": "node scripts/generate-brand-icons.mjs && node scripts/generate-pwa-icons.mjs && vite --config vite.dev.config.ts --configLoader runner",
+    "build": "node scripts/generate-brand-icons.mjs && node scripts/generate-pwa-icons.mjs && vite build --logLevel warn && node ../../scripts/precompress-app-dist.mjs dist",
     "preview": "vite preview",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "clean": "rimraf dist bundle-stats.json",
@@ -15,7 +16,7 @@
     "storybook:build": "ladle build",
     "lint": "eslint src vite.config.ts vite.dev.config.ts vite-bundle-stats.ts vite-shared-ui-seam.ts --ext .ts,.tsx",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "test": "node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts"
+    "test": "node scripts/generate-brand-icons.mjs --check && node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@bb/agent-providers": "workspace:*",

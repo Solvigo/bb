@@ -142,9 +142,9 @@ export function RootComposeEmptyWelcome({
           </filter>
         </defs>
       </svg>
-      {/* Filter on the parent so its SourceAlpha is the glyph below. The mark is
-          the Solvigo Airways jet, carried in its own brand colours rather than
-          masked to the foreground — the gloss still rides its alpha. */}
+      {/* Filter on the parent so its SourceAlpha is the glyph below. The lockup
+          sheet sanctions the plateless orange jet for product surfaces (the
+          plate is for icons), and the gloss still rides its alpha. */}
       <div
         role="img"
         aria-label="Solvigo Airways"
@@ -152,7 +152,7 @@ export function RootComposeEmptyWelcome({
         style={{ filter: "url(#bb-gloss)" }}
       >
         <img
-          src="/solvigo-airways-mark.svg"
+          src="/solvigo-airways-glyph.svg"
           alt=""
           className="size-full select-none object-contain"
           draggable={false}

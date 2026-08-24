@@ -3,12 +3,12 @@
     <clipPath id="plate"><rect width="64" height="64" rx="4.5"/></clipPath>
   </defs>
   <g clip-path="url(#plate)">
-    <rect width="64" height="64" fill="#2A2927"/>
+    <rect width="64" height="64" fill="#E2E0D9"/>
     <g transform="translate(2.85 -2.85) rotate(45 32 32)">
-      <polygon points="8,48 8,130 56,130 56,48 38,44 32,52 26,44" fill="#000000"/>
+      <polygon points="8,48 8,130 56,130 56,48 38,44 32,52 26,44" fill="#BEBCB4"/>
       <polygon points="32,4 32,52 38,44 56,48" fill="#D7D5D3"/>
       <polygon points="32,4 8,48 26,44 32,52" fill="#FFFFFF"/>
     </g>
   </g>
-  <rect x="0.5" y="0.5" width="63" height="63" rx="4" fill="none" stroke="#3F3E3C"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="4" fill="none" stroke="#D2D0C9"/>
 </svg>

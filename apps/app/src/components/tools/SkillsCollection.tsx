@@ -135,7 +135,7 @@ export function ProviderLogo({
 function BbLogo({ className = "size-4" }: { className?: string }) {
   return (
     <img
-      src="/bb-mark.svg"
+      src="/solvigo-airways-mono.svg"
       alt=""
       aria-hidden="true"
       className={cn(className, "object-contain dark:invert")}
