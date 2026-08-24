@@ -1,10 +1,17 @@
-import { Component, useRef, useState, type ReactNode } from "react";
+import {
+  Component,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useAtomValue } from "jotai";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
 import { useLiveThreads } from "./useLiveThreads";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
+import { PlatedInsignia, type Rank } from "./RankInsignia";
 
 const COL_LABEL =
   "font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
@@ -104,12 +111,6 @@ function svNumber(taskId: string): string {
   return `SV ${100 + (h % 900)}`;
 }
 
-/** Two-letter flight code from a lane's handle ("surface dispatch" → "SU"). */
-function laneCode(label: string): string {
-  const word = label.replace(/^thr_/, "").replace(/[^a-zA-Z]+/, " ").trim();
-  return (word.slice(0, 2) || label.slice(0, 2)).toUpperCase();
-}
-
 /** Compact "time since" (v2: "40s", "4m", "2h 20m", "1d 03h"). */
 function ageSince(at?: string | null): { label: string; ms: number } | null {
   if (!at) return null;
@@ -165,8 +166,14 @@ function Card({ item }: { item: PlacedItem }) {
       title={item.taskId}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className="min-w-0 truncate font-tower-mono text-[10px] text-tower-fg-body">
-          <span className="text-tower-flight">✈</span> {svNumber(item.taskId)}
+        <span className="flex min-w-0 items-center gap-1.5 truncate font-tower-mono text-[10px] text-tower-fg-body">
+          <PlatedInsignia
+            rank="sortie"
+            state={item.col === "in_flight" && !silent ? "working" : "waiting"}
+            plate={22}
+            title={`${svNumber(item.taskId)} — ${chip?.label ?? "planned"}`}
+          />
+          {svNumber(item.taskId)}
         </span>
         {aloft ? (
           <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-faint">
@@ -435,6 +442,7 @@ function LaneRow({
               held={held}
               airborne={airborne}
               inHold={inHold}
+              rank={hasThread ? "lead" : "sortie"}
               linked
             />
           </button>
@@ -445,13 +453,23 @@ function LaneRow({
               held={held}
               airborne={airborne}
               inHold={inHold}
+              rank={hasThread ? "lead" : "sortie"}
             />
           </div>
         )}
         {/* the flight deck sits INSET — a recessed panel, as in v2 — and
             scrolls inside the band rather than growing it */}
         {hasThread && threadId ? (
-          <div className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] border border-tower-border bg-tower-transcript p-1 [zoom:0.85] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden">
+          <div
+            className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] border border-tower-border bg-tower-transcript p-1 [zoom:0.85] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
+            // bb's chat paints its own `bg-background` on a couple of inner
+            // elements, which would sit on top of the transcript ground. Rather
+            // than chase those class names, rebind the variable they both read
+            // so every surface inside the deck inherits this ground.
+            style={
+              { "--background": "var(--color-tower-transcript)" } as CSSProperties
+            }
+          >
             <LaneFlightDeck
               threadId={threadId}
               projectId={projectId}
@@ -491,22 +509,27 @@ function LaneIdentity({
   airborne,
   inHold,
   linked,
+  rank,
 }: {
   label: string;
   held: number;
   airborne: number;
   inHold: number;
   linked?: boolean;
+  /** an assigned lane is a LEAD; the undispatched pipeline commands nothing */
+  rank: Rank;
 }) {
   return (
     <>
       <div className="flex items-center gap-2">
-        <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[8px] bg-tower-bright font-tower-mono text-[9.5px] font-bold text-tower-fg-muted">
-          {laneCode(label)}
-        </span>
+        <PlatedInsignia
+          rank={rank}
+          state={airborne > 0 ? "working" : "waiting"}
+          plate={34}
+        />
         <span
           className={
-            "min-w-0 flex-1 truncate text-[12.5px] font-[650] text-tower-fg-body" +
+            "min-w-0 flex-1 truncate text-[15px] font-[650] text-tower-fg-body" +
             (linked ? " group-hover/sp:text-tower-accent-hover" : "")
           }
         >

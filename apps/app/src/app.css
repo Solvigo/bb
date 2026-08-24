@@ -782,3 +782,48 @@
     animation: none;
   }
 }
+
+@layer components {
+  /*
+   * Rank-insignia motion. The insignia sheet is explicit that a WORKING mark
+   * carries one moving element and that colour alone is not enough to say
+   * "live" — so these are the difference between an agent that is working and
+   * one that is merely present. A waiting mark carries no animation at all.
+   */
+  @keyframes tower-ins-pulse {
+    0%,
+    100% {
+      opacity: 0.9;
+    }
+    50% {
+      opacity: 0.42;
+    }
+  }
+
+  @keyframes tower-ins-climb {
+    0%,
+    100% {
+      transform: translateY(0.7px);
+    }
+    50% {
+      transform: translateY(-1.5px);
+    }
+  }
+
+  .tower-ins-pulse {
+    animation: tower-ins-pulse 1.9s ease-in-out infinite;
+  }
+
+  .tower-ins-climb {
+    animation: tower-ins-climb 2.6s ease-in-out infinite;
+  }
+
+  /* Motion is the live signal, so when it is unwelcome the mark simply rests
+     at full weight rather than losing its meaning to a substitute. */
+  @media (prefers-reduced-motion: reduce) {
+    .tower-ins-pulse,
+    .tower-ins-climb {
+      animation: none;
+    }
+  }
+}
