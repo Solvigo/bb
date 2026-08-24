@@ -204,10 +204,12 @@ function Card({ item }: { item: PlacedItem }) {
           the one it has reached — so how far it has flown is legible before any
           label is read. */}
       {stageIndex >= 0 ? (
-        <div className="relative mt-2 mb-1 h-[18px]">
-          <div className="absolute inset-x-0 top-[13px] h-px bg-tower-bright" />
+        // The aircraft flies ABOVE its runway, not on it: the glyph is 16px tall
+        // from the top, so the line sits at 22px to leave real air beneath it.
+        <div className="relative mt-2 mb-1 h-[24px]">
+          <div className="absolute inset-x-0 top-[22px] h-px bg-tower-bright" />
           <div
-            className="absolute inset-x-0 top-[13px] h-px bg-tower-flight/50"
+            className="absolute inset-x-0 top-[22px] h-px bg-tower-flight/50"
             style={{ width: `${((stageIndex + 0.5) / STAGES.length) * 100}%` }}
           />
           <span
