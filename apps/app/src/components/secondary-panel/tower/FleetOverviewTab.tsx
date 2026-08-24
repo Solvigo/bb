@@ -324,7 +324,7 @@ function StatusZone({
 
 // ─── the lane row: DOMAIN rail | STATUS story | IN FLIGHT cards ────────────────
 const LANE_GRID =
-  "grid grid-cols-[minmax(300px,32%)_minmax(240px,31%)_1fr]";
+  "grid grid-cols-[minmax(260px,27%)_minmax(240px,33%)_1fr]";
 // A lane is a fixed band, never as tall as its transcript: each zone scrolls
 // inside it, so one talkative agent cannot push the rest of the fleet offscreen.
 const LANE_HEIGHT = "h-[440px]";
@@ -451,7 +451,7 @@ function LaneRow({
         {/* the flight deck sits INSET — a recessed panel, as in v2 — and
             scrolls inside the band rather than growing it */}
         {hasThread && threadId ? (
-          <div className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] border border-tower-border bg-tower-surface p-1 [zoom:0.85]">
+          <div className="mt-2.5 min-h-0 flex-1 overflow-hidden rounded-[10px] border border-tower-border bg-tower-transcript p-1 [zoom:0.85] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden">
             <LaneFlightDeck
               threadId={threadId}
               projectId={projectId}
