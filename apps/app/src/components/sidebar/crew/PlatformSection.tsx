@@ -27,7 +27,7 @@ const PLATFORM_ROWS: {
   {
     icon: "ElectricPlugs",
     label: "Connections",
-    hint: "MCP",
+    hint: "soon",
     to: getSettingsRoutePath("connections"),
   },
   {

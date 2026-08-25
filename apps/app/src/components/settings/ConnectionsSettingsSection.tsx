@@ -2,10 +2,11 @@ import { Icon } from "@bb/shared-ui/icon";
 import { SettingsSection } from "@/components/ui/settings-section.js";
 
 /**
- * MCP connections. There is nothing to list yet: this instance exposes no MCP
- * server registry, so the honest surface says what it would hold and what has
- * to exist first, rather than showing an empty table that reads as "you have
- * no servers" when the truth is "nothing here can see them".
+ * MCP connections, deliberately not built yet (the Captain's call). The row
+ * keeps its place in the platform section so the shape of that section is
+ * settled, and this screen says plainly that the feature is coming rather than
+ * showing an empty table that would read as "you have no servers" — which is a
+ * different and untrue statement.
  */
 export function ConnectionsSettingsSection() {
   return (
@@ -20,20 +21,12 @@ export function ConnectionsSettingsSection() {
             className="mt-0.5 size-4 shrink-0 text-muted-foreground"
           />
           <div className="space-y-2.5 text-sm">
-            <p className="font-medium text-foreground">
-              This instance has no MCP registry yet
-            </p>
+            <p className="font-medium text-foreground">Coming soon</p>
             <p className="leading-relaxed text-muted-foreground">
-              Nothing here is hidden or switched off — there is simply no
-              record of MCP servers for this screen to read. When there is, it
-              will list each server, whether it is reachable, and the tools it
-              offers, and let you add and remove them.
-            </p>
-            <p className="leading-relaxed text-muted-foreground">
-              bb does speak MCP internally: it proxies its own tools into an
-              agent that way. That is the opposite direction from connecting
-              this instance to servers you choose, so it gives this screen
-              nothing to show.
+              This is where you will connect the instance to MCP servers and see
+              which are reachable and what tools each one offers. It is not
+              built yet, and nothing is hidden or switched off behind this
+              screen — there is simply nothing here to show you.
             </p>
           </div>
         </div>
