@@ -3,6 +3,7 @@ import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import { TowerRenderSurface } from "./TowerRenderSurface";
 import { useLiveThreads } from "./useLiveThreads";
 import { PlatedInsignia } from "./RankInsignia";
+import { SwapAgentButton } from "./SwapAgentButton";
 
 interface BoardReport {
   rank: string;
@@ -78,6 +79,9 @@ export function SpFocusView({
         <span className="ml-auto font-tower-mono text-[10px] text-tower-fg-faint">
           {report ? `${report.state} · ${report.at}` : "no report yet"}
         </span>
+        {/* The agent's own header is where the thing being swapped is named, so
+            it is where the swap belongs. */}
+        <SwapAgentButton threadId={threadId} />
       </div>
 
       {/* the recursive shell: agent chat left, its own rendering surface right */}
