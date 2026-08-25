@@ -42,14 +42,16 @@ describe("useCrewDefaults", () => {
       });
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/plugins/crew/rpc/crew_defaults",
-      expect.objectContaining({
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "null",
-      }),
-    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/plugins/crew/rpc/crew_defaults");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe("null");
+    // `fetchWithAppSurface` normalizes the plain headers object it's handed
+    // into a `Headers` instance, so read the merged result back through one
+    // rather than asserting exact object identity/shape.
+    const headers = new Headers(init.headers);
+    expect(headers.get("content-type")).toBe("application/json");
   });
 
   it("returns null when the plugin is absent (non-2xx)", async () => {

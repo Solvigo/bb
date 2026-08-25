@@ -1,6 +1,10 @@
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { fetchWithAppSurface } from "@/lib/app-surface";
+import { callPluginRpc } from "@/lib/plugin-sdk-hooks";
+import { crewDefaultsQueryKey } from "./query-keys";
 
-const CREW_DEFAULTS_QUERY_KEY: QueryKey = ["crew-defaults"];
+const CREW_PLUGIN_ID = "crew";
+const CREW_DEFAULTS_METHOD = "crew_defaults";
 const CREW_DEFAULTS_TIMEOUT_MS = 8_000;
 
 /** The fleet's cheap provider list, as the crew plugin reports it. */
@@ -58,32 +62,41 @@ function parseCrewDefaultsResult(value: unknown): CrewDefaultsResult | null {
  * error, timeout, non-2xx, malformed body, no stored default yet) returns
  * null rather than throwing: absence of a crew default must never change
  * behavior, only its presence may add a preload.
+ *
+ * Routed through the shared `callPluginRpc` client (the same one plugin code
+ * itself calls via `useRpc()`) rather than a hand-rolled fetch, so this picks
+ * up its request/response envelope handling and `encodeURIComponent`ing for
+ * free — only the honest timeout is layered on here.
  */
 async function fetchCrewDefaults(
   signal: AbortSignal,
 ): Promise<CrewDefaultsResult | null> {
   const timeoutSignal = AbortSignal.timeout(CREW_DEFAULTS_TIMEOUT_MS);
+  const combinedSignal = AbortSignal.any([signal, timeoutSignal]);
   try {
-    const response = await fetch("/api/v1/plugins/crew/rpc/crew_defaults", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "null",
-      signal: AbortSignal.any([signal, timeoutSignal]),
-    });
-    if (!response.ok) return null;
-    const envelope = (await response.json()) as {
-      ok?: boolean;
-      result?: unknown;
-    };
-    if (envelope.ok !== true) return null;
-    return parseCrewDefaultsResult(envelope.result);
+    const result = await callPluginRpc(
+      (input, init) =>
+        fetchWithAppSurface(input, { ...init, signal: combinedSignal }),
+      CREW_PLUGIN_ID,
+      CREW_DEFAULTS_METHOD,
+      null,
+    );
+    const parsed = parseCrewDefaultsResult(result);
+    // The plugin answered (no throw above), so a parse failure here is not an
+    // absent-plugin/network/timeout case — it means the response shape drifted
+    // (a renamed or removed field) and the preload has gone silently dark.
+    // Behavior is unchanged (still null), but that drift deserves a signal
+    // somewhere, since nothing else would ever surface it.
+    if (parsed === null) {
+      console.debug(
+        "[crew-defaults] crew_defaults answered but its result did not match the expected shape",
+        result,
+      );
+    }
+    return parsed;
   } catch {
     return null;
   }
-}
-
-export function crewDefaultsQueryKey(): QueryKey {
-  return CREW_DEFAULTS_QUERY_KEY;
 }
 
 export interface UseCrewDefaultsOptions {

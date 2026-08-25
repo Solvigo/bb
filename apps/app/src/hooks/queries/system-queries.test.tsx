@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import type { QueryClient } from "@tanstack/react-query";
 import type {
   OnboardingAgentOverview,
   SystemExecutionOptionsResponse,
@@ -13,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
+  crewDefaultsQueryKey,
   hostProviderCliStatusQueryKey,
   onboardingAgentsQueryKey,
   systemExecutionOptionsQueryKey,
@@ -87,6 +89,21 @@ function crewDefaultsFetchMock(result: unknown) {
 
 function neverResolves<T>(): Promise<T> {
   return new Promise<T>(() => {});
+}
+
+/**
+ * Waits for the crew-defaults query itself to settle (success or error, not
+ * merely fetching) rather than a fixed `setTimeout`, which can pass before
+ * the query has actually resolved and would let a real regression through.
+ */
+async function waitForCrewDefaultsSettled(
+  queryClient: QueryClient,
+): Promise<void> {
+  await waitFor(() => {
+    const state = queryClient.getQueryState(crewDefaultsQueryKey());
+    expect(state?.fetchStatus).toBe("idle");
+    expect(state?.status).not.toBe("pending");
+  });
 }
 
 describe("useSystemExecutionOptions", () => {
@@ -196,6 +213,47 @@ describe("useSystemExecutionOptions crew-defaults preload", () => {
     });
   });
 
+  it("replaces the provisional pair once the catalog resolves (the retirement law)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      crewDefaultsFetchMock({
+        ok: true,
+        stored: { providerId: "codex", modelId: "codex-mini" },
+        providers: [{ id: "codex", displayName: "Codex", available: true }],
+      }),
+    );
+    let resolveExecutionOptions!: (
+      value: SystemExecutionOptionsResponse,
+    ) => void;
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveExecutionOptions = resolve;
+        }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(() => useSystemExecutionOptions({}), {
+      wrapper,
+    });
+
+    // The provisional pair renders first, flagged as placeholder data.
+    await waitFor(() => {
+      expect(result.current.data?.providers[0]?.id).toBe("codex");
+      expect(result.current.isPlaceholderData).toBe(true);
+    });
+
+    // Only a fresh probe may retire it — resolving the real (here: empty)
+    // catalog must replace the provisional pair, not merely sit alongside it.
+    resolveExecutionOptions(EXECUTION_OPTIONS_RESPONSE);
+
+    await waitFor(() => {
+      expect(result.current.isPlaceholderData).toBe(false);
+      expect(result.current.data).toBe(EXECUTION_OPTIONS_RESPONSE);
+    });
+    expect(result.current.data?.providers).toEqual([]);
+  });
+
   it("does not leak the stored pair into a different provider's query", async () => {
     const fetchMock = crewDefaultsFetchMock({
       ok: true,
@@ -206,7 +264,7 @@ describe("useSystemExecutionOptions crew-defaults preload", () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(() =>
       neverResolves(),
     );
-    const { wrapper } = createQueryClientTestHarness();
+    const { queryClient, wrapper } = createQueryClientTestHarness();
 
     const { result } = renderHook(
       () => useSystemExecutionOptions({ providerId: "some-other-provider" }),
@@ -214,7 +272,7 @@ describe("useSystemExecutionOptions crew-defaults preload", () => {
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitForCrewDefaultsSettled(queryClient);
     expect(result.current.data).toBeUndefined();
   });
 
@@ -226,14 +284,14 @@ describe("useSystemExecutionOptions crew-defaults preload", () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(() =>
       neverResolves(),
     );
-    const { wrapper } = createQueryClientTestHarness();
+    const { queryClient, wrapper } = createQueryClientTestHarness();
 
     const { result } = renderHook(() => useSystemExecutionOptions({}), {
       wrapper,
     });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitForCrewDefaultsSettled(queryClient);
     expect(result.current.data).toBeUndefined();
     expect(result.current.isPending).toBe(true);
   });

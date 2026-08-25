@@ -64,6 +64,7 @@ export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const ONBOARDING_AGENTS_QUERY_KEY = "onboardingAgents";
 export const ONBOARDING_REPOS_QUERY_KEY = "onboardingRepos";
+export const CREW_DEFAULTS_QUERY_KEY = "crewDefaults";
 export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
 export const SKILL_CONTENT_QUERY_KEY = "skillContent";
@@ -458,6 +459,7 @@ export type OnboardingAgentsQueryKey = readonly [
 export type OnboardingReposQueryKey = readonly [
   typeof ONBOARDING_REPOS_QUERY_KEY,
 ];
+export type CrewDefaultsQueryKey = readonly [typeof CREW_DEFAULTS_QUERY_KEY];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
   string | null,
@@ -1096,6 +1098,10 @@ export function onboardingAgentsQueryKey(
 
 export function onboardingReposQueryKey(): OnboardingReposQueryKey {
   return [ONBOARDING_REPOS_QUERY_KEY];
+}
+
+export function crewDefaultsQueryKey(): CrewDefaultsQueryKey {
+  return [CREW_DEFAULTS_QUERY_KEY];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {
