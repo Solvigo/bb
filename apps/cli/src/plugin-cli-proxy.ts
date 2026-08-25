@@ -20,7 +20,11 @@ const CONTRIBUTIONS_TIMEOUT_MS = 2000;
 const TIMEOUT_RETRY_MULTIPLIER = 2;
 
 /** The distinct reasons `fetchPluginCliContributions` can fail to reach bb. */
-export type PluginCliUnreachableCause = "timeout" | "refused" | "no-address";
+export type PluginCliUnreachableCause =
+  | "timeout"
+  | "refused"
+  | "no-address"
+  | "unknown";
 
 /**
  * Result of asking the server for plugin CLI contributions. "unreachable"
@@ -32,17 +36,25 @@ export type PluginCliUnreachableCause = "timeout" | "refused" | "no-address";
  * "unreachable" itself carries a `cause` because a slow-to-boot server, a
  * refused connection, and a bad/absent address are different situations that
  * warrant different advice — collapsing them into one message misdiagnoses
- * whichever two weren't the actual cause. `cause: "timeout"` reflects both
- * attempts having timed out (see the retry below); `timeoutsMs` then carries
- * each attempt's timeout for the caller to report.
+ * whichever two weren't the actual cause. "unknown" is the honest fallback
+ * for an error shape none of the other three recognize (e.g. ECONNRESET, a
+ * TLS failure): it must never be reported as "no-address", since that names
+ * a specific cause the evidence doesn't support. `cause: "timeout"` reflects
+ * both attempts having timed out (see the retry below); `timeoutsMs` is
+ * required alongside it — every other cause carries an optional `detail`
+ * instead, since only "timeout" always has two known durations to report.
  */
 export type PluginCliContributionsResult =
   | { outcome: "ok"; contributions: PluginCliContributionEntry[] }
   | {
       outcome: "unreachable";
-      cause: PluginCliUnreachableCause;
+      cause: "timeout";
+      timeoutsMs: readonly [number, number];
+    }
+  | {
+      outcome: "unreachable";
+      cause: "refused" | "no-address" | "unknown";
       detail?: string;
-      timeoutsMs?: readonly [number, number];
     }
   | { outcome: "invalid" };
 
@@ -75,7 +87,10 @@ function errorMessage(error: unknown): string | undefined {
  * rejects with a "TimeoutError" (name-checked rather than instanceof-checked
  * since Node's DOMException doesn't extend Error); Node's fetch wraps a
  * refused/unresolvable connection in a TypeError whose `.cause` carries the
- * underlying errno code.
+ * underlying errno code. "no-address" is scoped strictly to the codes that
+ * actually mean "there is no address to try" (DNS failure, or Node's own
+ * ERR_INVALID_URL for a malformed base URL) — anything else (ECONNRESET, a
+ * TLS failure, or any other shape) is "unknown" rather than a guess.
  */
 function classifyUnreachableError(error: unknown): {
   cause: PluginCliUnreachableCause;
@@ -93,10 +108,10 @@ function classifyUnreachableError(error: unknown): {
   if (code === "ECONNREFUSED") {
     return { cause: "refused", detail: errorMessage(cause) };
   }
-  if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN" || code === "ERR_INVALID_URL") {
     return { cause: "no-address", detail: errorMessage(cause) };
   }
-  return { cause: "no-address", detail: errorMessage(error) };
+  return { cause: "unknown", detail: errorMessage(cause) ?? errorMessage(error) };
 }
 
 async function requestPluginCliContributions(
@@ -145,7 +160,7 @@ export async function fetchPluginCliContributions(
       return {
         outcome: "unreachable",
         cause: "timeout",
-        timeoutsMs: [timeoutMs, retryTimeoutMs],
+        timeoutsMs: [timeoutMs, retryTimeoutMs] as const,
       };
     }
   }

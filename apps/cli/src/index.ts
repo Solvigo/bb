@@ -100,8 +100,7 @@ registerGuideCommand(program);
 registerVoiceCommands(program, getUrl);
 
 /** Format a timeout in whole or one-decimal seconds for an error message. */
-function formatWaitSeconds(ms: number | undefined): string {
-  if (ms === undefined) return "an unknown time";
+function formatWaitSeconds(ms: number): string {
   const seconds = ms / 1000;
   return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
 }
@@ -127,12 +126,13 @@ async function tryPluginCommandProxy(): Promise<void> {
     // The candidate may be a plugin command (`bb connect` on a fresh
     // machine is the canonical case) — only the running server can say, so
     // a dead server must not degrade into commander's "unknown command".
-    // The three unreachable causes get their own message: a booting server
+    // Each unreachable cause gets its own message: a booting server
     // (timeout) is not proof of anything, unlike a refused connection or an
-    // address that never resolved.
+    // address that never resolved — and an unrecognized error shape gets a
+    // neutral message rather than a guessed-at cause.
     const url = getUrl();
     if (result.cause === "timeout") {
-      const [firstMs, secondMs] = result.timeoutsMs ?? [];
+      const [firstMs, secondMs] = result.timeoutsMs;
       console.error(
         `bb hasn't answered yet (waited ${formatWaitSeconds(firstMs)}, then ${formatWaitSeconds(secondMs)}) — ` +
           `it may still be starting; that is not proof it's down. Check ${url} before concluding anything.`,
@@ -141,9 +141,13 @@ async function tryPluginCommandProxy(): Promise<void> {
       console.error(
         `nothing is listening at ${url} — bb isn't running there. Open the bb app (or start the instance), then re-run.`,
       );
-    } else {
+    } else if (result.cause === "no-address") {
       console.error(
         `bb couldn't resolve an address for ${url}${result.detail ? ` (${result.detail})` : ""} — check the URL, then re-run.`,
+      );
+    } else {
+      console.error(
+        `bb couldn't reach ${url}${result.detail ? ` (${result.detail})` : ""} — the cause isn't clear; check the connection, then re-run.`,
       );
     }
     process.exit(1);
