@@ -187,7 +187,7 @@ function resetSidebarResizeDocumentState(): void {
 }
 
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
-  "/": { title: "bb" },
+  "/": { title: PRODUCT_NAME },
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
