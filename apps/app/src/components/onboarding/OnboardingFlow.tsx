@@ -415,15 +415,15 @@ export function OnboardingFlow({
     step === 0
       ? nothingInstalled
         ? "Install a coding agent"
-        : "bb uses your existing coding agents"
+        : "Solvigo Airways uses your existing coding agents"
       : "Add your projects";
 
   const description =
     step === 0
       ? nothingInstalled
-        ? "bb has no inference of its own. It runs coding agent CLIs on your computer and bills usage to their plans. Install one to get started."
+        ? "Solvigo Airways has no inference of its own. It runs coding agent CLIs on your computer and bills usage to their plans. Install one to get started."
         : "It runs the agents below locally, so inference is billed to their plans."
-      : "bb works inside your code. Add the folders you want it to work in. You can add more any time.";
+      : "Solvigo Airways works inside your code. Add the folders you want it to work in. You can add more any time.";
 
   return (
     <Dialog

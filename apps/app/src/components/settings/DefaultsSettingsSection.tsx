@@ -36,7 +36,7 @@ export function DefaultsSettingsSection() {
               Nothing is stored yet — this is what would be resolved
             </p>
             <p className="leading-relaxed text-muted-foreground">
-              bb has no saved default to show you. It picks one at the moment an
+              Solvigo Airways has no saved default to show you. It picks one at the moment an
               agent is created, by asking a provider for its catalogue. Below is
               the answer that resolution gives on this instance right now.
             </p>

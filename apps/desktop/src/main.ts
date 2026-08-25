@@ -1335,7 +1335,7 @@ async function loadLogViewerWindow(
     minHeight: 520,
     minWidth: 840,
     show: false,
-    title: "bb - Server & Daemon Logs",
+    title: "Solvigo Airways - Server & Daemon Logs",
     titleBarStyle: "default",
     webPreferences: {
       contextIsolation: true,
@@ -1427,7 +1427,7 @@ async function loadLoadingView(): Promise<void> {
       viewModel: {
         kind: "loading",
         message: "Starting local services and opening the bb workspace.",
-        title: "Opening bb",
+        title: "Opening Solvigo Airways",
       },
     }),
   });

@@ -32,7 +32,7 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
   skill: {
     prefix: CREATE_SKILL_PROMPT,
     explainer:
-      "Write a skill once, and every agent in bb can run it, whatever the provider.",
+      "Write a skill once, and every agent in Solvigo Airways can run it, whatever the provider.",
     examples: [
       {
         label: "PR review",

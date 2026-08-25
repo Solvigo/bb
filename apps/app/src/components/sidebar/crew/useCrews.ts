@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { wsManager } from "@/lib/ws";
 
 export interface CrewLead {
@@ -150,66 +150,99 @@ export interface CrewsState {
   reload: () => void;
 }
 
+/**
+ * ONE fleet read, shared by every surface that asks.
+ *
+ * Each caller used to own its own fetch and its own `loaded` flag, and that is
+ * not merely wasteful — it lets two surfaces disagree about the same fact at
+ * the same instant. The home screen and the rail did exactly that in front of
+ * the Captain: the rail listed a crew and its leads while the home beside it
+ * said "No crews yet", because the home's second, younger copy of this hook had
+ * not finished reading yet. Two reads of one truth is two truths.
+ */
+let state: CrewsSnapshot = { crews: [], loaded: false, failed: false };
+const subscribers = new Set<() => void>();
+let started = false;
+let disposeSources: (() => void) | null = null;
+
+interface CrewsSnapshot {
+  crews: Crew[];
+  loaded: boolean;
+  failed: boolean;
+}
+
+function publish(next: CrewsSnapshot): void {
+  state = next;
+  for (const notify of subscribers) notify();
+}
+
+async function loadOnce(): Promise<void> {
+  const raw = await readJson<unknown>("/api/v1/threads?archived=false");
+  // A read that fails still RESOLVES the question: a surface must be able to
+  // say it could not read the fleet. Returning early here left `loaded` false
+  // for the life of the session, so one failed fetch showed a spinner that
+  // never stopped — a hang is a lie in the same way invented data is.
+  if (raw == null) {
+    publish({ ...state, loaded: true, failed: true });
+    return;
+  }
+  const threads = (
+    Array.isArray(raw)
+      ? raw
+      : ((raw as { threads?: unknown[] }).threads ??
+        (raw as { data?: unknown[] }).data ??
+        [])
+  ) as ThreadRow[];
+
+  // Publish the moment the SHAPE is known. The thread list answers in ~40ms;
+  // the plugin's rank and report calls take the best part of a second between
+  // them, and waiting on both put a spinner in front of data already in hand.
+  // Ranks and working states settle in a second pass — until they do, a lead
+  // reads as standing by rather than being guessed at.
+  publish({ crews: assembleCrews(threads, null, null), loaded: true, failed: false });
+
+  const [fleet, board] = await Promise.all([
+    crewRpc<{ rows: FleetRow[] }>("crew_fleet"),
+    crewRpc<{ rows: BoardRow[] }>("crew_board"),
+  ]);
+  publish({ crews: assembleCrews(threads, fleet, board), loaded: true, failed: false });
+}
+
+function startSources(): void {
+  if (started) return;
+  started = true;
+  void loadOnce();
+  const offSignal = wsManager.onPluginSignal((s) => {
+    if (s.pluginId === "crew") void loadOnce();
+  });
+  const offChanged = wsManager.onChanged((m) => {
+    if (m.entity === "thread") void loadOnce();
+  });
+  disposeSources = () => {
+    offSignal();
+    offChanged();
+    started = false;
+    disposeSources = null;
+  };
+}
+
+function subscribe(notify: () => void): () => void {
+  subscribers.add(notify);
+  startSources();
+  return () => {
+    subscribers.delete(notify);
+    // The last surface let go: stop listening, but KEEP the snapshot. The next
+    // surface to mount shows the fleet it already knows about and refreshes
+    // underneath, instead of flashing an empty fleet it has no reason to claim.
+    if (subscribers.size === 0) disposeSources?.();
+  };
+}
+
+export function reloadCrews(): void {
+  void loadOnce();
+}
+
 export function useCrews(): CrewsState {
-  const [crews, setCrews] = useState<Crew[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const reload = useCallback(() => setAttempt((n) => n + 1), []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      const raw = await readJson<unknown>("/api/v1/threads?archived=false");
-      // A read that fails still RESOLVES the question: the section must say it
-      // could not read the fleet. Returning early here left `loaded` false for
-      // the life of the session, so one failed fetch showed a spinner that
-      // never stopped — a hang is a lie in the same way invented data is.
-      if (raw == null) {
-        if (cancelled) return;
-        setFailed(true);
-        setLoaded(true);
-        return;
-      }
-      const threads = (
-        Array.isArray(raw)
-          ? raw
-          : ((raw as { threads?: unknown[] }).threads ??
-            (raw as { data?: unknown[] }).data ??
-            [])
-      ) as ThreadRow[];
-
-      // Show the crews the moment their SHAPE is known. The thread list answers
-      // in ~40ms; the plugin's rank and report RPCs take the best part of a
-      // second between them, and waiting on both put a spinner in front of data
-      // already in hand. Ranks and working states settle in a second pass —
-      // until they do, a lead simply reads as standing by rather than guessing.
-      if (cancelled) return;
-      setCrews(assembleCrews(threads, null, null));
-      setFailed(false);
-      setLoaded(true);
-
-      const [fleet, board] = await Promise.all([
-        crewRpc<{ rows: FleetRow[] }>("crew_fleet"),
-        crewRpc<{ rows: BoardRow[] }>("crew_board"),
-      ]);
-      if (cancelled) return;
-      setCrews(assembleCrews(threads, fleet, board));
-    };
-
-    void load();
-    const offSignal = wsManager.onPluginSignal((s) => {
-      if (s.pluginId === "crew") void load();
-    });
-    const offChanged = wsManager.onChanged((m) => {
-      if (m.entity === "thread") void load();
-    });
-    return () => {
-      cancelled = true;
-      offSignal();
-      offChanged();
-    };
-  }, [attempt]);
-
-  return { crews, loaded, failed, reload };
+  const snapshot = useSyncExternalStore(subscribe, () => state, () => state);
+  return { ...snapshot, reload: reloadCrews };
 }

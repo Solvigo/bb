@@ -67,7 +67,7 @@ function CrewCard({ crew }: { crew: Crew }) {
  * click away, because an escape hatch that does not exist is not a choice.
  */
 export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
-  const { crews } = useCrews();
+  const { crews, loaded, failed } = useCrews();
   const { createCrew, creating, error } = useCreateCrew();
   const flying = crews.filter((crew) =>
     crew.leads.some((lead) => lead.working),
@@ -86,12 +86,20 @@ export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
           <h1 className="text-lg font-semibold text-foreground">
             Solvigo Airways
           </h1>
+          {/* Never claim an empty fleet before the fleet has been read. This
+              screen once said "No crews yet" beside a rail listing a crew and
+              its leads, at the same instant, because it was answering from a
+              read that had not finished. */}
           <p className="text-[13px] text-muted-foreground">
-            {crews.length === 0
-              ? "No crews yet."
-              : flying > 0
-                ? `${flying} of ${crews.length} ${crews.length === 1 ? "crew is" : "crews are"} flying.`
-                : `${crews.length} ${crews.length === 1 ? "crew" : "crews"}, all standing by.`}
+            {!loaded
+              ? "Reading the fleet…"
+              : failed && crews.length === 0
+                ? "Couldn't read the fleet."
+                : crews.length === 0
+                  ? "No crews yet."
+                  : flying > 0
+                    ? `${flying} of ${crews.length} ${crews.length === 1 ? "crew is" : "crews are"} flying.`
+                    : `${crews.length} ${crews.length === 1 ? "crew" : "crews"}, all standing by.`}
           </p>
         </div>
       </div>

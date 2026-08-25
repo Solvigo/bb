@@ -172,7 +172,7 @@ export function CatalogPluginDetailBanner({
     <PluginBannerBar
       tone="warning"
       icon="AlertTriangle"
-      title="Update bb to install this plugin"
+      title="Update Solvigo Airways to install this plugin"
       detail={entry.incompatibleReason}
     />
   );

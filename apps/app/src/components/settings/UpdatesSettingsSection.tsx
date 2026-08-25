@@ -731,7 +731,7 @@ export function UpdatesSettingsSection() {
   return (
     <>
       <UpdatesSection
-        title="bb"
+        title="Solvigo Airways"
         footnote="Connected machines follow the server version automatically."
         action={
           <>
