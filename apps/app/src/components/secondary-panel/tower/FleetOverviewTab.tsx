@@ -830,6 +830,14 @@ export function FleetOverviewTab({
       <div className="@container/board min-h-0 flex-1 overflow-auto pt-3">
         {(fleet.loading || !crewKnown) && rows.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">loading leads…</div>
+        ) : fleet.timedOut && rows.length === 0 ? (
+          // Slow and broken need different words. This machine also runs the
+          // fleet's CI, so a late answer is a normal condition here rather than
+          // evidence of a fault — and a spinner that never stops would say
+          // neither.
+          <div className="px-4 py-6 text-tower-fg-faint">
+            <span className="italic">The fleet hasn&apos;t answered yet.</span>
+          </div>
         ) : rows.length === 0 && unassigned.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">
             {viewerRole === "commander"

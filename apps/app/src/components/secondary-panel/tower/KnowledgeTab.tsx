@@ -94,11 +94,20 @@ function SummaryBlock({ theme, curator }: { theme: string; curator: string | nul
 }
 
 function EntryBody({ subject }: { subject: string }) {
-  const { data, loading } = useCrewRpc<HeadResult>("knowledge", "knowledge_head", {
-    subject,
-  });
+  const { data, loading, timedOut } = useCrewRpc<HeadResult>(
+    "knowledge",
+    "knowledge_head",
+    { subject },
+  );
   if (loading && !data) {
     return <div className="px-3 pb-3 text-[12px] italic text-tower-fg-faint">loading…</div>;
+  }
+  if (timedOut && !data) {
+    return (
+      <div className="px-3 pb-3 text-[12px] italic text-tower-fg-faint">
+        No answer yet — the store is slow rather than empty.
+      </div>
+    );
   }
   return (
     <div className="whitespace-pre-wrap px-3 pb-3 text-[12px] leading-relaxed text-tower-fg-body">

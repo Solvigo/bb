@@ -170,7 +170,7 @@ export function ClearanceTab({
   /** When set, show only demands raised by this agent (its own clearance). */
   scopeThreadId?: string;
 } = {}) {
-  const { data, error, loading, ageSeconds } =
+  const { data, error, loading, timedOut, ageSeconds } =
     useCrewRpc<DemandsResult>("crew", "crew_demands");
   const open = (data?.open ?? []).filter(
     (d) => !scopeThreadId || d.threadId === scopeThreadId,
@@ -195,6 +195,12 @@ export function ClearanceTab({
         <div className="min-h-0 overflow-y-auto border-r border-tower-border bg-tower-bg px-3 py-3.5">
           {loading && open.length === 0 ? (
             <div className="italic text-tower-fg-faint">loading…</div>
+          ) : timedOut && open.length === 0 ? (
+            // "A clear desk" is a strong claim. Never make it on a read that
+            // never came back — an unanswered question is not an empty one.
+            <div className="italic text-tower-fg-faint">
+              No answer yet, so this may not be everything.
+            </div>
           ) : open.length === 0 ? (
             <div className="italic text-tower-fg-faint">
               Nothing needs you. A clear desk.
