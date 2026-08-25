@@ -117,7 +117,7 @@ export function SpFocusView({
             commander's surface is, so the recursion holds visually too */}
         <div className="min-h-0 p-2 pl-0">
           <div className="h-full min-h-0 overflow-hidden rounded-xl border border-tower-input-border bg-tower-render shadow-[0_6px_18px_-10px_rgba(0,0,0,0.55)]">
-            <TowerRenderSurface scopeThreadId={threadId} scopeLabel={label} />
+            <TowerRenderSurface scopeThreadId={threadId} viewerRole="lead" />
           </div>
         </div>
       </div>

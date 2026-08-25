@@ -1,76 +1,104 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { PinnedIconTab } from "../PinnedIconTab";
-import { FleetOverviewTab } from "./FleetOverviewTab";
-import { ClearanceTab } from "./ClearanceTab";
-import { KnowledgeTab } from "./KnowledgeTab";
+import {
+  emitAgentTeardown,
+  listAgentSurfaceTabs,
+  type ViewerRole,
+} from "./agentSurfaceRegistry";
+import { registerBuiltInAgentSurfaceTabs } from "./builtInAgentSurfaceTabs";
+
+registerBuiltInAgentSurfaceTabs();
 
 /**
- * The recursive rendering surface. The top-level shell is a commander chat + a
- * rendering surface with tabs; drilling into an agent gives the SAME shell scoped
- * to that agent — its own chat + its own rendering surface. This is that surface:
- * a tab host (Crew / Clearance / Knowledge) scoped to one agent, so every agent
- * has a place to bring things up, recursively (its Crew tab drills into its own
- * sorties, which open their surfaces again).
+ * The recursive rendering surface. The top-level shell is a commander chat plus
+ * a rendering surface with tabs; drilling into an agent gives the SAME shell
+ * scoped to that agent — its own chat, its own rendering surface. This is that
+ * surface: a tab host scoped to one agent, so every agent has a place to bring
+ * things up, recursively.
  *
- * It wears the SAME chrome as the pilot's own surface — the shared PinnedIconTab
- * in a 38px row — rather than a lookalike. A recursion is only honest if the
- * inner shell really is the outer one.
+ * It wears the SAME chrome as the outer surface — the shared PinnedIconTab in a
+ * 38px row — rather than a lookalike. A recursion is only honest if the inner
+ * shell really is the outer one.
+ *
+ * Its tabs come from a REGISTRY, not a literal, so a surface built elsewhere
+ * (the embedded browser is the first) registers rather than being hardcoded
+ * here. The built-in three register through the same front door.
  */
-type SurfaceView = "crew" | "clearance" | "knowledge";
-
-const TABS: {
-  id: SurfaceView;
-  label: string;
-  icon: "Layers" | "CircleCheck" | "Brain";
-  title: string;
-}[] = [
-  { id: "crew", label: "Crew", icon: "Layers", title: "Crew overview" },
-  { id: "clearance", label: "Clearance", icon: "CircleCheck", title: "Yours to clear" },
-  { id: "knowledge", label: "Knowledge", icon: "Brain", title: "Knowledge" },
-];
-
 export function TowerRenderSurface({
   scopeThreadId,
-  scopeLabel,
+  viewerRole = "lead",
 }: {
-  /** The agent this surface belongs to. Omit for the root/pilot surface. */
-  scopeThreadId?: string;
-  /** The agent's handle — used to default its Knowledge to its own theme. */
-  scopeLabel?: string;
+  /** The agent this surface belongs to — in this harness, its thread id. */
+  scopeThreadId: string;
+  /** Where this agent sits in its crew; handed to every registered tab. */
+  viewerRole?: ViewerRole;
 }) {
-  const [view, setView] = useState<SurfaceView>("crew");
+  const tabs = listAgentSurfaceTabs();
+  const [view, setView] = useState(() => tabs[0]?.id ?? "crew");
+  // A tab is mounted once it has been opened, and stays mounted after that:
+  // switching away pauses it, it does not destroy it. Tabs the operator has
+  // never opened are never mounted at all, so a surface with an expensive tab
+  // does not pay for it until it is asked for.
+  const [mounted, setMounted] = useState<ReadonlySet<string>>(
+    () => new Set(tabs[0] ? [tabs[0].id] : []),
+  );
+  useEffect(() => {
+    setMounted((current) =>
+      current.has(view) ? current : new Set([...current, view]),
+    );
+  }, [view]);
+
+  // This surface is done with the agent: every tab holding something for it —
+  // a browser context, a stream, a session — must let go.
+  const agentIdRef = useRef(scopeThreadId);
+  agentIdRef.current = scopeThreadId;
+  useEffect(() => {
+    const agentId = scopeThreadId;
+    return () => emitAgentTeardown(agentId);
+  }, [scopeThreadId]);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
       <div
         className="flex h-[38px] shrink-0 items-center gap-1 border-b border-tower-header-border bg-tower-header px-2 text-tower-tab"
         role="toolbar"
-        aria-label={
-          scopeLabel ? `${scopeLabel} panel views` : "Agent panel views"
-        }
+        aria-label="Agent panel views"
       >
-        {TABS.map((t) => (
+        {tabs.map((tab) => (
           <PinnedIconTab
-            key={t.id}
-            ariaLabel={`Show ${t.label.toLowerCase()}`}
-            isActive={view === t.id}
-            label={t.label}
-            leadingVisual={<Icon name={t.icon} />}
-            onClick={() => setView(t.id)}
-            title={t.title}
+            key={tab.id}
+            ariaLabel={`Show ${tab.label.toLowerCase()}`}
+            isActive={view === tab.id}
+            label={tab.label}
+            leadingVisual={<Icon name={tab.icon} />}
+            onClick={() => setView(tab.id)}
+            title={tab.title}
             usesDesktopChrome={false}
             activeTreatment="fill"
           />
         ))}
       </div>
-      <div className="min-h-0 flex-1">
-        {view === "crew" ? (
-          <FleetOverviewTab scopeThreadId={scopeThreadId} />
-        ) : view === "clearance" ? (
-          <ClearanceTab scopeThreadId={scopeThreadId} />
-        ) : (
-          <KnowledgeTab scopeTheme={scopeLabel} />
-        )}
+      <div className="relative min-h-0 flex-1">
+        {tabs
+          .filter((tab) => mounted.has(tab.id))
+          .map((tab) => {
+            const isVisible = view === tab.id;
+            const Tab = tab.component;
+            return (
+              <div
+                key={tab.id}
+                className={isVisible ? "h-full min-h-0" : "hidden"}
+                aria-hidden={isVisible ? undefined : true}
+              >
+                <Tab
+                  agentId={scopeThreadId}
+                  viewerRole={viewerRole}
+                  visible={isVisible}
+                />
+              </div>
+            );
+          })}
       </div>
     </div>
   );
