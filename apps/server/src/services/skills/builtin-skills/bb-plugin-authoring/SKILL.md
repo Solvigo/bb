@@ -839,6 +839,34 @@ export default definePluginApp((app) => {
 
 ### A control in the thread header
 
+`app.slots.experimental_agentSurfaceTab` adds a tab to every agent's rendering
+surface — the area beside an agent's chat, which renders at commander, lead and
+sortie level:
+
+```tsx
+app.slots.experimental_agentSurfaceTab({
+  id: "browser",
+  label: "Browser",
+  icon: "Globe",              // a BB icon NAME; unknown names fall back
+  title: "Browser",
+  component: ({ agentId, visible, viewerRole, onTeardown }) => { ... },
+});
+```
+
+`agentId` IS the agent's thread id — an agent is a thread in bb, so per-agent
+state keyed by anything else desynchronises. Two behaviours are contract, not
+implementation: your tab MOUNTS ON FIRST OPEN AND STAYS MOUNTED, so
+`visible: false` means pause streams and keep your context rather than dispose;
+and disposal has exactly one signal, `onTeardown(dispose)`, which fires on
+surface unmount and when the agent is archived or retired. The host narrows that
+signal to your agent before you see it, so a disposer never runs because a
+different agent's surface closed. `viewerRole` names the LEVEL you are rendered
+at — it is presentational and must not gate anything; drive authority stays
+derived server-side. Your tab id is namespaced by your plugin, so it cannot
+collide with a built-in or another plugin. Do your session setup on first mount,
+never at module load: module-scope work inside an import cycle takes the host
+down, not just you.
+
 `app.slots.experimental_threadHeaderAction` renders a component in the thread
 header's action row. It replaced the older backend-only
 `bb.ui.registerThreadAction`, so a control that needs to draw live state (a
