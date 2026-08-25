@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import * as pluginSdkApp from "@bb/plugin-sdk/app";
 import {
+  type PluginAgentSurfaceTabProps,
   type BbPluginApi,
   type PluginAppBuilder,
   type PluginAppSlots,
@@ -157,6 +158,7 @@ type SlotPropsByName = {
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
+  experimental_agentSurfaceTab: PluginAgentSurfaceTabProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   fileOpener: PluginFileOpenerProps;
   messageDirective: PluginMessageDirectiveProps;
@@ -230,6 +232,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "threadId",
     "projectId",
     "isCompactViewport",
+  ],
+  experimental_agentSurfaceTab: [
+    "agentId",
+    "visible",
+    "viewerRole",
+    "onTeardown",
   ],
   fileOpener: ["path", "source"],
   messageDirective: [
