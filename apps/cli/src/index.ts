@@ -99,6 +99,13 @@ registerSkillCommands(program, getUrl, getContext);
 registerGuideCommand(program);
 registerVoiceCommands(program, getUrl);
 
+/** Format a timeout in whole or one-decimal seconds for an error message. */
+function formatWaitSeconds(ms: number | undefined): string {
+  if (ms === undefined) return "an unknown time";
+  const seconds = ms / 1000;
+  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
+}
+
 /**
  * Unknown top-level commands may be plugin-contributed `bb` subcommands
  * (design §4.4): before letting commander error, ask the server for plugin
@@ -120,9 +127,25 @@ async function tryPluginCommandProxy(): Promise<void> {
     // The candidate may be a plugin command (`bb connect` on a fresh
     // machine is the canonical case) — only the running server can say, so
     // a dead server must not degrade into commander's "unknown command".
-    console.error(
-      "bb isn't running — open the bb app, then re-run this command.",
-    );
+    // The three unreachable causes get their own message: a booting server
+    // (timeout) is not proof of anything, unlike a refused connection or an
+    // address that never resolved.
+    const url = getUrl();
+    if (result.cause === "timeout") {
+      const [firstMs, secondMs] = result.timeoutsMs ?? [];
+      console.error(
+        `bb hasn't answered yet (waited ${formatWaitSeconds(firstMs)}, then ${formatWaitSeconds(secondMs)}) — ` +
+          `it may still be starting; that is not proof it's down. Check ${url} before concluding anything.`,
+      );
+    } else if (result.cause === "refused") {
+      console.error(
+        `nothing is listening at ${url} — bb isn't running there. Open the bb app (or start the instance), then re-run.`,
+      );
+    } else {
+      console.error(
+        `bb couldn't resolve an address for ${url}${result.detail ? ` (${result.detail})` : ""} — check the URL, then re-run.`,
+      );
+    }
     process.exit(1);
   }
   if (result.outcome === "invalid") return;
