@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { useCrews, type Crew } from "./useCrews";
 import { useCreateCrew } from "./useCreateCrew";
 
@@ -18,10 +19,13 @@ function CrewEntry({
 }) {
   const [open, setOpen] = useState(true);
   const anyWorking = crew.leads.some((l) => l.working);
+  // Every thread link carries its project scope. The projectless route resolves
+  // to the PERSONAL project, so a lead on a real project rendered "belongs to a
+  // different project" and the rail listed agents it could not open. The helper
+  // already knows which form each project needs; hand-building the path is what
+  // let the two drift apart.
   const threadPath = (threadId: string) =>
-    crew.projectId
-      ? `/projects/${crew.projectId}/threads/${threadId}`
-      : `/threads/${threadId}`;
+    getThreadRoutePath({ projectId: crew.projectId, threadId });
   return (
     <li>
       <div className="flex items-center gap-1">

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import charter from "./crewSetupCharter.md?raw";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { AGENT_PROVIDER } from "@/lib/agentProvider";
+import { getThreadRoutePath } from "@/lib/route-paths";
 
 /** A setup thread keeps this title until its crew is named — that is how a
  *  second press finds the unfinished interview instead of starting another. */
@@ -59,12 +60,25 @@ export function useCreateCrew(): {
             : ((existing as { threads?: unknown[] })?.threads ??
               (existing as { data?: unknown[] })?.data ??
               [])
-        ) as { id: string; title?: string | null; parentThreadId?: string | null }[];
+        ) as {
+          id: string;
+          projectId?: string;
+          title?: string | null;
+          parentThreadId?: string | null;
+        }[];
         const unfinished = threads.find(
           (t) => !t.parentThreadId && t.title === SETUP_THREAD_TITLE,
         );
         if (unfinished) {
-          navigate(`/threads/${unfinished.id}`);
+          // Scoped, like every thread link: the projectless route resolves to
+          // the Personal project, which happens to be right for a setup
+          // commander and would be silently wrong the day it is not.
+          navigate(
+            getThreadRoutePath({
+              projectId: unfinished.projectId ?? PERSONAL_PROJECT_ID,
+              threadId: unfinished.id,
+            }),
+          );
           return;
         }
 
@@ -140,8 +154,13 @@ export function useCreateCrew(): {
           setError(body?.message ?? `Could not start the crew (${res.status}).`);
           return;
         }
-        const thread = (await res.json()) as { id: string };
-        navigate(`/threads/${thread.id}`);
+        const thread = (await res.json()) as { id: string; projectId?: string };
+        navigate(
+          getThreadRoutePath({
+            projectId: thread.projectId ?? projectId,
+            threadId: thread.id,
+          }),
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not start the crew.");
       } finally {

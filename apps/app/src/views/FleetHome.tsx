@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia";
 import {
   AirwaysMark,
@@ -12,7 +13,10 @@ function CrewCard({ crew }: { crew: Crew }) {
   const working = crew.leads.filter((lead) => lead.working);
   return (
     <NavLink
-      to={`/threads/${crew.commanderThreadId}`}
+      to={getThreadRoutePath({
+        projectId: crew.projectId,
+        threadId: crew.commanderThreadId,
+      })}
       className="flex min-w-0 flex-col gap-3 rounded-xl border border-tower-input-border bg-tower-surface p-4 transition-colors hover:border-tower-accent"
     >
       <div className="flex min-w-0 items-start gap-2.5">
