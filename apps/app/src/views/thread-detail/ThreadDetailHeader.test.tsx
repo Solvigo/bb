@@ -245,7 +245,7 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={splitContext}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel="child"
+          childPillLabel="side chat"
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -265,13 +265,13 @@ describe("ThreadDetailHeader", () => {
     const activeTitle = screen.getByText("Focused thread");
     expect(activeTitle.classList).toContain("font-normal");
     expect(activeTitle.classList).not.toContain("font-medium");
-    expect(screen.getByText("child")).not.toBeNull();
+    expect(screen.getByText("side chat")).not.toBeNull();
 
     rerender(
       <PaneContext.Provider value={{ ...splitContext, isFocused: false }}>
         <ThreadDetailHeader
           actionsMenu={null}
-          childPillLabel="child"
+          childPillLabel="side chat"
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}

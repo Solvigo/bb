@@ -54,8 +54,13 @@ interface ThreadDetailHeaderProps {
    * while a narrow split hides their inline controls.
    */
   actionsMenu: ((includeResponsiveActions: boolean) => ReactNode) | null;
-  /** Pill shown beside the title for side chats and hierarchical child threads. */
-  childPillLabel: "child" | "side chat" | null;
+  /** Pill shown beside the title for a side chat, which is a kind, not a rank. */
+  childPillLabel: "side chat" | null;
+  /**
+   * Where this agent sits in its crew, rendered before the title. Null for a
+   * commander, which is the top of its own crew and has nothing above it.
+   */
+  crewContext?: ReactNode;
   isSecondaryPanelOpen: boolean;
   /** Closes this pane; only provided when the layout is split (>1 pane). */
   onClosePane?: () => void;
@@ -71,6 +76,7 @@ interface ThreadDetailHeaderProps {
 export function ThreadDetailHeader({
   actionsMenu,
   childPillLabel,
+  crewContext,
   isSecondaryPanelOpen,
   onClosePane,
   onOpenThreadGitAction,
@@ -168,15 +174,16 @@ export function ThreadDetailHeader({
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
         >
           {/* A root thread IS the commander — the emblem that never flies.
-              Child threads wear their own rank on the fleet board instead. */}
-          {childPillLabel === null ? (
+              Anything below it leads with its crew trail instead, so a deep
+              link says whose conversation this is before it says its name. */}
+          {crewContext ?? (
             <PlatedInsignia
               rank="commander"
               state="working"
               plate={26}
               title="Commander"
             />
-          ) : null}
+          )}
           <ThreadTitleMentions title={threadTitle} />
         </p>
       </div>

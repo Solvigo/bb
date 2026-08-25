@@ -69,6 +69,7 @@ import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { ThreadNotFound } from "./ThreadNotFound.js";
+import { CrewContextTrail } from "@/components/secondary-panel/tower/CrewContextTrail";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import {
   ThreadActionsMenu,
@@ -2308,8 +2309,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           }
         />
       )}
-      childPillLabel={
-        isSideChatThread ? "side chat" : parentThreadId ? "child" : null
+      childPillLabel={isSideChatThread ? "side chat" : null}
+      crewContext={
+        parentThreadId ? (
+          <CrewContextTrail parentThreadId={parentThreadId} />
+        ) : undefined
       }
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}
