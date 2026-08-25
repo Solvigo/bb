@@ -42,6 +42,7 @@ import {
   type PluginSidebarThreadPullRequestState,
   type PluginSidebarThreadSplit,
   type PluginSidebarThreadsState,
+  type PluginAgentSurfaceTabRegistration,
   type PluginThreadHeaderActionRegistration,
   type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
@@ -521,6 +522,7 @@ export interface CapturedPluginApp {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  agentSurfaceTabs: PluginAgentSurfaceTabRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
@@ -551,6 +553,7 @@ function collectRegistrations(
     sidebarFooterActions: [],
     threadLists: [],
     threadHeaderActions: [],
+    agentSurfaceTabs: [],
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
@@ -566,6 +569,7 @@ function collectRegistrations(
     sidebarFooterAction: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    agentSurfaceTab: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -696,6 +700,18 @@ function collectRegistrations(
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_agentSurfaceTab(registration) {
+        const kind = "slots.experimental_agentSurfaceTab";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.agentSurfaceTab, id);
+        captured.agentSurfaceTabs.push({
+          id,
+          label: requireNonEmptyString(kind, "label", registration.label),
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          title: requireNonEmptyString(kind, "title", registration.title),
           component: requireComponent(kind, registration.component),
         });
       },

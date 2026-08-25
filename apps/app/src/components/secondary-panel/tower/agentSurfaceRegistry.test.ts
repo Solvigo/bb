@@ -56,3 +56,28 @@ describe("the agent surface registry", () => {
     expect(seen).toEqual(["thr_one"]);
   });
 });
+
+describe("the teardown contract a plugin tab is handed", () => {
+  it("only disposes for its own agent, and stops once unsubscribed", () => {
+    // The emitter is fleet-wide; the surface narrows it per agent. This is the
+    // shape TowerRenderSurface hands each tab as `onTeardown`.
+    const registerFor = (agentId: string) => (dispose: () => void) =>
+      onAgentTeardown((torn) => {
+        if (torn === agentId) dispose();
+      });
+
+    const disposed: string[] = [];
+    const offA = registerFor("thr_a")(() => disposed.push("a"));
+    registerFor("thr_b")(() => disposed.push("b"));
+
+    emitAgentTeardown("thr_b");
+    expect(disposed).toEqual(["b"]);
+
+    emitAgentTeardown("thr_a");
+    expect(disposed).toEqual(["b", "a"]);
+
+    offA();
+    emitAgentTeardown("thr_a");
+    expect(disposed).toEqual(["b", "a"]);
+  });
+});

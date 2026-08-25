@@ -20,6 +20,13 @@ export interface AgentSurfaceTabProps {
    */
   visible: boolean;
   viewerRole: ViewerRole;
+  /**
+   * Register a disposer for this agent. It runs when the surface unmounts and
+   * when the agent is archived or retired — the second case is the one that
+   * matters, because an archived agent leaving a live session behind is how
+   * resources are orphaned. Returns an unsubscribe.
+   */
+  onTeardown(dispose: () => void): () => void;
 }
 
 export interface AgentSurfaceTab {

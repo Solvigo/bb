@@ -835,6 +835,43 @@ interface PluginMessageActionRegistration {
      */
     run(context: PluginMessageActionContext): void | Promise<void>;
 }
+/** Where in its crew the agent whose surface is being rendered sits. */
+type PluginAgentSurfaceViewerRole = "commander" | "lead" | "sortie";
+interface PluginAgentSurfaceTabProps {
+    /**
+     * The agent this surface belongs to. In bb an agent IS a thread, so this is
+     * its thread id: key everything per-agent by it, or the host and your tab
+     * will disagree about which agent they are looking at.
+     */
+    agentId: string;
+    /**
+     * False while another tab is selected. Your component STAYS MOUNTED when it
+     * goes false — pause streams and timers and keep your context. Disposal has
+     * exactly one signal, and this is not it (see `onTeardown`). The surface is
+     * recursive, rendering at commander, lead and sortie level, so visibility
+     * flips far more often than a tab that only ever appeared once would expect.
+     */
+    visible: boolean;
+    viewerRole: PluginAgentSurfaceViewerRole;
+    /**
+     * Register a disposer for this agent. It runs when the surface unmounts and
+     * when the agent is archived or retired — the second case is the one that
+     * matters, because an archived agent leaving a live session behind is how
+     * resources are orphaned. Returns an unsubscribe.
+     */
+    onTeardown(dispose: () => void): () => void;
+}
+interface PluginAgentSurfaceTabRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** The tab's visible text. */
+    label: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon: string;
+    /** Native tooltip on the tab control; does NOT name your component. */
+    title: string;
+    component: ComponentType<PluginAgentSurfaceTabProps>;
+}
 interface PluginAppSlots {
     homepageSection(registration: PluginHomepageSectionRegistration): void;
     settingsSection(registration: PluginSettingsSectionRegistration): void;
@@ -854,6 +891,12 @@ interface PluginAppSlots {
      * docs/api_to_audit.md.
      */
     experimental_threadHeaderAction(registration: PluginThreadHeaderActionRegistration): void;
+    /**
+     * Add a tab to every agent's rendering surface — the recursive area beside
+     * an agent's chat (see {@link PluginAgentSurfaceTabRegistration}).
+     * Experimental: see docs/api_to_audit.md.
+     */
+    experimental_agentSurfaceTab(registration: PluginAgentSurfaceTabRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
     messageDirective(registration: PluginMessageDirectiveRegistration): void;
     messageAction(registration: PluginMessageActionRegistration): void;
@@ -1441,4 +1484,4 @@ declare const experimental_useSidebarThreadPullRequest: (threadId: string) => Pl
 declare const experimental_useSidebarThreadSplit: (threadId: string) => PluginSidebarThreadSplit;
 
 export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, experimental_useSidebarThreadActions, experimental_useSidebarThreadPullRequest, experimental_useSidebarThreadSplit, experimental_useSidebarThreads, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentSurfaceTabProps, PluginAgentSurfaceTabRegistration, PluginAgentSurfaceViewerRole, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

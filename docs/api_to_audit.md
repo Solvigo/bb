@@ -5,6 +5,33 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `app.slots.experimental_agentSurfaceTab`
+
+**What it does.** Adds a tab to every agent's rendering surface — the recursive
+area beside an agent's chat, which renders at commander, lead and sortie level.
+The tab's component receives `agentId` (the agent's THREAD id — an agent is a
+thread in this app, so per-agent state keyed by anything else desynchronises),
+`visible`, `viewerRole`, and `onTeardown`.
+
+Two behaviours are contract, not implementation: a tab **mounts on first open
+and stays mounted**, so `visible: false` means pause streams and keep context
+rather than dispose; and disposal has exactly one signal, `onTeardown`, which
+fires on surface unmount and on the agent being archived or retired.
+
+Before stabilization, audit:
+
+- whether `viewerRole` should gate anything, or stay purely presentational —
+  drive authority is derived server-side and must not be inferred from it;
+- ordering and precedence when several plugins register tabs, and whether a
+  plugin may ever precede the built-ins;
+- what a tab is allowed to observe about an agent it was not opened on, given
+  the surface is recursive and the same tab renders at three levels;
+- the cost model of mount-once-then-keep across many agents in one session,
+  and whether an eviction policy is needed;
+- teardown ordering against plugin reload/disable/removal, and whether a
+  disposer that throws may block others;
+- validation and accessibility of `label`/`title`/`icon` in the 38px tab row.
+
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 
 Lets a plugin-lifetime content script set or clear one of its own status

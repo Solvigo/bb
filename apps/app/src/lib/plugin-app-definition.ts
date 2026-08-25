@@ -1,5 +1,6 @@
 import {
   type ComposerCustomization,
+  type PluginAgentSurfaceTabRegistration,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginContentScriptRegistration,
@@ -79,6 +80,7 @@ export function collectPluginAppRegistrations(
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const threadLists: PluginThreadListRegistration[] = [];
   const threadHeaderActions: PluginThreadHeaderActionRegistration[] = [];
+  const agentSurfaceTabs: PluginAgentSurfaceTabRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const messageDirectives: PluginMessageDirectiveRegistration[] = [];
   const messageActions: PluginMessageActionRegistration[] = [];
@@ -93,6 +95,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterAction: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    agentSurfaceTab: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -228,6 +231,18 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_agentSurfaceTab(registration) {
+        const kind = "slots.experimental_agentSurfaceTab";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.agentSurfaceTab, id);
+        agentSurfaceTabs.push({
+          id,
+          label: requireNonEmptyString(kind, "label", registration.label),
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       experimental_threadHeaderAction(registration) {
         const kind = "slots.experimental_threadHeaderAction";
         const id = requireSlotId(kind, registration?.id);
@@ -326,6 +341,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterActions,
     threadLists,
     threadHeaderActions,
+    agentSurfaceTabs,
     fileOpeners,
     messageDirectives,
     messageActions,
