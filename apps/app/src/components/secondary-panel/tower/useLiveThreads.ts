@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { wsManager } from "@/lib/ws";
 
+/**
+ * How long a background read waits before giving up. Neither of these surfaces
+ * makes a false claim on a hang — they hold their last value — but an unbounded
+ * fetch per card leaks a request that never resolves, and a board draws many.
+ */
+const READ_TIMEOUT_MS = 10_000;
+
 export interface LiveThread {
   projectId: string;
   providerId: string;
@@ -19,8 +26,10 @@ export function useLiveThreads(): Map<string, LiveThread> | null {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), READ_TIMEOUT_MS);
       try {
-        const res = await fetch("/api/v1/threads?archived=false");
+        const res = await fetch("/api/v1/threads?archived=false", { signal: abort.signal });
         const d: unknown = await res.json();
         const list = Array.isArray(d)
           ? d
@@ -46,6 +55,8 @@ export function useLiveThreads(): Map<string, LiveThread> | null {
         setThreads(next);
       } catch {
         /* keep the last set; a failed refresh must not blank a surface */
+      } finally {
+        clearTimeout(timer);
       }
     };
     void load();

@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { wsManager } from "@/lib/ws";
 
+/**
+ * How long a background read waits before giving up. Neither of these surfaces
+ * makes a false claim on a hang — they hold their last value — but an unbounded
+ * fetch per card leaks a request that never resolves, and a board draws many.
+ */
+const READ_TIMEOUT_MS = 10_000;
+
 export interface SortieActivity {
   /** true while the sortie's own turn is still running */
   working: boolean;
@@ -34,8 +41,10 @@ export function useSortieActivity(threadId: string | null): SortieActivity | nul
     }
     let cancelled = false;
     const load = async () => {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), READ_TIMEOUT_MS);
       try {
-        const res = await fetch(`/api/v1/threads/${threadId}/timeline`);
+        const res = await fetch(`/api/v1/threads/${threadId}/timeline`, { signal: abort.signal });
         const d = (await res.json()) as {
           rows?: TimelineRow[];
           activeThinking?: unknown;
@@ -61,6 +70,8 @@ export function useSortieActivity(threadId: string | null): SortieActivity | nul
         });
       } catch {
         /* keep the last line; a failed refresh must not blank a card */
+      } finally {
+        clearTimeout(timer);
       }
     };
     void load();
