@@ -121,7 +121,7 @@ export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
             {timedOut ? "Wait longer" : "Try again"}
           </Button>
         ) : null}
-        <Button onClick={createCrew} disabled={creating} size="sm">
+        <Button onClick={() => createCrew()} disabled={creating} size="sm">
           {creating ? "Standing up a crew…" : "New crew"}
         </Button>
         <Button onClick={onStartThread} size="sm" variant="ghost">

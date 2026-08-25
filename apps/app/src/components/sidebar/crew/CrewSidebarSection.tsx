@@ -113,7 +113,7 @@ export function NewCrewButton() {
     <div className="flex flex-col gap-1 px-2 group-data-[collapsible=icon]:hidden">
       <button
         type="button"
-        onClick={createCrew}
+        onClick={() => createCrew()}
         disabled={creating}
         data-testid="new-crew-button"
         className={cn(

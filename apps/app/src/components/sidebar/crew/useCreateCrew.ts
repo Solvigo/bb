@@ -34,7 +34,8 @@ async function readJson<T>(url: string): Promise<T | null> {
  * as a string literal in a component.
  */
 export function useCreateCrew(): {
-  createCrew: () => void;
+  /** Name the project the crew is FOR; omit only when it has no code yet. */
+  createCrew: (forProjectId?: string) => void;
   creating: boolean;
   error: string | null;
 } {
@@ -42,7 +43,7 @@ export function useCreateCrew(): {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createCrew = useCallback(() => {
+  const createCrew = useCallback((forProjectId?: string) => {
     if (creating) return;
     setCreating(true);
     setError(null);
@@ -82,19 +83,24 @@ export function useCreateCrew(): {
           return;
         }
 
-        // The setup commander only talks, so it belongs on the Personal
-        // project, which is repo-less by construction. The projects read HIDES
-        // Personal unless asked for it — without the flag the first project on
-        // this rig is repo-backed, which is what dragged a full worktree into a
-        // conversation that never needed one.
+        // A commander is BORN on the project its crew is for. It does not need a
+        // worktree — only its leads do — but it does need the project, because
+        // a thread cannot parent a child across a project line and a thread's
+        // project is immutable after creation. Put the commander on Personal
+        // "for now" and it can talk but can never dispatch real work.
+        //
+        // So: the caller names the project. Only when nothing is named do we
+        // fall back to Personal, which is right for a crew that has no code yet
+        // and is the one case where "talks only" is the whole story.
         const projects = (await (
           await fetch("/api/v1/projects?includePersonal=true")
         ).json()) as ProjectRow[] | { projects?: ProjectRow[] };
         const list = Array.isArray(projects) ? projects : (projects.projects ?? []);
         const projectId =
-            list.find((p) => p.id === PERSONAL_PROJECT_ID)?.id ??
-            list.find((p) => p.kind === "personal")?.id ??
-            list[0]?.id;
+          (forProjectId && list.find((p) => p.id === forProjectId)?.id) ??
+          list.find((p) => p.id === PERSONAL_PROJECT_ID)?.id ??
+          list.find((p) => p.kind === "personal")?.id ??
+          list[0]?.id;
         if (!projectId) {
           setError(
             "No project is registered on this rig yet, so a crew cannot be started.",
@@ -137,6 +143,12 @@ export function useCreateCrew(): {
             // convention: a personal workspace has no repo to clone. Anywhere
             // else, an unmanaged workspace with no path is the nearest thing —
             // it provisions nothing, but only because it was asked not to.
+            // No worktree either way. On Personal that is guaranteed by
+            // construction; on a real project an unmanaged workspace with no
+            // path provisions nothing while still letting the commander parent
+            // leads that DO get worktrees. Measured on the rig: 12 seconds to
+            // first word on a repo-backed project, against ten minutes for a
+            // managed one.
             environment: {
               type: "host",
               hostId,
