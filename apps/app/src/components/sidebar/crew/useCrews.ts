@@ -43,13 +43,25 @@ function agentName(raw: string): string {
   return raw.replace(/^(sp|plt|cm)[\s·-]+/i, "").replace(/^(sp|plt|cm)[-_]/i, "");
 }
 
+/**
+ * A read that always RESOLVES. A hung server is the case that matters: a fetch
+ * that never settles never rejects either, so a catch block alone left the
+ * sidebar reading "Reading the fleet…" for the life of the session. Observed
+ * for real — the rig's server wedged and every crew call hung past 20s.
+ */
+const READ_TIMEOUT_MS = 8_000;
+
 async function readJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), READ_TIMEOUT_MS);
   try {
-    const res = await fetch(url, init);
+    const res = await fetch(url, { ...init, signal: abort.signal });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
