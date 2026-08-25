@@ -61,6 +61,7 @@ import {
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
+import { PRODUCT_NAME } from "@/lib/product";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -444,7 +445,7 @@ function UserConversationMessage({
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
         sourceKind="system"
-        sourceName="BB"
+        sourceName={PRODUCT_NAME}
         sourceThreadId={null}
         sourceIsPluginSideChat={false}
         systemMessageKind={systemMessageKind}

@@ -82,9 +82,26 @@ interface QueueItem {
   /** the attempt this item is running on — absent until it is dispatched */
   lastAttempt: { threadId: string; state: string; at: string } | null;
 }
+/**
+ * The de-minimis summary. Chore rows are STRIPPED from `items` by the store and
+ * summarised here, so a board renders its real work exactly as before plus one
+ * quiet line — the Captain's rationale is that chores must never crowd real
+ * work, and a row per chore is precisely how they would.
+ *
+ * `null` means zero chores and renders nothing. `newestTitle` is already a
+ * plain string and may be empty, so it is rendered degenerate-safe rather than
+ * assumed to have content.
+ */
+interface ChoresSummary {
+  count: number;
+  newestTitle: string;
+}
+
 interface QueueResult {
   ok: boolean;
   items: QueueItem[];
+  /** Absent on a store that predates the field; null when there are no chores. */
+  chores?: ChoresSummary | null;
 }
 
 interface PlacedItem {
@@ -800,6 +817,7 @@ export function FleetOverviewTab({
     board.data?.rows.find((b) => b.threadId === threadId)?.report?.escalated ??
     false;
   const unassigned = byRow.get(UNASSIGNED) ?? [];
+  const chores = queue.data?.chores ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
@@ -866,6 +884,24 @@ export function FleetOverviewTab({
             ) : null}
           </div>
         )}
+        {/* De-minimis work, collapsed to one line for the whole board. It sits
+            OUTSIDE the crew cards because the count is fleet-wide: putting it
+            inside each card would show the same number once per lead. */}
+        {chores && chores.count > 0 ? (
+          <div className="mx-4 mt-2 mb-3 flex min-w-0 items-baseline gap-2 rounded-[8px] border border-tower-border bg-tower-surface px-3 py-2">
+            <span className="shrink-0 font-tower-mono text-[8.5px] uppercase tracking-[0.14em] text-tower-fg-faint">
+              chores
+            </span>
+            <span className="shrink-0 font-tower-mono text-[9px] text-tower-fg-body">
+              {chores.count}
+            </span>
+            {chores.newestTitle ? (
+              <span className="min-w-0 flex-1 truncate text-[10px] text-tower-fg-muted">
+                newest: {chores.newestTitle}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
     </div>
