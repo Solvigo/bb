@@ -140,14 +140,30 @@ function hasOpenDaemonSessionForHost(
   return session?.hostId === hostId && session.status === "active";
 }
 
-function toPublicThread(thread: Thread): Thread {
+/** Stored titles from the old era carry a substrate rank prefix ("SP · x",
+ *  "cm_y"). The ranks the operator sees are Commander, Lead and Sortie, so the
+ *  prefix is stripped on read here rather than rewritten in the store — the
+ *  writer that stamps it lives outside this repo and still runs.
+ *
+ *  Keep this regex identical to `stripRankPrefix` in
+ *  `apps/app/src/lib/agent-title.ts`, which does the same for crew-plugin
+ *  handles (they never pass through this DTO). */
+export function stripRankPrefix(raw: string): string {
+  return raw.replace(/^(sp|plt|cm)[\s·_-]+/i, "");
+}
+
+function stripRankPrefixOrNull(raw: string | null): string | null {
+  return raw === null ? null : stripRankPrefix(raw);
+}
+
+export function toPublicThread(thread: Thread): Thread {
   return {
     id: thread.id,
     projectId: thread.projectId,
     environmentId: thread.environmentId,
     providerId: thread.providerId,
-    title: thread.title,
-    titleFallback: thread.titleFallback,
+    title: stripRankPrefixOrNull(thread.title),
+    titleFallback: stripRankPrefixOrNull(thread.titleFallback),
     sectionId: thread.sectionId,
     status: thread.status,
     parentThreadId: thread.parentThreadId,
