@@ -4,6 +4,8 @@ import { wsManager } from "@/lib/ws";
 export interface LiveThread {
   projectId: string;
   providerId: string;
+  /** The agent's own name, for surfaces that would otherwise print its id. */
+  title: string;
 }
 
 /**
@@ -31,11 +33,14 @@ export function useLiveThreads(): Map<string, LiveThread> | null {
           id?: string;
           projectId?: string;
           providerId?: string;
+          title?: string | null;
+          titleFallback?: string | null;
         }[]) {
           if (typeof t.id === "string")
             next.set(t.id, {
               projectId: t.projectId ?? "",
               providerId: t.providerId ?? "",
+              title: (t.title ?? t.titleFallback ?? "").trim(),
             });
         }
         setThreads(next);

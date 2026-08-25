@@ -110,8 +110,20 @@ const HELD_COLS = new Set(["in_review", "pilot_look", "clearance"]); // held at 
 
 /** An operator-facing agent name: the ranks are Commander, Lead and Sortie, so
  *  substrate prefixes (sp-, plt-, cm-) never reach a label. */
+/**
+ * What to call an agent on screen. The crew plugin's handle when it has one,
+ * the agent's own thread title when it does not — and its id only if it has
+ * neither, which should be unreachable. A raw id is substrate vocabulary: it
+ * tells the operator nothing and it is what the drill-down header printed for a
+ * lead the plugin had no handle for.
+ */
+function agentLabel(handle: string | null, title: string | undefined, threadId: string): string {
+  const raw = handle ?? (title && title.length > 0 ? title : threadId);
+  return leadName(raw);
+}
+
 function leadName(handle: string): string {
-  return handle.replace(/^(sp|plt|cm)[-_]/i, "");
+  return handle.replace(/^(sp|plt|cm)[-_]/i, "").replace(/^(sp|plt|cm)[\s·-]+/i, "");
 }
 
 /** A task's flight designator — a stable 3-digit SV number from its id. */
@@ -652,7 +664,7 @@ export function FleetOverviewTab({
     return (
       <SpFocusView
         threadId={focusedSp}
-        label={leadName(r?.handle ?? focusedSp)}
+        label={agentLabel(r?.handle ?? null, liveIds?.get(focusedSp)?.title, focusedSp)}
         domain={r?.parentThreadId ? "lead" : "commander"}
         report={
           board.data?.rows.find((b) => b.threadId === focusedSp)?.report ?? null
@@ -672,7 +684,12 @@ export function FleetOverviewTab({
     if (attempt?.threadId) {
       ownerOf.set(w.taskId, attempt.threadId);
       livenessOf.set(w.taskId, attempt.liveness ?? null);
-      sortieOf.set(w.taskId, attempt.handle ?? null);
+      // A sortie with no handle still has a name of its own; only fall back to
+      // the id when it has neither, and never print the id in preference.
+      sortieOf.set(
+        w.taskId,
+        attempt.handle ?? liveIds?.get(attempt.threadId)?.title ?? null,
+      );
     }
   }
   const place = (state: string): { col: string; termLabel?: string } => {
@@ -753,7 +770,7 @@ export function FleetOverviewTab({
                 threadId={r.threadId}
                 projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
                 providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
-                label={leadName(r.handle ?? r.threadId)}
+                label={agentLabel(r.handle, liveIds?.get(r.threadId)?.title, r.threadId)}
                 onOpen={() => setFocusedSp(r.threadId)}
                 items={byRow.get(r.threadId) ?? []}
                 escalated={isEscalated(r.threadId)}
