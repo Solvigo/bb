@@ -1,6 +1,7 @@
 @import "@fontsource-variable/inter";
-/* Tower blueprint fonts: IBM Plex Mono (labels/codes/meta) + Manrope (body). */
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+/* Tower blueprint fonts: IBM Plex Mono (labels/codes/meta) + Manrope (body),
+   plus Jost, which the brand sheet specifies for the wordmark and nothing else. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Jost:wght@600&family=Manrope:wght@400;500;600;700;800&display=swap");
 @import "@/components/ui/theme.css";
 
 /*
@@ -41,6 +42,9 @@
   /* Blueprint fonts */
   --font-tower-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-tower-sans: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  /* The wordmark only. The sheet is explicit: Jost 600, tracking 0.012em,
+     sentence case, never all-caps. */
+  --font-tower-wordmark: "Jost", Futura, Avenir, Arial, sans-serif;
 }
 
 @layer base {

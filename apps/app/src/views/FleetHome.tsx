@@ -1,6 +1,10 @@
 import { NavLink } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia";
+import {
+  AirwaysMark,
+  AirwaysWordmark,
+} from "@/components/sidebar/crew/BrandLockup";
 import { useCrews, type Crew } from "@/components/sidebar/crew/useCrews";
 import { useCreateCrew } from "@/components/sidebar/crew/useCreateCrew";
 
@@ -76,15 +80,10 @@ export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-4 py-10">
       <div className="flex items-center gap-3">
-        <svg viewBox="0 0 64 64" className="size-8 shrink-0" role="img" aria-label="Solvigo Airways">
-          <g transform="translate(2.85 -2.85) rotate(45 32 32)">
-            <polygon points="32,4 32,52 38,44 56,48" fill="#C23E00" />
-            <polygon points="32,4 8,48 26,44 32,52" fill="#F54E00" />
-          </g>
-        </svg>
+        <AirwaysMark size={32} />
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-foreground">
-            Solvigo Airways
+          <h1 className="text-lg text-foreground">
+            <AirwaysWordmark />
           </h1>
           {/* Never claim an empty fleet before the fleet has been read. This
               screen once said "No crews yet" beside a rail listing a crew and

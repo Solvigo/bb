@@ -20,12 +20,19 @@ fires on surface unmount and on the agent being archived or retired.
 
 Before stabilization, audit:
 
-- whether `viewerRole` should gate anything, or stay purely presentational —
-  drive authority is derived server-side and must not be inferred from it;
+- ~~whether `viewerRole` should gate anything~~ — SETTLED, both sides agree: it
+  never gates. It names the LEVEL a surface is rendered at (layout, width,
+  chrome), not a permission. Drive authority stays derived server-side from
+  `createdBy`; a frontend copy of an authority decision is the weaker copy;
 - ordering and precedence when several plugins register tabs, and whether a
   plugin may ever precede the built-ins;
-- what a tab is allowed to observe about an agent it was not opened on, given
-  the surface is recursive and the same tab renders at three levels;
+- ~~what a tab may observe about an agent it was not opened on~~ — SETTLED for
+  the first consumer, and the right default for any: zero, by construction. A
+  tab instance is bound to ONE `agentId` and talks only to that agent's own
+  backend context; recursive rendering produces separate instances, each seeing
+  only its own. The operator watching an agent is choosing which isolated tab to
+  view, never letting one tab see another. Re-audit only if a future tab claims
+  it needs cross-agent state — the answer should still be no;
 - the cost model of mount-once-then-keep across many agents in one session,
   and whether an eviction policy is needed;
 - teardown ordering against plugin reload/disable/removal, and whether a

@@ -39,9 +39,15 @@ function Jet({
 }
 
 /**
- * The insignia plate from the sheet: a 40x40 tile, #2A2927 on a 1px #3F3E3C
- * border at radius 4.5 — the same plate the airways icon wears, so a rank chip
- * and the app mark read as one family. The mark sits at ~65% of the tile.
+ * The plate the brand sheet specifies, so a rank chip and the app mark read as
+ * one family: radius 4.5, a #333230 to #232221 gradient, a 1px #474540 border.
+ *
+ * What sits ON the plate is deliberately NOT the brand mark. The sheet's plated
+ * lockup is a fixed identity in white; this is a rank-and-state device, and it
+ * has to say three ranks and two states. Borrowing the identity to mean "this
+ * agent is working" would make the brand mean something it does not. Same
+ * plate, different device. The mark occupies ~65% of the tile, as the sheet's
+ * own ramp does.
  */
 export function PlatedInsignia({
   plate = 34,
@@ -51,10 +57,14 @@ export function PlatedInsignia({
   return (
     <span
       className={
-        "inline-grid shrink-0 place-items-center rounded-[4.5px] border border-tower-header-border bg-tower-header " +
-        (className ?? "")
+        "inline-grid shrink-0 place-items-center rounded-[4.5px] " + (className ?? "")
       }
-      style={{ width: plate, height: plate }}
+      style={{
+        width: plate,
+        height: plate,
+        background: "linear-gradient(160deg, #333230 0%, #232221 100%)",
+        boxShadow: "inset 0 0 0 1px #474540",
+      }}
     >
       <RankInsignia {...props} size={props.size ?? Math.round(plate * 0.65)} />
     </span>
