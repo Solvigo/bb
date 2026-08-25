@@ -15,8 +15,8 @@ import {
  * built-ins would quietly drift into privileges nobody else could have.
  */
 
-function CrewSurfaceTab({ agentId }: AgentSurfaceTabProps) {
-  return <FleetOverviewTab scopeThreadId={agentId} />;
+function CrewSurfaceTab({ agentId, viewerRole }: AgentSurfaceTabProps) {
+  return <FleetOverviewTab scopeThreadId={agentId} viewerRole={viewerRole} />;
 }
 
 function ClearanceSurfaceTab({ agentId }: AgentSurfaceTabProps) {
@@ -36,11 +36,17 @@ function KnowledgeSurfaceTab({ agentId }: AgentSurfaceTabProps) {
   return <KnowledgeTab scopeTheme={theme} />;
 }
 
-let registered = false;
-
+/**
+ * Idempotent by construction: the registry keys tabs by id, so registering the
+ * same three again replaces them rather than duplicating them. It carries no
+ * "already done" flag on purpose — a module-scope flag in this file sat in the
+ * temporal dead zone when a host imported it inside an import cycle, and the
+ * whole panel died on `Cannot access 'registered' before initialization`.
+ *
+ * Call it from a component body rather than at module scope, so it runs once
+ * every module is initialized instead of part-way through the graph.
+ */
 export function registerBuiltInAgentSurfaceTabs(): void {
-  if (registered) return;
-  registered = true;
   registerAgentSurfaceTab({
     id: "crew",
     label: "Crew",

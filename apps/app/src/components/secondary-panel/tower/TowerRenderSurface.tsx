@@ -12,7 +12,6 @@ import {
 } from "./agentSurfaceRegistry";
 import { registerBuiltInAgentSurfaceTabs } from "./builtInAgentSurfaceTabs";
 
-registerBuiltInAgentSurfaceTabs();
 
 /**
  * The recursive rendering surface. The top-level shell is a commander chat plus
@@ -43,6 +42,7 @@ export function TowerRenderSurface({
   // A plugin's tab id is namespaced by its plugin so two plugins choosing the
   // same id cannot collide with each other or with a built-in.
   const { agentSurfaceTabs: pluginTabs } = usePluginSlots();
+  registerBuiltInAgentSurfaceTabs();
   const tabs = useMemo<AgentSurfaceTab[]>(
     () => [
       ...listAgentSurfaceTabs(),

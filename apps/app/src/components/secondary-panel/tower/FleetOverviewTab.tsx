@@ -331,7 +331,7 @@ function StageRunway({ items }: { items: PlacedItem[] }) {
             className={
               // No truncate and no tracking: a ratified stage name must read in
               // full at two-up width, so it is sized to fit rather than clipped.
-              "min-w-0 flex-1 whitespace-nowrap border-b pb-1.5 text-center font-tower-mono text-[6.5px] uppercase " +
+              "min-w-0 flex-1 whitespace-nowrap border-b pb-1.5 text-center font-tower-mono text-[8.5px] uppercase " +
               (live
                 ? "border-tower-flight text-tower-flight"
                 : "border-tower-bright text-tower-fg-faint")
@@ -620,8 +620,16 @@ function LeadCard({
 
 export function FleetOverviewTab({
   scopeThreadId,
+  viewerRole = "commander",
 }: {
   scopeThreadId?: string;
+  /**
+   * Whose board this is. It decides what an EMPTY board means — a commander
+   * with no leads and a lead with no sorties are different facts — and nothing
+   * about layout: how many cards fit per row is a question for the container,
+   * which is why the grid asks the container query and not this.
+   */
+  viewerRole?: "commander" | "lead" | "sortie";
 } = {}) {
   const fleet = useCrewRpc<FleetResult>("crew", "crew_fleet");
   const board = useCrewRpc<BoardResult>("crew", "crew_board");
@@ -730,7 +738,6 @@ export function FleetOverviewTab({
     board.data?.rows.find((b) => b.threadId === threadId)?.report?.escalated ??
     false;
   const unassigned = byRow.get(UNASSIGNED) ?? [];
-  const isScoped = Boolean(scopeThreadId);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
@@ -745,9 +752,9 @@ export function FleetOverviewTab({
           <div className="px-4 py-6 italic text-tower-fg-faint">loading leads…</div>
         ) : rows.length === 0 && unassigned.length === 0 ? (
           <div className="px-4 py-6 italic text-tower-fg-faint">
-            {scopeThreadId
-              ? "No sorties dispatched by this lead yet — its work items exist on the fleet board but no sortie has been spawned to fly them."
-              : "No leads yet."}
+            {viewerRole === "commander"
+              ? "No leads yet."
+              : "No sorties dispatched by this lead yet — its work items exist on the fleet board but no sortie has been spawned to fly them."}
           </div>
         ) : (
           // Two lead cards per row, as the sheet lays them out. A nested
@@ -761,7 +768,13 @@ export function FleetOverviewTab({
           <div
             className={
               "grid gap-4 px-4 pb-4 " +
-              (isScoped ? "grid-cols-1" : "grid-cols-1 @[720px]/board:grid-cols-2")
+              // Two per row is the Captain's preference, but only where two
+              // READABLE cards fit. The sheet's card is 691px; at the 720px
+              // breakpoint each got 402px and the stage ticks collapsed to
+              // 6.5px and collided. So the pair is asked for at a width that
+              // can actually hold it, and below that one full-width card wins
+              // over two illegible ones.
+              "grid-cols-1 @[1240px]/board:grid-cols-2"
             }
           >
             {rows.map((r) => (

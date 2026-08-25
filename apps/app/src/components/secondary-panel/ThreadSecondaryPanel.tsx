@@ -29,10 +29,16 @@ import {
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
-import { FleetOverviewTab } from "./tower/FleetOverviewTab";
-import { ClearanceTab } from "./tower/ClearanceTab";
-import { KnowledgeTab } from "./tower/KnowledgeTab";
 import { towerNavAtom } from "./tower/towerNav";
+import {
+  listAgentSurfaceTabs,
+  onAgentTeardown,
+  type AgentSurfaceTab,
+} from "./tower/agentSurfaceRegistry";
+import { registerBuiltInAgentSurfaceTabs } from "./tower/builtInAgentSurfaceTabs";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import { useRouteState } from "@/hooks/useRouteState";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
@@ -457,8 +463,38 @@ export function ThreadSecondaryPanel({
   // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
   // contract). "crew" is the default surface; the views show over the empty
   // new-tab / info states but yield to any real content the operator opens.
-  const [towerView, setTowerView] = useState<"crew" | "clearance" | "knowledge" | null>(
-    "crew",
+  // The agent this panel belongs to: in this app an agent IS a thread, and the
+  // panel is opened inside one. The board already resolved it this way; now the
+  // whole surface does, so every tab is handed the same agent.
+  registerBuiltInAgentSurfaceTabs();
+  const { threadId: openInThreadId } = useRouteState();
+  // The commander's own rendering surface takes its tabs from the SAME registry
+  // the per-agent surface uses, so a tab registered once — by a built-in or by a
+  // plugin — appears at every level instead of only the two below this one.
+  const { agentSurfaceTabs: pluginSurfaceTabs } = usePluginSlots();
+  const towerTabs = useMemo<AgentSurfaceTab[]>(
+    () => [
+      ...listAgentSurfaceTabs(),
+      ...pluginSurfaceTabs.map((slot) => ({
+        id: `plugin:${slot.pluginId}:${slot.id}`,
+        label: slot.label,
+        icon: pluginIconName(slot.icon),
+        title: slot.title,
+        component: slot.component as unknown as AgentSurfaceTab["component"],
+      })),
+    ],
+    [pluginSurfaceTabs],
+  );
+  const [towerView, setTowerView] = useState<string | null>("crew");
+  // Same contract the per-agent surface gives a tab: a disposer narrowed to
+  // this agent, so a tab never tears down its context because a different
+  // agent's surface closed.
+  const registerTowerTeardown = useCallback(
+    (dispose: () => void) =>
+      onAgentTeardown((agentId) => {
+        if (agentId === openInThreadId) dispose();
+      }),
+    [openInThreadId],
   );
   // Chat-link navigation: a bb-tower: link in the commander chat sets this atom.
   const towerNav = useAtomValue(towerNavAtom);
@@ -472,10 +508,11 @@ export function ThreadSecondaryPanel({
   // operator explicitly opened (and to any real file/diff/terminal content).
   const towerViewCanShow =
     activeTabKind === null || activeTabKind === "thread-info";
-  const isFleetOverviewActive = towerView === "crew" && towerViewCanShow;
-  const isClearanceActive = towerView === "clearance" && towerViewCanShow;
-  const isKnowledgeActive = towerView === "knowledge" && towerViewCanShow;
-  const isTowerViewActive = isFleetOverviewActive || isClearanceActive || isKnowledgeActive;
+  const activeTowerTab =
+    towerViewCanShow && towerView !== null
+      ? (towerTabs.find((tab) => tab.id === towerView) ?? null)
+      : null;
+  const isTowerViewActive = activeTowerTab !== null;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
@@ -682,36 +719,19 @@ export function ThreadSecondaryPanel({
             aria-label="Right panel views"
             // header tab-button icon color
           >
-            <PinnedIconTab
-              ariaLabel="Show crew overview"
-              isActive={isFleetOverviewActive}
-              label="Crew"
-              leadingVisual={<Icon name="Layers" />}
-              onClick={() => setTowerView("crew")}
-              title="Crew overview"
-              usesDesktopChrome={usesDesktopChrome}
-              activeTreatment="fill"
-            />
-            <PinnedIconTab
-              ariaLabel="Show clearance"
-              isActive={isClearanceActive}
-              label="Clearance"
-              leadingVisual={<Icon name="CircleCheck" />}
-              onClick={() => setTowerView("clearance")}
-              title="Yours to clear"
-              usesDesktopChrome={usesDesktopChrome}
-              activeTreatment="fill"
-            />
-            <PinnedIconTab
-              ariaLabel="Show knowledge"
-              isActive={isKnowledgeActive}
-              label="Knowledge"
-              leadingVisual={<Icon name="Brain" />}
-              onClick={() => setTowerView("knowledge")}
-              title="Knowledge — current truth"
-              usesDesktopChrome={usesDesktopChrome}
-              activeTreatment="fill"
-            />
+            {towerTabs.map((tab) => (
+              <PinnedIconTab
+                key={tab.id}
+                ariaLabel={`Show ${tab.label.toLowerCase()}`}
+                isActive={activeTowerTab?.id === tab.id}
+                label={tab.label}
+                leadingVisual={<Icon name={tab.icon} />}
+                onClick={() => setTowerView(tab.id)}
+                title={tab.title}
+                usesDesktopChrome={usesDesktopChrome}
+                activeTreatment="fill"
+              />
+            ))}
             {showInfoTab ? (
               <PinnedIconTab
                 ariaLabel="Show thread info panel"
@@ -861,12 +881,13 @@ export function ThreadSecondaryPanel({
           suppressed in that case because the deck fills the region.
         */}
         {browserDeck}
-        {isBrowserTabActive ? null : isFleetOverviewActive ? (
-          <FleetOverviewTab />
-        ) : isClearanceActive ? (
-          <ClearanceTab />
-        ) : isKnowledgeActive ? (
-          <KnowledgeTab />
+        {isBrowserTabActive ? null : activeTowerTab && openInThreadId ? (
+          <activeTowerTab.component
+            agentId={openInThreadId}
+            onTeardown={registerTowerTeardown}
+            viewerRole="commander"
+            visible
+          />
         ) : hasActiveFileTab ? (
           <div
             className={
