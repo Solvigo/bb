@@ -18,6 +18,10 @@ function CrewEntry({
 }) {
   const [open, setOpen] = useState(true);
   const anyWorking = crew.leads.some((l) => l.working);
+  const threadPath = (threadId: string) =>
+    crew.projectId
+      ? `/projects/${crew.projectId}/threads/${threadId}`
+      : `/threads/${threadId}`;
   return (
     <li>
       <div className="flex items-center gap-1">
@@ -31,7 +35,7 @@ function CrewEntry({
           <Icon name={open ? "ChevronDown" : "ChevronRight"} className="size-3.5" />
         </button>
         <NavLink
-          to={`/threads/${crew.commanderThreadId}`}
+          to={threadPath(crew.commanderThreadId)}
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
@@ -60,7 +64,7 @@ function CrewEntry({
           {crew.leads.map((lead) => (
             <li key={lead.threadId}>
               <NavLink
-                to={`/threads/${lead.threadId}`}
+                to={threadPath(lead.threadId)}
                 onClick={onNavigate}
                 title={lead.status ?? undefined}
                 className={({ isActive }) =>
