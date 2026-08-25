@@ -10,6 +10,8 @@ import {
   getProviderIconInfo,
 } from "@/lib/provider-icon";
 import { getSettingsRoutePath } from "@/lib/route-paths";
+import { PRODUCT_NAME } from "@/lib/product";
+import { AirwaysMark } from "@/components/sidebar/crew/BrandLockup";
 
 export interface SidebarUpdatesBadgeProps {
   onNavigate?: () => void;
@@ -91,8 +93,9 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   }
 
   const updatesRoutePath = getSettingsRoutePath("updates");
-  const bbLabel =
-    bbUpdateCount === 1 ? "bb update available" : "bb updates available";
+  const bbLabel = `${PRODUCT_NAME} ${
+    bbUpdateCount === 1 ? "update" : "updates"
+  } available`;
   const providerLabel = `${joinNames(
     staleProviders.map((stale) => stale.displayName),
   )} ${staleProviders.length === 1 ? "update" : "updates"} available`;
@@ -113,7 +116,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               className={CHIP_CLASS}
             >
               <Icon name="Download" className="size-3 text-muted-foreground" />
-              bb
+              <AirwaysMark size={12} />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="top">{bbLabel}</TooltipContent>

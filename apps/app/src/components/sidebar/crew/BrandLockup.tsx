@@ -11,6 +11,8 @@
  * The wordmark is the sheet's own spec — Jost 600, tracking 0.012em, sentence
  * case, never all-caps — which is why it does not inherit the app's body font.
  */
+import { PRODUCT_NAME } from "@/lib/product";
+
 export function AirwaysMark({ size = 22 }: { size?: number }) {
   return (
     <svg
@@ -19,7 +21,7 @@ export function AirwaysMark({ size = 22 }: { size?: number }) {
       height={size}
       className="block shrink-0"
       role="img"
-      aria-label="Solvigo Airways"
+      aria-label={PRODUCT_NAME}
     >
       <polygon
         points="32,4 8,48 26,44 32,52"
@@ -45,7 +47,7 @@ export function AirwaysWordmark({ className }: { className?: string }) {
         letterSpacing: "0.012em",
       }}
     >
-      Solvigo Airways
+      {PRODUCT_NAME}
     </span>
   );
 }
