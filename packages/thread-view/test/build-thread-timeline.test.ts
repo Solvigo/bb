@@ -1201,6 +1201,60 @@ describe("buildThreadTimelineFromEvents", () => {
     ).toHaveLength(1);
   });
 
+  it("keeps the steps and folds the build output away when it succeeded", () => {
+    // The Captain's complaint: dispatching a lead dumped hundreds of lines of
+    // package-manager chatter into the conversation, and the STEPS — the only
+    // part that answers "what is it doing" — were lost inside it.
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const rows = buildTimelineRows(
+      fromRows([
+        event.threadProvisioning({
+          status: "active",
+          entries: [
+            { type: "step", key: "workspace-started", text: "Preparing workspace" },
+            { type: "output", key: "setup-output-1", text: "Packages: +2318" },
+            { type: "output", key: "setup-output-2", text: "Progress: resolved 1" },
+            { type: "step", key: "setup-completed", text: "Installed dependencies" },
+          ],
+        }),
+      ]),
+    );
+    const [row] = rows;
+    if (!row || row.kind !== "system") throw new Error("Expected a system row");
+    expect(row.detail).toContain("Preparing workspace");
+    expect(row.detail).toContain("Installed dependencies");
+    expect(row.detail).not.toContain("Packages: +2318");
+    // The operator should know output EXISTS, not have to read it.
+    expect(row.detail).toContain("2 output lines not shown");
+  });
+
+  it("keeps the tail of the output when provisioning failed", () => {
+    // A failure's last lines are the reason; everything above them is noise.
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const rows = buildTimelineRows(
+      fromRows([
+        event.threadProvisioning({
+          // The EVENT says "failed"; the timeline message maps that to "error".
+          status: "failed",
+          entries: [
+            { type: "step", key: "setup-started", text: "Installing dependencies" },
+            ...Array.from({ length: 30 }, (_, i) => ({
+              type: "output" as const,
+              key: `setup-output-${i}`,
+              text: `line ${i}`,
+            })),
+          ],
+        }),
+      ]),
+    );
+    const [row] = rows;
+    if (!row || row.kind !== "system") throw new Error("Expected a system row");
+    expect(row.detail).toContain("Installing dependencies");
+    expect(row.detail).toContain("line 29");
+    expect(row.detail).not.toContain("line 0\n");
+    expect(row.detail).toContain("earlier output lines");
+  });
+
   it("normalizes carriage-return provisioning output in operation detail", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const rows = buildTimelineRows(
