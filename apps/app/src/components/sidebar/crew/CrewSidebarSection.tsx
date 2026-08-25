@@ -144,7 +144,7 @@ export function CrewSidebarSection({
   headerTrailing?: ReactNode;
   onNavigate?: () => void;
 }) {
-  const { crews, loaded, failed, reload } = useCrews();
+  const { crews, loaded, failed, timedOut, reload } = useCrews();
 
   return (
     <div className="flex flex-col gap-1 px-2 pb-2 group-data-[collapsible=icon]:hidden">
@@ -158,13 +158,15 @@ export function CrewSidebarSection({
         </p>
       ) : failed && crews.length === 0 ? (
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          Couldn&apos;t read the fleet.{" "}
+          {timedOut
+            ? "The fleet hasn't answered yet."
+            : "Couldn't read the fleet."}{" "}
           <button
             type="button"
             onClick={reload}
             className="underline underline-offset-2 hover:text-foreground"
           >
-            Try again
+            {timedOut ? "Wait longer" : "Try again"}
           </button>
         </p>
       ) : crews.length === 0 ? (

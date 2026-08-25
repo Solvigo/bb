@@ -50,27 +50,51 @@ function agentName(raw: string): string {
  * for real — the rig's server wedged and every crew call hung past 20s.
  */
 const READ_TIMEOUT_MS = 8_000;
+/**
+ * A retry gets more patience than the first attempt. Retrying a TIMEOUT with
+ * the same patience is theatre: the button does exactly what already failed and
+ * the operator learns nothing. This machine also runs the fleet's CI, so a slow
+ * answer is a normal condition here, not a broken one.
+ */
+const RETRY_TIMEOUT_MS = 25_000;
 
-async function readJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+type ReadOutcome<T> =
+  | { ok: true; value: T }
+  | { ok: false; reason: "timeout" | "error" };
+
+async function readJson<T>(
+  url: string,
+  init?: RequestInit,
+  timeoutMs: number = READ_TIMEOUT_MS,
+): Promise<ReadOutcome<T>> {
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), READ_TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    abort.abort();
+  }, timeoutMs);
   try {
     const res = await fetch(url, { ...init, signal: abort.signal });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
+    if (!res.ok) return { ok: false, reason: "error" };
+    return { ok: true, value: (await res.json()) as T };
   } catch {
-    return null;
+    // A server that is merely SLOW and one that is broken need different words
+    // and different remedies, and collapsing them cost a real diagnosis: an
+    // eight-second cutoff on a loaded box reads as "couldn't read the fleet"
+    // when the honest answer is "it hasn't answered yet".
+    return { ok: false, reason: timedOut ? "timeout" : "error" };
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function crewRpc<T>(method: string): Promise<T | null> {
-  const d = await readJson<{ ok?: boolean; result?: T }>(
+async function crewRpc<T>(method: string, timeoutMs?: number): Promise<T | null> {
+  const outcome = await readJson<{ ok?: boolean; result?: T }>(
     `/api/v1/plugins/crew/rpc/${method}`,
     { method: "POST", headers: { "content-type": "application/json" }, body: "null" },
+    timeoutMs,
   );
-  return d?.result ?? null;
+  return outcome.ok ? (outcome.value.result ?? null) : null;
 }
 
 /**
@@ -145,8 +169,10 @@ export interface CrewsState {
   crews: Crew[];
   /** false only until the first attempt resolves — never a permanent state */
   loaded: boolean;
-  /** the last attempt could not read the fleet; `crews` is the stale/empty set */
+  /** the last attempt could not read the fleet; `crews` is the last known set */
   failed: boolean;
+  /** the attempt ran out of patience rather than being refused */
+  timedOut: boolean;
   reload: () => void;
 }
 
@@ -160,7 +186,12 @@ export interface CrewsState {
  * said "No crews yet", because the home's second, younger copy of this hook had
  * not finished reading yet. Two reads of one truth is two truths.
  */
-let state: CrewsSnapshot = { crews: [], loaded: false, failed: false };
+let state: CrewsSnapshot = {
+  crews: [],
+  loaded: false,
+  failed: false,
+  timedOut: false,
+};
 const subscribers = new Set<() => void>();
 let started = false;
 let disposeSources: (() => void) | null = null;
@@ -169,6 +200,8 @@ interface CrewsSnapshot {
   crews: Crew[];
   loaded: boolean;
   failed: boolean;
+  /** Set when the last attempt ran out of patience rather than being refused. */
+  timedOut: boolean;
 }
 
 function publish(next: CrewsSnapshot): void {
@@ -176,16 +209,28 @@ function publish(next: CrewsSnapshot): void {
   for (const notify of subscribers) notify();
 }
 
-async function loadOnce(): Promise<void> {
-  const raw = await readJson<unknown>("/api/v1/threads?archived=false");
+async function loadOnce(timeoutMs: number = READ_TIMEOUT_MS): Promise<void> {
+  const outcome = await readJson<unknown>(
+    "/api/v1/threads?archived=false",
+    undefined,
+    timeoutMs,
+  );
   // A read that fails still RESOLVES the question: a surface must be able to
-  // say it could not read the fleet. Returning early here left `loaded` false
-  // for the life of the session, so one failed fetch showed a spinner that
-  // never stopped — a hang is a lie in the same way invented data is.
-  if (raw == null) {
-    publish({ ...state, loaded: true, failed: true });
+  // say what happened. Returning early here left `loaded` false for the life of
+  // the session, so one failed fetch showed a spinner that never stopped — a
+  // hang is a lie in the same way invented data is. Whatever went wrong, the
+  // crews already known are KEPT: a failed refresh is not evidence the fleet
+  // went away.
+  if (!outcome.ok) {
+    publish({
+      ...state,
+      loaded: true,
+      failed: true,
+      timedOut: outcome.reason === "timeout",
+    });
     return;
   }
+  const raw = outcome.value;
   const threads = (
     Array.isArray(raw)
       ? raw
@@ -199,13 +244,23 @@ async function loadOnce(): Promise<void> {
   // them, and waiting on both put a spinner in front of data already in hand.
   // Ranks and working states settle in a second pass — until they do, a lead
   // reads as standing by rather than being guessed at.
-  publish({ crews: assembleCrews(threads, null, null), loaded: true, failed: false });
+  publish({
+    crews: assembleCrews(threads, null, null),
+    loaded: true,
+    failed: false,
+    timedOut: false,
+  });
 
   const [fleet, board] = await Promise.all([
-    crewRpc<{ rows: FleetRow[] }>("crew_fleet"),
-    crewRpc<{ rows: BoardRow[] }>("crew_board"),
+    crewRpc<{ rows: FleetRow[] }>("crew_fleet", timeoutMs),
+    crewRpc<{ rows: BoardRow[] }>("crew_board", timeoutMs),
   ]);
-  publish({ crews: assembleCrews(threads, fleet, board), loaded: true, failed: false });
+  publish({
+    crews: assembleCrews(threads, fleet, board),
+    loaded: true,
+    failed: false,
+    timedOut: false,
+  });
 }
 
 function startSources(): void {
@@ -239,7 +294,7 @@ function subscribe(notify: () => void): () => void {
 }
 
 export function reloadCrews(): void {
-  void loadOnce();
+  void loadOnce(RETRY_TIMEOUT_MS);
 }
 
 export function useCrews(): CrewsState {

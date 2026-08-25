@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/ws", () => ({
@@ -56,6 +56,32 @@ describe("useCrews", () => {
       const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
       expect(calls.filter(([u]) => String(u).includes("/threads"))).toHaveLength(1);
     });
+  });
+
+  it("says the fleet is slow, not broken, when it simply has not answered", async () => {
+    // These need different words and different remedies. Collapsing them once
+    // sent a live incident looking for a fault that was really just a loaded
+    // machine — the box running this app also runs the fleet's CI.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          });
+        }),
+      ),
+    );
+    vi.useFakeTimers();
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9_000);
+    });
+    vi.useRealTimers();
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.failed).toBe(true);
+    expect(result.current.timedOut).toBe(true);
   });
 
   it("never reports an empty fleet before it has read one", async () => {

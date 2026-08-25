@@ -71,7 +71,7 @@ function CrewCard({ crew }: { crew: Crew }) {
  * click away, because an escape hatch that does not exist is not a choice.
  */
 export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
-  const { crews, loaded, failed } = useCrews();
+  const { crews, loaded, failed, timedOut, reload } = useCrews();
   const { createCrew, creating, error } = useCreateCrew();
   const flying = crews.filter((crew) =>
     crew.leads.some((lead) => lead.working),
@@ -93,7 +93,9 @@ export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
             {!loaded
               ? "Reading the fleet…"
               : failed && crews.length === 0
-                ? "Couldn't read the fleet."
+                ? timedOut
+                  ? "The fleet hasn't answered yet."
+                  : "Couldn't read the fleet."
                 : crews.length === 0
                   ? "No crews yet."
                   : flying > 0
@@ -110,6 +112,11 @@ export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        {failed && crews.length === 0 ? (
+          <Button onClick={reload} size="sm" variant="outline">
+            {timedOut ? "Wait longer" : "Try again"}
+          </Button>
+        ) : null}
         <Button onClick={createCrew} disabled={creating} size="sm">
           {creating ? "Standing up a crew…" : "New crew"}
         </Button>
