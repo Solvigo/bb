@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { stripRankPrefix } from "@/lib/agent-title";
 import { wsManager } from "@/lib/ws";
 
 export interface CrewLead {
@@ -40,7 +41,7 @@ interface BoardRow {
 
 /** Strip substrate prefixes: the ranks are Commander, Lead and Sortie. */
 function agentName(raw: string): string {
-  return raw.replace(/^(sp|plt|cm)[\s·-]+/i, "").replace(/^(sp|plt|cm)[-_]/i, "");
+  return stripRankPrefix(raw);
 }
 
 /**

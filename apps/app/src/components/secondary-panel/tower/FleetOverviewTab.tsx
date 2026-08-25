@@ -14,6 +14,7 @@ import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
 import { useRouteState } from "@/hooks/useRouteState";
 import { PlatedInsignia, RankInsignia } from "./RankInsignia";
+import { stripRankPrefix } from "@/lib/agent-title";
 
 // The 7 chain columns (states); verbs are the transitions between them.
 const COLUMNS: { key: string; label: string; accent?: boolean }[] = [
@@ -123,7 +124,7 @@ function agentLabel(handle: string | null, title: string | undefined, threadId: 
 }
 
 function leadName(handle: string): string {
-  return handle.replace(/^(sp|plt|cm)[-_]/i, "").replace(/^(sp|plt|cm)[\s·-]+/i, "");
+  return stripRankPrefix(handle);
 }
 
 /** A task's flight designator — a stable 3-digit SV number from its id. */
