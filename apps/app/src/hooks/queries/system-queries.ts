@@ -4,6 +4,7 @@ import {
   listClaudeCodeFallbackModels,
 } from "@bb/agent-providers";
 import { toRecord } from "@bb/core-ui";
+import type { AvailableModel, ProviderInfo } from "@bb/domain";
 import type {
   SystemCliSkillsStatusResponse,
   SystemConfigResponse,
@@ -22,6 +23,11 @@ import {
   readCachedClaudeModelCatalog,
   writeCachedClaudeModelCatalog,
 } from "@/lib/claude-model-catalog-cache";
+import {
+  useCrewDefaults,
+  type CrewDefaultProviderSummary,
+  type CrewDefaultsResult,
+} from "./crew-defaults";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
@@ -87,6 +93,72 @@ function claudeCodePlaceholderExecutionOptions(
   };
 }
 
+// Fabricated capabilities for a placeholder provider row: conservative
+// (nothing beyond the "full" permission mode every provider supports) so a
+// provisional row never advertises a capability the real probe might not
+// confirm. Real capabilities land the moment the verified catalog does.
+function crewDefaultProviderInfo(
+  provider: CrewDefaultProviderSummary,
+): ProviderInfo {
+  return {
+    id: provider.id,
+    displayName: provider.displayName,
+    logoUrl: null,
+    capabilities: {
+      supportsArchive: false,
+      supportsRename: false,
+      supportsServiceTier: false,
+      supportsUserQuestion: false,
+      supportsFork: false,
+      supportedPermissionModes: ["full"],
+    },
+    composerActions: [],
+    available: provider.available,
+  };
+}
+
+/**
+ * The fleet default pair as a provisional execution-options response, for a
+ * provider the claude-code cache doesn't cover (first-ever load with no
+ * localStorage entry, a new env/host scope, or a non-claude provider). Same
+ * provisional LAW as `claudeCodePlaceholderExecutionOptions`: only a fresh
+ * probe may retire this — never treat its absence from a later real catalog
+ * as proof the model was removed.
+ */
+function crewDefaultsPlaceholderExecutionOptions(
+  crewDefaults: CrewDefaultsResult,
+): SystemExecutionOptionsResponse {
+  const knownProviders = crewDefaults.providers.map(crewDefaultProviderInfo);
+  const providers = knownProviders.some(
+    (provider) => provider.id === crewDefaults.providerId,
+  )
+    ? knownProviders
+    : [
+        crewDefaultProviderInfo({
+          id: crewDefaults.providerId,
+          displayName: crewDefaults.providerId,
+          available: true,
+        }),
+        ...knownProviders,
+      ];
+  const model: AvailableModel = {
+    id: crewDefaults.modelId,
+    model: crewDefaults.modelId,
+    displayName: crewDefaults.modelId,
+    description: "",
+    supportedReasoningEfforts: [],
+    defaultReasoningEffort: "medium",
+    isDefault: true,
+  };
+  return {
+    providers,
+    models: [model],
+    selectedOnlyModels: [],
+    permissionCeiling: "full",
+    modelLoadError: null,
+  };
+}
+
 function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
 }
@@ -123,6 +195,19 @@ export function useSystemExecutionOptions(
     environmentId,
     hostId,
   });
+  // Covers what the claude cache can't: a first-ever load (no prior probe to
+  // have cached), a new env/host scope, and non-claude providers. Only used
+  // when the query targets the stored pair's own provider (or no provider is
+  // chosen yet) — previewing a different provider must never show this pair's
+  // models under the wrong tab.
+  const crewDefaultsQuery = useCrewDefaults({ enabled });
+  const crewDefaults = crewDefaultsQuery.data ?? null;
+  const executionOptionsPlaceholder = isClaudeCode
+    ? () => claudeCodePlaceholderExecutionOptions(catalogCacheKey)
+    : crewDefaults !== null &&
+        (providerId === null || providerId === crewDefaults.providerId)
+      ? () => crewDefaultsPlaceholderExecutionOptions(crewDefaults)
+      : undefined;
 
   return useQuery<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({
@@ -152,11 +237,8 @@ export function useSystemExecutionOptions(
     staleTime: 60_000,
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
-    ...(isClaudeCode
-      ? {
-          placeholderData: () =>
-            claudeCodePlaceholderExecutionOptions(catalogCacheKey),
-        }
+    ...(executionOptionsPlaceholder
+      ? { placeholderData: executionOptionsPlaceholder }
       : {}),
   });
 }

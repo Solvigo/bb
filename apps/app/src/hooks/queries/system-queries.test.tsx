@@ -73,7 +73,21 @@ const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
+
+function crewDefaultsFetchMock(result: unknown) {
+  return vi.fn().mockResolvedValue(
+    new Response(JSON.stringify({ ok: true, result }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+}
+
+function neverResolves<T>(): Promise<T> {
+  return new Promise<T>(() => {});
+}
 
 describe("useSystemExecutionOptions", () => {
   it("separates requests and cache entries for different hosts", async () => {
@@ -153,6 +167,75 @@ describe("useSystemExecutionOptions", () => {
       expect(result.current.isError).toBe(true);
       expect(sdk.system.executionOptions).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("useSystemExecutionOptions crew-defaults preload", () => {
+  it("shows the crew plugin's stored pair provisionally before a slow catalog resolves", async () => {
+    vi.stubGlobal(
+      "fetch",
+      crewDefaultsFetchMock({
+        ok: true,
+        stored: { providerId: "codex", modelId: "codex-mini" },
+        providers: [{ id: "codex", displayName: "Codex", available: true }],
+      }),
+    );
+    vi.mocked(sdk.system.executionOptions).mockImplementation(() =>
+      neverResolves(),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(() => useSystemExecutionOptions({}), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.data?.providers[0]?.id).toBe("codex");
+      expect(result.current.data?.models[0]?.model).toBe("codex-mini");
+      expect(result.current.isPlaceholderData).toBe(true);
+    });
+  });
+
+  it("does not leak the stored pair into a different provider's query", async () => {
+    const fetchMock = crewDefaultsFetchMock({
+      ok: true,
+      stored: { providerId: "codex", modelId: "codex-mini" },
+      providers: [{ id: "codex", displayName: "Codex", available: true }],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(() =>
+      neverResolves(),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => useSystemExecutionOptions({ providerId: "some-other-provider" }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("behaves exactly as today when the crew plugin is unreachable", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(() =>
+      neverResolves(),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(() => useSystemExecutionOptions({}), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isPending).toBe(true);
   });
 });
 
