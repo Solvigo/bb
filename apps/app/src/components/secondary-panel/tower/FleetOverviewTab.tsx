@@ -10,6 +10,7 @@ import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import { useCrewRpc } from "./useCrewRpc";
 import { useLiveThreads } from "./useLiveThreads";
 import { useSortieActivity } from "./useSortieActivity";
+import { useItemTrail } from "./useItemTrail";
 import { SpFocusView } from "./SpFocusView";
 import { towerNavAtom } from "./towerNav";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -175,8 +176,55 @@ function statusChip(item: PlacedItem): { label: string; silent: boolean } | null
 /** A flight: plane glyph + SV number + time aloft, body, status chip.
  *  Time aloft shows only for a dispatched flight — an undispatched item has
  *  never left the ground, so there is nothing to count. */
+function ItemTrail({ taskId }: { taskId: string }) {
+  const { transitions, truncated, loaded } = useItemTrail(taskId);
+  if (!loaded) {
+    return (
+      <div className="mt-1 px-1 font-tower-mono text-[8.5px] italic text-tower-fg-faint">
+        reading the trail…
+      </div>
+    );
+  }
+  if (transitions.length === 0) {
+    // A real answer, not a gap: an item that has not moved since the log
+    // existed has no hops. Saying so beats drawing nothing.
+    return (
+      <div className="mt-1 px-1 font-tower-mono text-[8.5px] italic text-tower-fg-faint">
+        no moves recorded
+      </div>
+    );
+  }
+  return (
+    <ol className="mt-1 flex flex-col gap-1 px-1">
+      {truncated ? (
+        <li className="font-tower-mono text-[8px] italic text-tower-fg-faint">
+          older moves not shown
+        </li>
+      ) : null}
+      {transitions.map((hop, i) => (
+        <li key={`${hop.at}-${i}`} className="flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0 font-tower-mono text-[8px] text-tower-fg-faint">
+            {hop.at.slice(11, 16)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="font-tower-mono text-[8.5px] text-tower-fg-body">
+              {hop.fromState} → {hop.toState}
+            </span>
+            {hop.detail ? (
+              <span className="ml-1 line-clamp-2 text-[9px] leading-snug text-tower-fg-muted">
+                {hop.detail}
+              </span>
+            ) : null}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function Card({ item }: { item: PlacedItem }) {
   const aloft = ageSince(item.attemptAt);
+  const [trailOpen, setTrailOpen] = useState(false);
   const chip = statusChip(item);
   const silent = chip?.silent ?? false;
   const stageIndex = STAGES.findIndex((st) => st.key === STAGE_OF[item.col]);
@@ -257,6 +305,19 @@ function Card({ item }: { item: PlacedItem }) {
           </span>
         </div>
       ) : null}
+      {/* Its whole passage, on the item. Fetched only when ASKED for — a board
+          of twenty cards must not open twenty reads to draw itself. */}
+      <div className="mt-1.5">
+        <button
+          type="button"
+          onClick={() => setTrailOpen((open) => !open)}
+          aria-expanded={trailOpen}
+          className="font-tower-mono text-[8px] uppercase tracking-[0.72px] text-tower-fg-faint transition-colors hover:text-tower-fg-body"
+        >
+          {trailOpen ? "▾ trail" : "▸ trail"}
+        </button>
+        {trailOpen ? <ItemTrail taskId={item.taskId} /> : null}
+      </div>
       {!item.sortie && STAGE_OF[item.col] === "in_flight" ? (
         <div className="mt-1.5 font-tower-mono text-[8.5px] italic text-tower-fg-faint">
           no sortie dispatched

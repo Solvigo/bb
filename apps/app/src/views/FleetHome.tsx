@@ -7,7 +7,7 @@ import {
   AirwaysWordmark,
 } from "@/components/sidebar/crew/BrandLockup";
 import { useCrews, type Crew } from "@/components/sidebar/crew/useCrews";
-import { useCreateCrew } from "@/components/sidebar/crew/useCreateCrew";
+import { NewCrewButton } from "@/components/sidebar/crew/NewCrewButton";
 
 function CrewCard({ crew }: { crew: Crew }) {
   const working = crew.leads.filter((lead) => lead.working);
@@ -76,7 +76,6 @@ function CrewCard({ crew }: { crew: Crew }) {
  */
 export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
   const { crews, loaded, failed, timedOut, reload } = useCrews();
-  const { createCrew, creating, error } = useCreateCrew();
   const flying = crews.filter((crew) =>
     crew.leads.some((lead) => lead.working),
   ).length;
@@ -121,16 +120,11 @@ export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
             {timedOut ? "Wait longer" : "Try again"}
           </Button>
         ) : null}
-        <Button onClick={() => createCrew()} disabled={creating} size="sm">
-          {creating ? "Standing up a crew…" : "New crew"}
-        </Button>
+        <NewCrewButton variant="page" />
         <Button onClick={onStartThread} size="sm" variant="ghost">
           Start a plain thread instead
         </Button>
       </div>
-      {error ? (
-        <p className="text-xs text-tower-accent-hover">{error}</p>
-      ) : null}
     </div>
   );
 }
