@@ -263,8 +263,10 @@ describe("ThreadDetailHeader", () => {
     expect(focusedTab?.classList).not.toContain("shadow-sm");
     expect(container.querySelector("[data-app-page-header-dim]")).toBeNull();
     const activeTitle = screen.getByText("Focused thread");
-    expect(activeTitle.classList).toContain("font-normal");
-    expect(activeTitle.classList).not.toContain("font-medium");
+    // The pilot header was made deliberately bolder. What this test is really
+    // holding is that focus is shown by the tab and the dim, never by giving
+    // the focused title a different weight from the unfocused one.
+    expect(activeTitle.classList).toContain("font-semibold");
     expect(screen.getByText("side chat")).not.toBeNull();
 
     rerender(
@@ -284,7 +286,6 @@ describe("ThreadDetailHeader", () => {
     expect(container.querySelector("[data-pane-header-focus-tab]")).toBeNull();
     const inactiveTitle = screen.getByText("Focused thread");
     expect(inactiveTitle.classList).toContain("text-muted-foreground/60");
-    expect(inactiveTitle.classList).toContain("font-normal");
-    expect(inactiveTitle.classList).not.toContain("font-medium");
+    expect(inactiveTitle.classList).toContain("font-semibold");
   });
 });

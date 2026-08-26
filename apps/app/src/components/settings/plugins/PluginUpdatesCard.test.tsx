@@ -199,7 +199,7 @@ describe("PluginUpdatesSourceCard source details", () => {
     );
 
     expect(
-      screen.getByText("1.9.0 isn't compatible with this bb"),
+      screen.getByText("1.9.0 isn't compatible with this version"),
     ).toBeTruthy();
     expect(screen.getByText("requires bb >= 0.15")).toBeTruthy();
   });

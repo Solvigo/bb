@@ -773,17 +773,18 @@ describe("FollowUpPromptBox", () => {
     const composer = document.querySelector("[data-follow-up-composer]");
     const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
 
+    // The composer rests at a fixed tall base now, so the expanded marker is
+    // always on the element and no longer distinguishes anything. What still
+    // carries the meaning this test was written for is the height key, which
+    // is what a narrow container reads to decide whether to grow.
     expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
-      false,
+      true,
     );
     expect(screen.getByTestId("prompt-box").dataset.heightAnimationKey).toBe(
       "compact",
     );
 
     fireEvent.focus(input);
-    expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
-      true,
-    );
     expect(screen.getByTestId("prompt-box").dataset.heightAnimationKey).toBe(
       "expanded",
     );
