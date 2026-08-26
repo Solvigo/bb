@@ -29,10 +29,13 @@ function registerNavPanels(
   setPluginSlotRegistrations(pluginId, set);
 }
 
-function renderSection() {
+function renderSection(railPluginPanels?: readonly string[]) {
   return render(
     <MemoryRouter>
-      <PlatformSection labelClassName="label" />
+      <PlatformSection
+        labelClassName="label"
+        {...(railPluginPanels ? { railPluginPanels } : {})}
+      />
     </MemoryRouter>,
   );
 }
@@ -55,7 +58,11 @@ describe("PlatformSection", () => {
     expect(rowLabels()).toEqual(["Skills", "Connections", "Defaults"]);
   });
 
-  it("appends a registered nav panel below the built-ins, linking to its route", () => {
+  // The rail was overhauled to stop being a list of everything the instance
+  // can do; auto-mounting every plugin panel put the whole graveyard back —
+  // Tower, Airways, Knowledge and Automations reappeared beside the three that
+  // survived. Three is the contract.
+  it("does not put a registered nav panel on the rail", () => {
     registerNavPanels("story-split-page", [
       {
         id: "notes",
@@ -68,16 +75,61 @@ describe("PlatformSection", () => {
 
     renderSection();
 
+    expect(rowLabels()).toEqual(["Skills", "Connections", "Defaults"]);
+  });
+
+  it("shows a panel that has been curated onto the rail, linking to its route", () => {
+    registerNavPanels("story-split-page", [
+      {
+        id: "notes",
+        title: "Project notes",
+        icon: "FileText",
+        path: "notes",
+        component: () => null,
+      },
+    ]);
+
+    renderSection(["story-split-page:notes"]);
+
     expect(rowLabels()).toEqual([
       "Skills",
       "Connections",
       "Defaults",
       "Project notes",
     ]);
-    const rows = screen.getAllByRole("link");
-    expect(rows[3]?.getAttribute("href")).toBe(
+    expect(screen.getAllByRole("link")[3]?.getAttribute("href")).toBe(
       "/plugins/story-split-page/notes",
     );
+  });
+
+  it("curates by plugin AND panel id, so one plugin's row does not admit another's", () => {
+    registerNavPanels("alpha", [
+      {
+        id: "board",
+        title: "Alpha board",
+        icon: "GridView",
+        path: "board",
+        component: () => null,
+      },
+    ]);
+    registerNavPanels("zeta", [
+      {
+        id: "board",
+        title: "Zeta board",
+        icon: "GridView",
+        path: "board",
+        component: () => null,
+      },
+    ]);
+
+    renderSection(["alpha:board"]);
+
+    expect(rowLabels()).toEqual([
+      "Skills",
+      "Connections",
+      "Defaults",
+      "Alpha board",
+    ]);
   });
 
   it("renders a row whose icon hint is not a known icon name", () => {
@@ -91,7 +143,7 @@ describe("PlatformSection", () => {
       },
     ]);
 
-    expect(() => renderSection()).not.toThrow();
+    expect(() => renderSection(["demo:board"])).not.toThrow();
     expect(rowLabels()).toContain("Board");
   });
 
@@ -115,7 +167,7 @@ describe("PlatformSection", () => {
       },
     ]);
 
-    renderSection();
+    renderSection(["alpha:board", "zeta:board"]);
 
     const hrefs = screen
       .getAllByRole("link")

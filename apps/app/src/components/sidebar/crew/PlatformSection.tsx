@@ -24,6 +24,15 @@ interface PlatformRow {
  * agents can carry, the connections it can reach, and what a new agent gets
  * when nobody chooses for it. Three shortcuts into real screens — none of these
  * rows opens a surface that does not exist.
+ *
+ * THREE IS THE CONTRACT, not a starting point. The rail was overhauled to stop
+ * being a list of everything the instance can do, and mounting every plugin
+ * panel as a row put the whole graveyard straight back — Tower, Airways,
+ * Knowledge and Automations reappeared beside the three that were kept.
+ * Tower and Knowledge are agent-surface tabs and belong on an agent; the rest
+ * are reachable from Settings. A panel earns a rail row by being added to
+ * RAIL_PLUGIN_PANELS below, which is a deliberate act with a name on it —
+ * never something a plugin can do to the operator's rail by existing.
  */
 const PLATFORM_ROWS: PlatformRow[] = [
   {
@@ -49,34 +58,47 @@ const PLATFORM_ROWS: PlatformRow[] = [
   },
 ];
 
+/**
+ * The plugin panels curated onto the rail, as `<pluginId>:<panelId>`.
+ *
+ * Empty, and that is the answer rather than an oversight: none of this fleet's
+ * own panels belongs on the rail. Adding an entry is a curated decision, so it
+ * is made here where it can be read and argued with, rather than inferred from
+ * the fact that a plugin registered a panel.
+ */
+const RAIL_PLUGIN_PANELS: readonly string[] = [];
+
 export function PlatformSection({
   labelClassName,
   onNavigate,
+  /** The curated list, injectable so a test can exercise a curated row without
+   *  putting a fake one in front of the operator. */
+  railPluginPanels = RAIL_PLUGIN_PANELS,
 }: {
   labelClassName: string;
   onNavigate?: () => void;
+  railPluginPanels?: readonly string[];
 }) {
-  // A plugin nav panel is instance-wide by definition, so it lands here as one
-  // more Platform row — below the built-ins, in registration order. The row is
-  // a link and nothing more: the panel's own component only ever mounts on its
-  // route, so a plugin that throws cannot take the rail down. With no panels
-  // registered this appends nothing and the rail is exactly as it was.
   const { navPanels } = usePluginSlots();
   const rows = useMemo(
     () => [
       ...PLATFORM_ROWS,
-      ...navPanels.map((panel) => ({
-        key: `${panel.pluginId}:${panel.id}`,
-        icon: pluginIconName(panel.icon),
-        label: panel.title,
-        hint: "",
-        to: getPluginPanelRoutePath({
-          pluginId: panel.pluginId,
-          path: panel.path,
-        }),
-      })),
+      ...navPanels
+        .filter((panel) =>
+          railPluginPanels.includes(`${panel.pluginId}:${panel.id}`),
+        )
+        .map((panel) => ({
+          key: `${panel.pluginId}:${panel.id}`,
+          icon: pluginIconName(panel.icon),
+          label: panel.title,
+          hint: "",
+          to: getPluginPanelRoutePath({
+            pluginId: panel.pluginId,
+            path: panel.path,
+          }),
+        })),
     ],
-    [navPanels],
+    [navPanels, railPluginPanels],
   );
   return (
     <div className="flex flex-col gap-0.5 px-2 group-data-[collapsible=icon]:hidden">
