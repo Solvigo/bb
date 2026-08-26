@@ -62,6 +62,60 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function normalizeAttachUrl(raw) {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    return null;
+  }
+
+  parsedUrl.hash = "";
+  let normalized = parsedUrl.toString();
+  if (normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
+function resolveElectronBuilderAttachEnvironment(env) {
+  const attachUrl =
+    normalizeAttachUrl(env.BB_DESKTOP_ATTACH_URL ?? "") ??
+    normalizeAttachUrl(env.BB_SERVER_URL ?? "");
+  if (attachUrl !== null) {
+    return {
+      BB_DESKTOP_ATTACH_URL: attachUrl,
+      BB_DESKTOP_AUTO_UPDATE: "0",
+      BB_DESKTOP_VERSION_CHECK: "0",
+    };
+  }
+
+  const rawPort = env.BB_SERVER_PORT?.trim();
+  if (rawPort === undefined || rawPort.length === 0) {
+    return null;
+  }
+
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    return null;
+  }
+
+  return {
+    BB_DESKTOP_ATTACH_URL: `http://127.0.0.1:${port}`,
+    BB_DESKTOP_AUTO_UPDATE: "0",
+    BB_DESKTOP_VERSION_CHECK: "0",
+  };
+}
+
 function logWarning(message) {
   if (process.env.GITHUB_ACTIONS === "true") {
     console.warn(`::warning::${message}`);
@@ -176,6 +230,14 @@ export function resolveElectronBuilderConfig(baseConfig, env) {
   } else {
     // Let electron-builder resolve the identity (CSC_LINK or keychain).
     delete mac.identity;
+  }
+
+  const attachEnvironment = resolveElectronBuilderAttachEnvironment(env);
+  if (attachEnvironment !== null) {
+    mac.extendInfo = {
+      ...(mac.extendInfo ?? {}),
+      LSEnvironment: attachEnvironment,
+    };
   }
 
   config.mac = mac;
