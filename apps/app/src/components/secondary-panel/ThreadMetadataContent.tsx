@@ -108,6 +108,7 @@ export function ParentSelectorRow({
   projectId,
   parentThreadDisplayName,
   parentThreads,
+  canAssignToParent,
   isLoadingParentThreads,
   isParentThreadsError,
   updateThreadPending,

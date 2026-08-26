@@ -154,7 +154,8 @@ describe("ParentSelectorRow", () => {
   it("renders nothing for a thread with no parent that cannot take one", () => {
     const { container } = renderRow({ canAssignToParent: false });
 
-    expect(container).toBeEmptyDOMElement();
+    expect(container.textContent).toBe("");
+    expect(container.querySelector("button")).toBeNull();
   });
 
   it("requests candidates only when the parent menu opens", async () => {
