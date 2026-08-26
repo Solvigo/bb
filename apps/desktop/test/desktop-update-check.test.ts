@@ -5,6 +5,7 @@ import {
   DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS,
   DESKTOP_UPDATE_CHECK_TIMEOUT_MS,
   parseDesktopVersionFeed,
+  shouldEnableDesktopVersionCheck,
 } from "../src/desktop-update-check.js";
 
 const checkedAt = "2026-05-21T00:00:00.000Z";
@@ -254,5 +255,25 @@ describe("desktop update service", () => {
     await service.checkAfterActive();
 
     expect(fetchCount).toBe(2);
+  });
+});
+
+describe("shouldEnableDesktopVersionCheck", () => {
+  it("disables version checks when BB_DESKTOP_VERSION_CHECK=0", () => {
+    expect(
+      shouldEnableDesktopVersionCheck({
+        env: { BB_DESKTOP_VERSION_CHECK: "0" },
+        isPackaged: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("enables version checks for packaged builds by default", () => {
+    expect(
+      shouldEnableDesktopVersionCheck({
+        env: {},
+        isPackaged: true,
+      }),
+    ).toBe(true);
   });
 });
