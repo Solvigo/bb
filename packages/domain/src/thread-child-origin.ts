@@ -10,7 +10,9 @@ import { z } from "zod";
 // Side chats used to be their own origin kind. They are now the builtin
 // side-chat plugin's hidden forks, identified by `originPluginId` — migration
 // 0085 moved every legacy row over.
-export const threadOriginKindValues = ["fork"] as const;
+// "handover" records lineage from a source thread with no session clone —
+// unlike "fork", it never triggers provider-session provisioning.
+export const threadOriginKindValues = ["fork", "handover"] as const;
 export const threadOriginKindSchema = z.enum(threadOriginKindValues);
 export type ThreadOriginKind = z.infer<typeof threadOriginKindSchema>;
 

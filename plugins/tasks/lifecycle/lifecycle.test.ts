@@ -192,6 +192,7 @@ describe("task thread lifecycle", () => {
       "thread.idle": 1,
       "thread.failed": 1,
       "thread.archived": 0,
+      "thread.compacted": 0,
       "thread.deleted": 1,
     });
     expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);

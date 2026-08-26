@@ -47,6 +47,7 @@ import {
   runtimeErrorLogFields,
 } from "../services/lib/error-log-fields.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
+import { emitPluginThreadCompacted } from "../services/plugins/plugin-thread-events.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
 import { findPluginAgentTool } from "../services/plugins/plugin-agent-contributions.js";
 import {
@@ -478,6 +479,18 @@ async function applyEventEffects(
         continue;
       }
 
+      if (event.type === "thread/compacted") {
+        const thread = getThread(deps.db, entry.threadId);
+        if (thread) {
+          const turnId = requireThreadEventScopeTurnId({
+            type: event.type,
+            scope: event.scope,
+          });
+          emitPluginThreadCompacted(thread, turnId);
+        }
+        continue;
+      }
+
       if (
         event.type === "system/error" &&
         event.code === "provider_process_exited"
@@ -739,7 +752,12 @@ function listCompletedTurnKeysForStartedEvents(
 function shouldApplyEventEffect(args: ShouldApplyEventEffectArgs): boolean {
   const { entry } = args;
 
-  if (entry.event.type === "turn/completed") {
+  if (
+    entry.event.type === "turn/completed" ||
+    entry.event.type === "thread/compacted"
+  ) {
+    // One-time events: gate on insertion so a daemon retry that re-posts an
+    // already-committed batch does not re-fire the plugin event.
     return args.insertedEventIndexLookup.has(args.index);
   }
 
