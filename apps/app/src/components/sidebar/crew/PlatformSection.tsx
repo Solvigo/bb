@@ -1,17 +1,9 @@
-import { useMemo } from "react";
 import { NavLink } from "react-router-dom";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { pluginIconName } from "@/components/plugin/PluginIcon";
-import { usePluginSlots } from "@/lib/plugin-slots";
-import {
-  getPluginPanelRoutePath,
-  getSettingsRoutePath,
-  getSkillsRoutePath,
-} from "@/lib/route-paths";
+import { getSettingsRoutePath, getSkillsRoutePath } from "@/lib/route-paths";
 
 interface PlatformRow {
-  /** Stable across plugins: a built-in label, or `<pluginId>:<panelId>`. */
   key: string;
   icon: IconName;
   label: string;
@@ -58,52 +50,17 @@ const PLATFORM_ROWS: PlatformRow[] = [
   },
 ];
 
-/**
- * The plugin panels curated onto the rail, as `<pluginId>:<panelId>`.
- *
- * Empty, and that is the answer rather than an oversight: none of this fleet's
- * own panels belongs on the rail. Adding an entry is a curated decision, so it
- * is made here where it can be read and argued with, rather than inferred from
- * the fact that a plugin registered a panel.
- */
-const RAIL_PLUGIN_PANELS: readonly string[] = [];
-
 export function PlatformSection({
   labelClassName,
   onNavigate,
-  /** The curated list, injectable so a test can exercise a curated row without
-   *  putting a fake one in front of the operator. */
-  railPluginPanels = RAIL_PLUGIN_PANELS,
 }: {
   labelClassName: string;
   onNavigate?: () => void;
-  railPluginPanels?: readonly string[];
 }) {
-  const { navPanels } = usePluginSlots();
-  const rows = useMemo(
-    () => [
-      ...PLATFORM_ROWS,
-      ...navPanels
-        .filter((panel) =>
-          railPluginPanels.includes(`${panel.pluginId}:${panel.id}`),
-        )
-        .map((panel) => ({
-          key: `${panel.pluginId}:${panel.id}`,
-          icon: pluginIconName(panel.icon),
-          label: panel.title,
-          hint: "",
-          to: getPluginPanelRoutePath({
-            pluginId: panel.pluginId,
-            path: panel.path,
-          }),
-        })),
-    ],
-    [navPanels, railPluginPanels],
-  );
   return (
     <div className="flex flex-col gap-0.5 px-2 group-data-[collapsible=icon]:hidden">
       <div className={cn(labelClassName, "mt-2 mb-0.5")}>Platform</div>
-      {rows.map((row) => (
+      {PLATFORM_ROWS.map((row) => (
         <NavLink
           key={row.key}
           to={row.to}

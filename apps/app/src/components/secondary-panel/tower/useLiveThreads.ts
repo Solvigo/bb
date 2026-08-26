@@ -13,6 +13,9 @@ export interface LiveThread {
   providerId: string;
   /** The agent's own name, for surfaces that would otherwise print its id. */
   title: string;
+  /** Null for an agent with no working tree — a personal or unmanaged
+   *  workspace has nothing on disk to read from. */
+  environmentId: string | null;
 }
 
 /**
@@ -44,12 +47,14 @@ export function useLiveThreads(): Map<string, LiveThread> | null {
           providerId?: string;
           title?: string | null;
           titleFallback?: string | null;
+          environmentId?: string | null;
         }[]) {
           if (typeof t.id === "string")
             next.set(t.id, {
               projectId: t.projectId ?? "",
               providerId: t.providerId ?? "",
               title: (t.title ?? t.titleFallback ?? "").trim(),
+              environmentId: t.environmentId ?? null,
             });
         }
         setThreads(next);

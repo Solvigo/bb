@@ -9,10 +9,15 @@ import { atom } from "jotai";
  *
  * Links:
  *   bb-tower:crew            → the fleet board
- *   bb-tower:clearance       → yours to clear
+ *   bb-tower:brief           → what this agent was asked to do
  *   bb-tower:sp/<threadId>   → drill into that SP (board + its focus view)
+ *
+ * The set is the agent's tabs and nothing else. `clearance` and `knowledge`
+ * were links here until those tabs were removed; a link to a tab that no
+ * longer exists navigates nowhere and gives no reason, so it stops parsing
+ * rather than silently doing nothing.
  */
-export type TowerNavView = "crew" | "clearance" | "knowledge";
+export type TowerNavView = "crew" | "brief";
 
 export interface TowerNavRequest {
   view: TowerNavView;
@@ -34,7 +39,7 @@ export function parseTowerLink(href: string): Omit<TowerNavRequest, "nonce"> | n
     const id = rest.slice(3).trim();
     return id ? { view: "crew", spThreadId: id } : null;
   }
-  if (rest === "crew" || rest === "clearance" || rest === "knowledge") {
+  if (rest === "crew" || rest === "brief") {
     return { view: rest };
   }
   return null;

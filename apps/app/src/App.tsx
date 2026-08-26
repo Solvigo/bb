@@ -75,7 +75,6 @@ const ProjectSettingsView = lazy(() =>
   })),
 );
 const SplitWorkspaceRoute = lazy(() => import("./views/SplitWorkspaceRoute"));
-const TowerShellView = lazy(() => import("./views/tower/TowerShellView"));
 
 export function LegacyAutomationDetailRedirect() {
   const location = useLocation();
@@ -269,14 +268,6 @@ export function App() {
             <Route
               path={AUTH_CALLBACK_ROUTE_PATH}
               element={<AuthCallbackView />}
-            />
-            <Route
-              path="/tower/*"
-              element={
-                <Suspense fallback={null}>
-                  <TowerShellView />
-                </Suspense>
-              }
             />
             <Route path="*" element={<AppRoutes />} />
           </Routes>

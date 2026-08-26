@@ -29,13 +29,10 @@ function registerNavPanels(
   setPluginSlotRegistrations(pluginId, set);
 }
 
-function renderSection(railPluginPanels?: readonly string[]) {
+function renderSection() {
   return render(
     <MemoryRouter>
-      <PlatformSection
-        labelClassName="label"
-        {...(railPluginPanels ? { railPluginPanels } : {})}
-      />
+      <PlatformSection labelClassName="label" />
     </MemoryRouter>,
   );
 }
@@ -52,23 +49,32 @@ afterEach(() => {
 });
 
 describe("PlatformSection", () => {
-  it("renders only the three built-in rows when no plugin registers a panel", () => {
+  it("carries exactly three rows", () => {
     renderSection();
 
     expect(rowLabels()).toEqual(["Skills", "Connections", "Defaults"]);
   });
 
   // The rail was overhauled to stop being a list of everything the instance
-  // can do; auto-mounting every plugin panel put the whole graveyard back —
-  // Tower, Airways, Knowledge and Automations reappeared beside the three that
-  // survived. Three is the contract.
-  it("does not put a registered nav panel on the rail", () => {
+  // can do. Mounting each registered panel as a row put the whole kill-list
+  // back — Tower, Airways, Knowledge and Automations returned beside the three
+  // that survived. Three is the contract, and a plugin cannot add to it.
+  it("stays three rows however many panels plugins register", () => {
     registerNavPanels("story-split-page", [
       {
         id: "notes",
         title: "Project notes",
         icon: "FileText",
         path: "notes",
+        component: () => null,
+      },
+    ]);
+    registerNavPanels("demo", [
+      {
+        id: "board",
+        title: "Board",
+        icon: "GridView",
+        path: "board",
         component: () => null,
       },
     ]);
@@ -78,106 +84,11 @@ describe("PlatformSection", () => {
     expect(rowLabels()).toEqual(["Skills", "Connections", "Defaults"]);
   });
 
-  it("shows a panel that has been curated onto the rail, linking to its route", () => {
-    registerNavPanels("story-split-page", [
-      {
-        id: "notes",
-        title: "Project notes",
-        icon: "FileText",
-        path: "notes",
-        component: () => null,
-      },
-    ]);
+  it("links each row to a screen that exists", () => {
+    renderSection();
 
-    renderSection(["story-split-page:notes"]);
-
-    expect(rowLabels()).toEqual([
-      "Skills",
-      "Connections",
-      "Defaults",
-      "Project notes",
-    ]);
-    expect(screen.getAllByRole("link")[3]?.getAttribute("href")).toBe(
-      "/plugins/story-split-page/notes",
-    );
-  });
-
-  it("curates by plugin AND panel id, so one plugin's row does not admit another's", () => {
-    registerNavPanels("alpha", [
-      {
-        id: "board",
-        title: "Alpha board",
-        icon: "GridView",
-        path: "board",
-        component: () => null,
-      },
-    ]);
-    registerNavPanels("zeta", [
-      {
-        id: "board",
-        title: "Zeta board",
-        icon: "GridView",
-        path: "board",
-        component: () => null,
-      },
-    ]);
-
-    renderSection(["alpha:board"]);
-
-    expect(rowLabels()).toEqual([
-      "Skills",
-      "Connections",
-      "Defaults",
-      "Alpha board",
-    ]);
-  });
-
-  it("renders a row whose icon hint is not a known icon name", () => {
-    registerNavPanels("demo", [
-      {
-        id: "board",
-        title: "Board",
-        icon: "not-a-real-icon",
-        path: "board",
-        component: () => null,
-      },
-    ]);
-
-    expect(() => renderSection(["demo:board"])).not.toThrow();
-    expect(rowLabels()).toContain("Board");
-  });
-
-  it("keys rows per plugin so two plugins may register the same title", () => {
-    registerNavPanels("alpha", [
-      {
-        id: "board",
-        title: "Board",
-        icon: "GridView",
-        path: "board",
-        component: () => null,
-      },
-    ]);
-    registerNavPanels("zeta", [
-      {
-        id: "board",
-        title: "Board",
-        icon: "GridView",
-        path: "board",
-        component: () => null,
-      },
-    ]);
-
-    renderSection(["alpha:board", "zeta:board"]);
-
-    const hrefs = screen
-      .getAllByRole("link")
-      .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual([
-      "/tools/skills",
-      "/settings/connections",
-      "/settings/defaults",
-      "/plugins/alpha/board",
-      "/plugins/zeta/board",
-    ]);
+    expect(
+      screen.getAllByRole("link").map((link) => link.getAttribute("href")),
+    ).toEqual(["/tools/skills", "/settings/connections", "/settings/defaults"]);
   });
 });
