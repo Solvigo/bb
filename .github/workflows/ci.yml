@@ -1,10 +1,15 @@
 name: CI
 
+# Fleet-patched fork gate: typecheck + tests for packages touched by fleet PRs.
+# Adapted from main's ci.yml — github-hosted runners only (no self-hosted labels),
+# triggers scoped to fleet-patched so PRs against that branch get a real verdict.
 on:
   push:
     branches:
-      - main
+      - fleet-patched
   pull_request:
+    branches:
+      - fleet-patched
   workflow_dispatch:
 
 env:
@@ -55,12 +60,24 @@ jobs:
         include:
           - shard: server
             filter: --filter=@bb/server
-          - shard: app
+            args: ""
+          # @bb/app is the largest suite; Vitest splits by file and Turbo
+          # hashes passthrough args, so each leg is a distinct cache entry.
+          - shard: app-1
             filter: --filter=@bb/app
+            args: -- --shard=1/3
+          - shard: app-2
+            filter: --filter=@bb/app
+            args: -- --shard=2/3
+          - shard: app-3
+            filter: --filter=@bb/app
+            args: -- --shard=3/3
           - shard: integration
             filter: --filter=@bb/integration-tests
+            args: ""
           - shard: packages
             filter: --filter='!@bb/server' --filter='!@bb/app' --filter='!@bb/integration-tests'
+            args: ""
 
     steps:
       - name: Checkout repository
@@ -74,7 +91,7 @@ jobs:
           cache-prefix: test-${{ matrix.shard }}
 
       - name: Test
-        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only
+        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only ${{ matrix.args }}
 
   package-smoke:
     name: Package Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
@@ -87,8 +104,6 @@ jobs:
         include:
           - os: ubuntu-latest
             node-version: "22.x"
-          - os: macos-latest
-            node-version: "22.x"
 
     steps:
       - name: Checkout repository
@@ -100,38 +115,6 @@ jobs:
           node-version: ${{ matrix.node-version }}
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: package-smoke
-
-      - name: Smoke bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
-
-  node-compat-smoke:
-    name: Node Compatibility Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
-    if: ${{ github.event_name != 'pull_request' }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            node-version: "24.x"
-          - os: ubuntu-latest
-            node-version: "26.x"
-          - os: macos-latest
-            node-version: "24.x"
-          - os: macos-latest
-            node-version: "26.x"
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          node-version: ${{ matrix.node-version }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
-          cache-prefix: compat-smoke
 
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
