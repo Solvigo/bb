@@ -11,6 +11,7 @@ import {
   type ViewerRole,
 } from "./agentSurfaceRegistry";
 import { registerBuiltInAgentSurfaceTabs } from "./builtInAgentSurfaceTabs";
+import { AgentSurfaceTabContent } from "./AgentSurfaceTabContent";
 
 
 /**
@@ -52,6 +53,8 @@ export function TowerRenderSurface({
         icon: pluginIconName(slot.icon),
         title: slot.title,
         component: slot.component as unknown as AgentSurfaceTab["component"],
+        pluginId: slot.pluginId,
+        generation: slot.generation,
       })),
     ],
     [pluginTabs],
@@ -113,14 +116,14 @@ export function TowerRenderSurface({
           .filter((tab) => mounted.has(tab.id))
           .map((tab) => {
             const isVisible = view === tab.id;
-            const Tab = tab.component;
             return (
               <div
-                key={tab.id}
+                key={`${tab.id}:${tab.generation ?? 0}`}
                 className={isVisible ? "h-full min-h-0" : "hidden"}
                 aria-hidden={isVisible ? undefined : true}
               >
-                <Tab
+                <AgentSurfaceTabContent
+                  tab={tab}
                   agentId={scopeThreadId}
                   onTeardown={registerTeardown}
                   viewerRole={viewerRole}

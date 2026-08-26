@@ -42,6 +42,17 @@ export interface AgentSurfaceTab {
    * it unset and the tab lands after them, in registration order.
    */
   order?: number;
+  /**
+   * Set only for a tab contributed by a plugin, and it decides how the tab is
+   * mounted: a plugin's component must render inside its plugin context or the
+   * SDK hooks it is entitled to use (useRpc, useSettings) throw on sight. A
+   * built-in leaves this unset and is mounted directly.
+   */
+  pluginId?: string;
+  /** The plugin slot's `generation`, bumped when its registrations are
+   *  replaced. Folded into the React key so a reload remounts the tab instead
+   *  of reusing a boundary that latched a crash from the previous bundle. */
+  generation?: number;
 }
 
 const tabs = new Map<string, AgentSurfaceTab>();

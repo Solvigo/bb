@@ -35,6 +35,7 @@ import {
   onAgentTeardown,
   type AgentSurfaceTab,
 } from "./tower/agentSurfaceRegistry";
+import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
 import { registerBuiltInAgentSurfaceTabs } from "./tower/builtInAgentSurfaceTabs";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -481,6 +482,8 @@ export function ThreadSecondaryPanel({
         icon: pluginIconName(slot.icon),
         title: slot.title,
         component: slot.component as unknown as AgentSurfaceTab["component"],
+        pluginId: slot.pluginId,
+        generation: slot.generation,
       })),
     ],
     [pluginSurfaceTabs],
@@ -882,7 +885,9 @@ export function ThreadSecondaryPanel({
         */}
         {browserDeck}
         {isBrowserTabActive ? null : activeTowerTab && openInThreadId ? (
-          <activeTowerTab.component
+          <AgentSurfaceTabContent
+            key={`${activeTowerTab.id}:${activeTowerTab.generation ?? 0}`}
+            tab={activeTowerTab}
             agentId={openInThreadId}
             onTeardown={registerTowerTeardown}
             viewerRole="commander"
