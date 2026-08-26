@@ -29,6 +29,12 @@ const macConfigSchema = z
     icon: z.string().min(1),
     identity: z.string().nullable().optional(),
     notarize: z.boolean(),
+    extendInfo: z
+      .object({
+        LSEnvironment: z.record(z.string(), z.string()),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -489,6 +495,18 @@ describe("electron-builder signing config", () => {
 
     expect(config.mac.identity).toBeNull();
     expect(config.mac.notarize).toBe(false);
+  });
+
+  it("bakes attach URL and update disables into macOS LSEnvironment", async () => {
+    const { config } = await readResolvedConfig({
+      BB_DESKTOP_ATTACH_URL: "http://127.0.0.1:21990",
+    });
+
+    expect(config.mac.extendInfo?.LSEnvironment).toEqual({
+      BB_DESKTOP_ATTACH_URL: "http://127.0.0.1:21990",
+      BB_DESKTOP_AUTO_UPDATE: "0",
+      BB_DESKTOP_VERSION_CHECK: "0",
+    });
   });
 
   it("rejects partial signing secret sets", async () => {

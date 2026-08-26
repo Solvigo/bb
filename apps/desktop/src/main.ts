@@ -69,6 +69,12 @@ import {
   type ServerProbeResult,
 } from "./server-probe.js";
 import {
+  applyEnvAttachServerTarget,
+  formatAttachProbeFailureMessage,
+  isAttachOnlyConfigured,
+  resolveEnvAttachServerUrl,
+} from "./server-attach.js";
+import {
   BUILTIN_SERVER_NAME,
   createServerTargetStore,
   SERVER_TARGET_FILE_NAME,
@@ -989,6 +995,10 @@ async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
     return false;
   }
 
+  if (isAttachOnlyConfigured({ env: process.env })) {
+    return false;
+  }
+
   const runtime = await startOwnedRuntime({
     bridgePath: desktopBridgePath,
     serverUrl: builtinServerUrl,
@@ -1128,6 +1138,10 @@ async function applyServerTarget(): Promise<void> {
   if (serverTargetStore === null) {
     return;
   }
+  await applyEnvAttachServerTarget({
+    env: process.env,
+    store: serverTargetStore,
+  });
   const target = serverTargetStore.getTarget();
   // Retire the outgoing session before any await below. A renewal already in
   // flight would otherwise still read itself as current while this switch
@@ -1143,11 +1157,19 @@ async function applyServerTarget(): Promise<void> {
       return;
     }
     if (!attached) {
+      const attachUrl = resolveEnvAttachServerUrl({ env: process.env });
       await loadStartupError({
         details:
-          "Could not connect to the local bb server on this Mac. Check that the port is free or that a compatible bb server is running.",
+          attachUrl !== null
+            ? formatAttachProbeFailureMessage(attachUrl, {
+                kind: "unavailable",
+                reason: "connection refused or timed out",
+                serverUrl: attachUrl,
+              })
+            : "Could not connect to the local bb server on this Mac. Check that the port is free or that a compatible bb server is running.",
         logs: "",
-        title: "Could not connect",
+        title:
+          attachUrl !== null ? "Cannot reach bb server" : "Could not connect",
       });
       refreshApplicationMenu();
       return;
@@ -1199,6 +1221,25 @@ async function applyServerTarget(): Promise<void> {
     startRemoteSystemConfigSync(target.server.url);
   } else {
     // A custom server is a plain web load with no bb Connect involved.
+    const probe = await probeBbServer({
+      serverUrl: target.url,
+      timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
+    });
+    if (!isCurrent()) {
+      return;
+    }
+    if (probe.kind !== "compatible") {
+      await loadStartupError({
+        details: formatAttachProbeFailureMessage(target.url, probe),
+        logs: "",
+        title:
+          probe.kind === "unavailable"
+            ? "Cannot reach bb server"
+            : "Incompatible bb server",
+      });
+      refreshApplicationMenu();
+      return;
+    }
     bbAppLoaded = true;
     await loadWindowUrl({ url: target.url });
     if (!isCurrent()) {
@@ -1875,6 +1916,18 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
       return;
     }
     if (decision === "start-fresh") {
+      if (isAttachOnlyConfigured({ env: process.env })) {
+        const attachUrl = resolveEnvAttachServerUrl({ env: process.env });
+        await loadStartupError({
+          details:
+            attachUrl !== null
+              ? `An attach URL is configured (${attachUrl}), so the desktop app cannot start a bundled bb server. Attach to the running server instead.`
+              : "The desktop app cannot start a bundled bb server while an attach URL is configured.",
+          logs: "",
+          title: "Cannot start bundled bb server",
+        });
+        return;
+      }
       await loadLoadingView();
       const freshRuntime = await startOwnedRuntime({
         bridgePath: args.bridgePath,
@@ -1914,6 +1967,19 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
       details: `Port ${args.serverUrl} is already in use, but it is not a compatible bb server: ${existingProbe.reason}.`,
       logs: "",
       title: "Port conflict",
+    });
+    return;
+  }
+
+  if (isAttachOnlyConfigured({ env: process.env })) {
+    const attachUrl = resolveEnvAttachServerUrl({ env: process.env });
+    await loadStartupError({
+      details:
+        attachUrl !== null
+          ? formatAttachProbeFailureMessage(attachUrl, existingProbe)
+          : "The desktop app cannot start a bundled bb server while an attach URL is configured.",
+      logs: "",
+      title: "Cannot reach bb server",
     });
     return;
   }
@@ -2066,6 +2132,10 @@ async function runDesktopApp(): Promise<void> {
     storagePath: join(userDataPath, SERVER_TARGET_FILE_NAME),
   });
   await serverTargetStore.load();
+  await applyEnvAttachServerTarget({
+    env: process.env,
+    store: serverTargetStore,
+  });
   connectCredentialCache = createConnectCredentialCache({
     encryption: safeStorage,
     userDataPath,
@@ -2208,13 +2278,14 @@ async function runDesktopApp(): Promise<void> {
   for (const browserWindow of restoredWindows) {
     registerApplicationWindow(browserWindow);
   }
-  if (serverTargetStore.getTarget().kind === "builtin") {
+  const startupTarget = serverTargetStore.getTarget();
+  if (
+    startupTarget.kind === "builtin" &&
+    !isAttachOnlyConfigured({ env: process.env })
+  ) {
     await initializeRuntime({ bridgePath, serverUrl, userDataPath });
   } else {
-    // A saved remote target needs no bb server on this Mac: the session cookie
-    // and the account server list both come from bb Connect. The local server
-    // starts only when the user switches back to "This Mac", or when this app
-    // has no credential of its own yet.
+    // A saved remote/custom target needs no bundled bb server on this Mac.
     await applyServerTarget();
     connectServerSync.syncNow().catch(() => {});
   }
