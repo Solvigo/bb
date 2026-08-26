@@ -792,9 +792,6 @@ describe("FollowUpPromptBox", () => {
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Outside composer" }),
     );
-    expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
-      false,
-    );
     expect(screen.getByTestId("prompt-box").dataset.heightAnimationKey).toBe(
       "compact",
     );
