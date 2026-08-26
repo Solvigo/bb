@@ -113,26 +113,136 @@ describe("pluginProxyCandidate", () => {
   });
 });
 
+/** A fetch failure the way Node's real fetch throws it: a TypeError wrapping the errno error. */
+function connectionError(code: string, message: string): TypeError {
+  const err = new TypeError("fetch failed");
+  (err as { cause?: unknown }).cause = Object.assign(new Error(message), {
+    code,
+  });
+  return err;
+}
+
 describe("fetchPluginCliContributions", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("distinguishes an unreachable server from an old/invalid one", async () => {
-    // Unreachable (server down): fetch rejects → tell the user to start bb.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new Error("ECONNREFUSED");
-      }),
-    );
+  it("reports cause \"refused\" for a connection refusal, with no retry", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw connectionError("ECONNREFUSED", "connect ECONNREFUSED 127.0.0.1:3000");
+    });
+    vi.stubGlobal("fetch", fetchMock);
     await expect(
       fetchPluginCliContributions("http://localhost"),
     ).resolves.toEqual({
       outcome: "unreachable",
+      cause: "refused",
+      detail: "connect ECONNREFUSED 127.0.0.1:3000",
     });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
-    // Old server without the route: silent fallback to commander's error.
+  it("reports cause \"no-address\" for a DNS resolution failure, with no retry", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw connectionError("ENOTFOUND", "getaddrinfo ENOTFOUND bb.invalid");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPluginCliContributions("http://bb.invalid"),
+    ).resolves.toEqual({
+      outcome: "unreachable",
+      cause: "no-address",
+      detail: "getaddrinfo ENOTFOUND bb.invalid",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports cause \"no-address\" for a malformed base URL, with no retry", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw connectionError("ERR_INVALID_URL", "Invalid URL");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPluginCliContributions("not a url"),
+    ).resolves.toEqual({
+      outcome: "unreachable",
+      cause: "no-address",
+      detail: "Invalid URL",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports cause \"unknown\" for an unrecognized error shape (e.g. ECONNRESET), with no retry", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw connectionError("ECONNRESET", "socket hang up");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPluginCliContributions("http://localhost"),
+    ).resolves.toEqual({
+      outcome: "unreachable",
+      cause: "unknown",
+      detail: "socket hang up",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports cause \"unknown\" for a bare error with no name/cause/code, with no retry", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error("something broke");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPluginCliContributions("http://localhost"),
+    ).resolves.toEqual({
+      outcome: "unreachable",
+      cause: "unknown",
+      detail: "something broke",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries once, at 2x the timeout, and succeeds if the retry answers", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        throw new DOMException("signal timed out", "TimeoutError");
+      })
+      .mockImplementationOnce(
+        async () =>
+          new Response(JSON.stringify({ cliCommands: [] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPluginCliContributions("http://localhost", 100),
+    ).resolves.toEqual({ outcome: "ok", contributions: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Assert the actual timeout the retry's AbortSignal was built with, not
+    // just the value the result happens to echo back.
+    expect(timeoutSpy.mock.calls).toEqual([[100], [200]]);
+    timeoutSpy.mockRestore();
+  });
+
+  it("reports cause \"timeout\" with both attempts' timeouts when both time out", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi.fn(async () => {
+      throw new DOMException("signal timed out", "TimeoutError");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      fetchPluginCliContributions("http://localhost", 100),
+    ).resolves.toEqual({
+      outcome: "unreachable",
+      cause: "timeout",
+      timeoutsMs: [100, 200],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(timeoutSpy.mock.calls).toEqual([[100], [200]]);
+    timeoutSpy.mockRestore();
+  });
+
+  it("old server without the route falls back silently to commander's error", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("not found", { status: 404 })),

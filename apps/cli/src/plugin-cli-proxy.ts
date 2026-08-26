@@ -17,31 +17,152 @@ export interface PluginCliContributionEntry {
 }
 
 const CONTRIBUTIONS_TIMEOUT_MS = 2000;
+const TIMEOUT_RETRY_MULTIPLIER = 2;
+
+/** The distinct reasons `fetchPluginCliContributions` can fail to reach bb. */
+export type PluginCliUnreachableCause =
+  | "timeout"
+  | "refused"
+  | "no-address"
+  | "unknown";
 
 /**
  * Result of asking the server for plugin CLI contributions. "unreachable"
- * (fetch threw: server down, timeout) is distinguished from "invalid" (an
- * old server without the route, or a malformed payload) so unknown-command
- * handling can tell the user to start bb instead of printing a misleading
- * "unknown command" for a plugin command that would exist if bb were up.
+ * (fetch threw) is distinguished from "invalid" (an old server without the
+ * route, or a malformed payload) so unknown-command handling can tell the
+ * user to start bb instead of printing a misleading "unknown command" for a
+ * plugin command that would exist if bb were up.
+ *
+ * "unreachable" itself carries a `cause` because a slow-to-boot server, a
+ * refused connection, and a bad/absent address are different situations that
+ * warrant different advice — collapsing them into one message misdiagnoses
+ * whichever two weren't the actual cause. "unknown" is the honest fallback
+ * for an error shape none of the other three recognize (e.g. ECONNRESET, a
+ * TLS failure): it must never be reported as "no-address", since that names
+ * a specific cause the evidence doesn't support. `cause: "timeout"` reflects
+ * both attempts having timed out (see the retry below); `timeoutsMs` is
+ * required alongside it — every other cause carries an optional `detail`
+ * instead, since only "timeout" always has two known durations to report.
  */
 export type PluginCliContributionsResult =
   | { outcome: "ok"; contributions: PluginCliContributionEntry[] }
-  | { outcome: "unreachable" }
+  | {
+      outcome: "unreachable";
+      cause: "timeout";
+      timeoutsMs: readonly [number, number];
+    }
+  | {
+      outcome: "unreachable";
+      cause: "refused" | "no-address" | "unknown";
+      detail?: string;
+    }
   | { outcome: "invalid" };
 
-/** Fetch plugin CLI contributions with a short timeout. */
+function errorName(error: unknown): string | undefined {
+  return typeof error === "object" &&
+    error !== null &&
+    typeof (error as { name?: unknown }).name === "string"
+    ? (error as { name: string }).name
+    : undefined;
+}
+
+function errorCode(error: unknown): string | undefined {
+  return typeof error === "object" &&
+    error !== null &&
+    typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : undefined;
+}
+
+function errorMessage(error: unknown): string | undefined {
+  return typeof error === "object" &&
+    error !== null &&
+    typeof (error as { message?: unknown }).message === "string"
+    ? (error as { message: string }).message
+    : undefined;
+}
+
+/**
+ * Classify a thrown fetch error into the taxonomy above. AbortSignal.timeout
+ * rejects with a "TimeoutError" (name-checked rather than instanceof-checked
+ * since Node's DOMException doesn't extend Error); Node's fetch wraps a
+ * refused/unresolvable connection in a TypeError whose `.cause` carries the
+ * underlying errno code. "no-address" is scoped strictly to the codes that
+ * actually mean "there is no address to try" (DNS failure, or Node's own
+ * ERR_INVALID_URL for a malformed base URL) — anything else (ECONNRESET, a
+ * TLS failure, or any other shape) is "unknown" rather than a guess.
+ */
+function classifyUnreachableError(error: unknown): {
+  cause: PluginCliUnreachableCause;
+  detail?: string;
+} {
+  const name = errorName(error);
+  if (name === "TimeoutError" || name === "AbortError") {
+    return { cause: "timeout" };
+  }
+  const cause =
+    typeof error === "object" && error !== null && "cause" in error
+      ? (error as { cause?: unknown }).cause
+      : undefined;
+  const code = errorCode(cause);
+  if (code === "ECONNREFUSED") {
+    return { cause: "refused", detail: errorMessage(cause) };
+  }
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN" || code === "ERR_INVALID_URL") {
+    return { cause: "no-address", detail: errorMessage(cause) };
+  }
+  return { cause: "unknown", detail: errorMessage(cause) ?? errorMessage(error) };
+}
+
+async function requestPluginCliContributions(
+  baseUrl: string,
+  timeoutMs: number,
+): Promise<Response> {
+  return cliFetch(`${baseUrl}/api/v1/plugins/contributions`, {
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+/**
+ * Fetch plugin CLI contributions with a short timeout. A timeout gets one
+ * retry, more patient than the first attempt, because a booting server
+ * answering the second ask looks identical to a dead one on the first —
+ * "refused" is never retried, since nothing is listening to answer sooner.
+ */
 export async function fetchPluginCliContributions(
   baseUrl: string,
   timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
 ): Promise<PluginCliContributionsResult> {
   let response: Response;
   try {
-    response = await cliFetch(`${baseUrl}/api/v1/plugins/contributions`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch {
-    return { outcome: "unreachable" };
+    response = await requestPluginCliContributions(baseUrl, timeoutMs);
+  } catch (error) {
+    const classified = classifyUnreachableError(error);
+    if (classified.cause !== "timeout") {
+      return {
+        outcome: "unreachable",
+        cause: classified.cause,
+        detail: classified.detail,
+      };
+    }
+    const retryTimeoutMs = timeoutMs * TIMEOUT_RETRY_MULTIPLIER;
+    try {
+      response = await requestPluginCliContributions(baseUrl, retryTimeoutMs);
+    } catch (retryError) {
+      const retryClassified = classifyUnreachableError(retryError);
+      if (retryClassified.cause !== "timeout") {
+        return {
+          outcome: "unreachable",
+          cause: retryClassified.cause,
+          detail: retryClassified.detail,
+        };
+      }
+      return {
+        outcome: "unreachable",
+        cause: "timeout",
+        timeoutsMs: [timeoutMs, retryTimeoutMs] as const,
+      };
+    }
   }
   try {
     if (!response.ok) return { outcome: "invalid" };
