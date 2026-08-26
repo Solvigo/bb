@@ -584,7 +584,6 @@ function FollowUpPromptBoxWithComposer({
       ref={composerInteractionRef}
       className="relative z-20"
       data-follow-up-composer=""
-      data-follow-up-composer-expanded=""
       onFocusCapture={handleComposerFocus}
     >
       <PromptBoxWithScrollAnchor
