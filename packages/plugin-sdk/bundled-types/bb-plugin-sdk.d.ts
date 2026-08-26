@@ -889,9 +889,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
+            completed: "completed";
             running: "running";
             paused: "paused";
-            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1121,9 +1121,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
+            completed: "completed";
             running: "running";
             paused: "paused";
-            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1250,9 +1250,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
+            completed: "completed";
             running: "running";
             paused: "paused";
-            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1322,9 +1322,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
+            completed: "completed";
             running: "running";
             paused: "paused";
-            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1573,6 +1573,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         user: "user";
         agent: "agent";
     }>;
+    origin: z$1.ZodOptional<z$1.ZodEnum<{
+        "operator-steer": "operator-steer";
+        "crew-tasking": "crew-tasking";
+    }>>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
     systemMessageKind: z$1.ZodOptional<z$1.ZodEnum<{
         "ownership-assigned": "ownership-assigned";
@@ -2082,8 +2086,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             in_progress: "in_progress";
+            completed: "completed";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -2627,9 +2631,11 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
         sourceThreadId: z$1.ZodNullable<z$1.ZodString>;
         originKind: z$1.ZodNullable<z$1.ZodEnum<{
             fork: "fork";
+            handover: "handover";
         }>>;
         childOrigin: z$1.ZodNullable<z$1.ZodEnum<{
             fork: "fork";
+            handover: "handover";
         }>>;
         originPluginId: z$1.ZodNullable<z$1.ZodString>;
         visibility: z$1.ZodEnum<{
@@ -7944,9 +7950,11 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
     }, z$1.core.$strip>>>;
     originKind: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>>;
     childOrigin: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>>;
 }, z$1.core.$strip>;
 type CreateThreadRequest = z$1.infer<typeof createThreadRequestSchema>;
@@ -8267,6 +8275,10 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
         "queue-if-active": "queue-if-active";
         "steer-if-active": "steer-if-active";
     }>;
+    origin: z$1.ZodOptional<z$1.ZodEnum<{
+        "operator-steer": "operator-steer";
+        "crew-tasking": "crew-tasking";
+    }>>;
     senderThreadId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type SendMessageRequest = z$1.infer<typeof sendMessageRequestSchema>;
@@ -8723,9 +8735,11 @@ declare const threadListResponseSchema: z$1.ZodArray<z$1.ZodObject<{
     sourceThreadId: z$1.ZodNullable<z$1.ZodString>;
     originKind: z$1.ZodNullable<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>;
     childOrigin: z$1.ZodNullable<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>;
     originPluginId: z$1.ZodNullable<z$1.ZodString>;
     visibility: z$1.ZodEnum<{
@@ -8794,9 +8808,11 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                 sourceThreadId: z$1.ZodNullable<z$1.ZodString>;
                 originKind: z$1.ZodNullable<z$1.ZodEnum<{
                     fork: "fork";
+                    handover: "handover";
                 }>>;
                 childOrigin: z$1.ZodNullable<z$1.ZodEnum<{
                     fork: "fork";
+                    handover: "handover";
                 }>>;
                 originPluginId: z$1.ZodNullable<z$1.ZodString>;
                 visibility: z$1.ZodEnum<{
@@ -8880,9 +8896,11 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                 sourceThreadId: z$1.ZodNullable<z$1.ZodString>;
                 originKind: z$1.ZodNullable<z$1.ZodEnum<{
                     fork: "fork";
+                    handover: "handover";
                 }>>;
                 childOrigin: z$1.ZodNullable<z$1.ZodEnum<{
                     fork: "fork";
+                    handover: "handover";
                 }>>;
                 originPluginId: z$1.ZodNullable<z$1.ZodString>;
                 visibility: z$1.ZodEnum<{
@@ -8965,9 +8983,11 @@ declare const threadResponseSchema: z$1.ZodObject<{
     sourceThreadId: z$1.ZodNullable<z$1.ZodString>;
     originKind: z$1.ZodNullable<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>;
     childOrigin: z$1.ZodNullable<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>;
     originPluginId: z$1.ZodNullable<z$1.ZodString>;
     visibility: z$1.ZodEnum<{
@@ -9020,9 +9040,11 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
     sourceThreadId: z$1.ZodNullable<z$1.ZodString>;
     originKind: z$1.ZodNullable<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>;
     childOrigin: z$1.ZodNullable<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>;
     originPluginId: z$1.ZodNullable<z$1.ZodString>;
     visibility: z$1.ZodEnum<{
@@ -9472,10 +9494,12 @@ declare const threadListQuerySchema: z$1.ZodObject<{
     }>>;
     originKind: z$1.ZodOptional<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>;
     originPluginId: z$1.ZodOptional<z$1.ZodString>;
     childOrigin: z$1.ZodOptional<z$1.ZodEnum<{
         fork: "fork";
+        handover: "handover";
     }>>;
     includeHidden: z$1.ZodOptional<z$1.ZodEnum<{
         true: "true";
@@ -10338,7 +10362,7 @@ interface PluginSidebarThread {
     parentThreadId: string | null;
     sectionId: string | null;
     /** How this thread came to exist under its parent; null for root threads. */
-    originKind: "fork" | "side-chat" | null;
+    originKind: "fork" | "side-chat" | "handover" | null;
     /** The plugin that spawned it, or null for non-plugin origins. */
     originPluginId: string | null;
     /** The agent provider this thread runs on, e.g. "codex", "claude-code". */
@@ -12556,6 +12580,11 @@ interface PluginThreadEventPayloads {
         thread: ThreadResponse;
         lastAssistantText: string | null;
     };
+    /** Fired when a thread's context is compacted mid-turn. */
+    "thread.compacted": {
+        thread: ThreadResponse;
+        turnId: string;
+    };
     /** Fired when a thread transitions into `error`. `error` is the latest
      * system/error event message, when one exists. */
     "thread.failed": {
@@ -12784,9 +12813,10 @@ interface PluginAgentConfigurationContext {
         model: string;
     };
     /** How the thread was spawned. A side chat is the builtin side-chat
-     * plugin's fork: `{ kind: "fork", pluginId: "side-chat" }`. */
+     * plugin's fork: `{ kind: "fork", pluginId: "side-chat" }`. A handover
+     * carries lineage from a source thread with no session clone. */
     origin: {
-        kind: "fork" | null;
+        kind: "fork" | "handover" | null;
         pluginId: string | null;
     };
 }

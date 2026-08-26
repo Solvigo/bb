@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
 import { createThreadRecord } from "../../../src/services/threads/thread-create-helpers.js";
 import type { ThreadCreateServiceRequest } from "../../../src/services/threads/thread-create-request.js";
+import { internalAuthHeaders } from "../../helpers/commands.js";
 import { seedEvent, seedThreadFixture } from "../../helpers/seed.js";
 import {
   createTestAppHarness,
@@ -23,6 +25,7 @@ interface RecordedThreadPayload {
   };
   lastAssistantText?: string | null;
   error?: string | null;
+  turnId?: string;
 }
 
 const globals = globalThis as Record<string, unknown>;
@@ -154,6 +157,59 @@ describe("plugin thread lifecycle events", () => {
       expect(entry?.handlerStats.errorCount).toBe(0);
     } finally {
       delete globals.__idleEvents;
+      await cleanup();
+    }
+  });
+
+  it("delivers thread.compacted from the thread/compacted stream event", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__compactedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.compacted", (payload: any) => {
+          (globalThis as any).__compactedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { session, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId: session.id,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: thread.id,
+              event: {
+                type: "turn/started",
+                threadId: thread.id,
+                providerThreadId: "provider-1",
+                scope: turnScope("turn-1"),
+              },
+            },
+            {
+              threadId: thread.id,
+              event: {
+                type: "thread/compacted",
+                threadId: thread.id,
+                providerThreadId: "provider-1",
+                scope: turnScope("turn-1"),
+              },
+            },
+          ]),
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread.id).toBe(thread.id);
+      expect(recorded[0]?.turnId).toBe("turn-1");
+    } finally {
+      delete globals.__compactedEvents;
       await cleanup();
     }
   });

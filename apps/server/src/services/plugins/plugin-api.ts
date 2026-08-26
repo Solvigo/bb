@@ -278,7 +278,6 @@ export interface PluginMentionProviderRecord {
   ) => { context: string } | Promise<{ context: string }>;
 }
 
-
 /** Runtime record of a registered background service. */
 export interface PluginBackgroundServiceRecord {
   name: string;
@@ -579,6 +578,7 @@ export function createPluginApi(options: {
     "thread.created": [],
     "thread.active": [],
     "thread.idle": [],
+    "thread.compacted": [],
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],

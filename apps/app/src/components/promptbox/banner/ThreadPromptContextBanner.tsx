@@ -68,10 +68,10 @@ export interface ThreadPromptParentThreadSection {
   href: string;
   /**
    * How the current thread relates to the linked thread: a fork renders
-   * "Forked from …", a side chat renders "Side chat of …", any other child
-   * renders "Parent …".
+   * "Forked from …", a side chat renders "Side chat of …", a handover
+   * renders "Continued from …", any other child renders "Parent …".
    */
-  relationship: "parent" | "fork" | "side-chat";
+  relationship: "parent" | "fork" | "side-chat" | "handover";
 }
 
 /**
@@ -285,8 +285,7 @@ function SectionToggleButton({
         // icon — the icons' own internal padding provides enough separation,
         // and a gap here makes the pair look untethered.
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        !active &&
-          (isExpanded ? "text-foreground" : "text-muted-foreground"),
+        !active && (isExpanded ? "text-foreground" : "text-muted-foreground"),
       )}
     >
       {icon}
@@ -317,9 +316,7 @@ function SectionToggleButton({
       <Icon
         name="ChevronDown"
         className={cn(
-          active
-            ? activityIconClass("active")
-            : "text-subtle-foreground",
+          active ? activityIconClass("active") : "text-subtle-foreground",
           "size-3.5 shrink-0 transition-transform duration-200",
           isExpanded && "rotate-180",
         )}
@@ -350,6 +347,11 @@ const PARENT_SECTION_COPY: Record<
     bodyLead: "This thread is a side chat of ",
     ariaPrefix: "Side chat of",
   },
+  handover: {
+    verb: "Continued from",
+    bodyLead: "This thread continues from ",
+    ariaPrefix: "Continued from",
+  },
 };
 
 const PARENT_SECTION_ICON: Record<
@@ -359,6 +361,7 @@ const PARENT_SECTION_ICON: Record<
   parent: "UserRound",
   fork: "Fork",
   "side-chat": "SideChat",
+  handover: "Repeat",
 };
 
 function parentSectionAriaLabel(
@@ -815,10 +818,7 @@ function ReadOnlyContextBanner({
             className="size-3.5 shrink-0"
             aria-hidden="true"
           />
-          <span
-            className="min-w-0 truncate"
-            aria-hidden="true"
-          >
+          <span className="min-w-0 truncate" aria-hidden="true">
             {statusLabel}
           </span>
         </div>
@@ -974,8 +974,7 @@ export function ThreadPromptContextBanner({
   // inline as "Parent <name>" with the name as a link. There's no other
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
-  const isParentThreadOnly =
-    showParentThread && !showGit && !showPullRequest;
+  const isParentThreadOnly = showParentThread && !showGit && !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
   const showPullRequestLabel =

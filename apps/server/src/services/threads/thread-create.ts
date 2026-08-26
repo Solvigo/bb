@@ -876,19 +876,24 @@ export async function createThreadFromRequest(
     }
   }
 
-  const fork = resolveForkDescriptor(deps, {
-    childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
-    originKind: request.originKind ?? null,
-    providerId: request.providerId,
-    sourceSeqEnd: request.sourceSeqEnd,
-    sourceThread,
-  });
+  // Only "fork" provisions by cloning the source provider session.
+  // "handover" records lineage via sourceThreadId with no clone step.
+  const fork =
+    request.originKind === "fork"
+      ? resolveForkDescriptor(deps, {
+          childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
+          originKind: request.originKind,
+          providerId: request.providerId,
+          sourceSeqEnd: request.sourceSeqEnd,
+          sourceThread,
+        })
+      : null;
 
   // A fork/side-chat must clone the source provider session. If that clone
   // cannot be resolved (source has no active session, provider lacks fork
   // support, or the target is cross-host), do not fall back to a fresh
   // history-less thread.start.
-  if (request.originKind !== null && fork === null) {
+  if (request.originKind === "fork" && fork === null) {
     throw new ApiError(
       400,
       "fork_source_session_unavailable",

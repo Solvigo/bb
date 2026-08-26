@@ -1659,9 +1659,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         ? "side-chat"
         : threadOriginKind === "fork"
           ? "fork"
-          : "parent";
+          : threadOriginKind === "handover"
+            ? "handover"
+            : "parent";
       const relatedThread =
-        relationship === "parent" ? parentThread : sourceThread;
+        threadOriginKind !== null ? sourceThread : parentThread;
       if (relatedThread === undefined) {
         // Related record not yet loaded — show id-based fallback so the user
         // doesn't get a flicker of "no related thread" before resolution.

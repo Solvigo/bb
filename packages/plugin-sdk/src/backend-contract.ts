@@ -141,6 +141,8 @@ export interface PluginThreadEventPayloads {
   /** Fired when a thread transitions into `idle`. `lastAssistantText` is
    * assembled the same way GET /threads/:id/output is. */
   "thread.idle": { thread: ThreadResponse; lastAssistantText: string | null };
+  /** Fired when a thread's context is compacted mid-turn. */
+  "thread.compacted": { thread: ThreadResponse; turnId: string };
   /** Fired when a thread transitions into `error`. `error` is the latest
    * system/error event message, when one exists. */
   "thread.failed": { thread: ThreadResponse; error: string | null };
@@ -414,9 +416,10 @@ export interface PluginAgentConfigurationContext {
     model: string;
   };
   /** How the thread was spawned. A side chat is the builtin side-chat
-   * plugin's fork: `{ kind: "fork", pluginId: "side-chat" }`. */
+   * plugin's fork: `{ kind: "fork", pluginId: "side-chat" }`. A handover
+   * carries lineage from a source thread with no session clone. */
   origin: {
-    kind: "fork" | null;
+    kind: "fork" | "handover" | null;
     pluginId: string | null;
   };
 }
