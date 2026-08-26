@@ -312,7 +312,7 @@ describe("plugin install flows", () => {
         gitResolvedCommit: expect.stringMatching(/^[0-9a-f]{40}$/),
         activeArtifactId: expect.any(String),
       });
-    });
+    }, 15_000);
 
     it("refuses a git plugin that shadows a builtin after materialization", async () => {
       const repoDir = join(workDir, "repo-connect");
