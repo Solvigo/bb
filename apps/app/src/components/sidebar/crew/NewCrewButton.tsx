@@ -7,8 +7,8 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@bb/shared-ui/icon";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useCreateCrew } from "./useCreateCrew";
 
@@ -44,19 +44,18 @@ export function NewCrewButton({
         disabled={creating}
         data-testid="new-crew-button"
         className={cn(
-          "flex w-full items-center gap-2 rounded-lg border border-tower-input-border bg-tower-input px-3 py-2 text-left transition-colors",
-          "hover:border-tower-accent hover:bg-state-hover disabled:opacity-60",
+          "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors",
+          "text-sidebar-foreground hover:bg-sidebar-accent disabled:opacity-60",
           className,
         )}
       >
-        <PlatedInsignia rank="commander" state="working" plate={24} />
-        <span className="flex min-w-0 flex-col">
-          <span className="text-sm font-medium text-foreground">
-            {creating ? "Standing up a crew…" : "New crew"}
-          </span>
-          <span className="truncate text-xs text-muted-foreground">
-            A commander walks you through it
-          </span>
+        <Icon
+          name="MessageSquarePlus"
+          className="size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate">
+          {creating ? "Standing up a crew…" : "New crew"}
         </span>
       </button>
     ) : (
@@ -94,7 +93,7 @@ export function NewCrewButton({
         </DropdownMenuContent>
       </DropdownMenu>
       {error ? (
-        <p className="px-1 text-xs text-tower-accent-hover">{error}</p>
+        <p className="px-2 text-xs text-destructive-text">{error}</p>
       ) : null}
     </div>
   );

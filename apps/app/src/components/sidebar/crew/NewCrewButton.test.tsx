@@ -18,10 +18,6 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
     },
   }),
 }));
-vi.mock("@/components/secondary-panel/tower/RankInsignia", () => ({
-  PlatedInsignia: () => null,
-}));
-
 import { NewCrewButton } from "./NewCrewButton";
 
 describe("New crew", () => {

@@ -227,9 +227,8 @@ function NavButton({
       aria-label={accessibleLabel}
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       className={cn(
-        "flex shrink-0 items-center justify-center transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
+        "flex shrink-0 items-center justify-center rounded-md text-tower-fg-dim transition-colors hover:bg-tower-panel hover:text-tower-fg-body focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-tower-fg-dim disabled:pointer-events-none disabled:opacity-30",
         COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
-        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
       )}
     >
       <Icon name={icon} aria-hidden />
@@ -265,42 +264,44 @@ function BrowserChrome({
       aria-label="Browser navigation"
       tabIndex={-1}
       className={cn(
-        "relative h-11 shrink-0 overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring max-md:pointer-coarse:h-[52px]",
+        "relative h-11 shrink-0 overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-tower-fg-dim max-md:pointer-coarse:h-[52px]",
         SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
       )}
     >
       <div
         data-testid="browser-tab-nav-controls"
         className={cn(
-          "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 px-2 py-1.5 opacity-100 max-md:pointer-coarse:h-[52px]",
+          "absolute inset-x-0 top-0 grid h-11 translate-y-0 grid-cols-[auto_minmax(12rem,48rem)_auto] items-center justify-center gap-2 px-3 py-1.5 opacity-100 max-md:pointer-coarse:h-[52px] max-md:grid-cols-[auto_minmax(0,1fr)_auto]",
         )}
       >
-        <NavButton
-          icon="ChevronLeft"
-          label="Go back"
-          disabled={!(state?.canGoBack ?? false)}
-          onClick={onBack}
-        />
-        <NavButton
-          icon="ChevronRight"
-          label="Go forward"
-          disabled={!(state?.canGoForward ?? false)}
-          onClick={onForward}
-        />
-        <NavButton
-          icon={isLoading ? "X" : "RotateCcw"}
-          label={isLoading ? "Stop loading" : "Reload"}
-          shortcut={isLoading ? null : reloadShortcut}
-          onClick={onReloadOrStop}
-        />
-        <form onSubmit={onSubmit} className="min-w-0 flex-1">
-          <div className="flex h-8 items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 max-md:pointer-coarse:h-10">
+        <div className="flex items-center gap-0.5">
+          <NavButton
+            icon="ChevronLeft"
+            label="Go back"
+            disabled={!(state?.canGoBack ?? false)}
+            onClick={onBack}
+          />
+          <NavButton
+            icon="ChevronRight"
+            label="Go forward"
+            disabled={!(state?.canGoForward ?? false)}
+            onClick={onForward}
+          />
+          <NavButton
+            icon={isLoading ? "X" : "RotateCcw"}
+            label={isLoading ? "Stop loading" : "Reload"}
+            shortcut={isLoading ? null : reloadShortcut}
+            onClick={onReloadOrStop}
+          />
+        </div>
+        <form onSubmit={onSubmit} className="min-w-0">
+          <div className="flex h-8 items-center gap-2 rounded-md px-3 transition-colors hover:bg-tower-panel focus-within:bg-tower-panel focus-within:ring-1 focus-within:ring-tower-border max-md:pointer-coarse:h-10">
             {security === "secure" ? (
               <Icon
                 name="Lock"
                 className={cn(
                   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-                  "text-success",
+                  "text-tower-fg-dim",
                 )}
                 aria-label="Secure connection"
               />
@@ -309,7 +310,7 @@ function BrowserChrome({
                 name="AlertTriangle"
                 className={cn(
                   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-                  "text-warning",
+                  "text-tower-fg-dim",
                 )}
                 aria-label="Connection not secure"
               />
@@ -318,7 +319,7 @@ function BrowserChrome({
                 name="Search"
                 className={cn(
                   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-                  "text-muted-foreground",
+                  "text-tower-fg-faint",
                 )}
                 aria-hidden
               />
@@ -340,21 +341,23 @@ function BrowserChrome({
               autoComplete="off"
               spellCheck={false}
               className={cn(
-                "min-w-0 flex-1 bg-transparent font-mono text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground",
+                "min-w-0 flex-1 bg-transparent text-center font-sans text-tower-fg-body outline-none placeholder:text-tower-fg-faint focus:text-left",
                 COARSE_POINTER_TEXT_SM_CLASS,
               )}
             />
           </div>
         </form>
-        <NavButton
-          icon="ExternalLink"
-          label="Open in external browser"
-          disabled={currentUrl.length === 0}
-          onClick={onOpenExternal}
-        />
+        <div className="flex justify-end">
+          <NavButton
+            icon="ExternalLink"
+            label="Open in external browser"
+            disabled={currentUrl.length === 0}
+            onClick={onOpenExternal}
+          />
+        </div>
         {isLoading ? (
           <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
-            <span className="block h-full w-1/3 animate-pulse bg-ring/70 motion-reduce:animate-none" />
+            <span className="block h-full w-1/3 animate-pulse bg-tower-fg-dim motion-reduce:animate-none" />
           </span>
         ) : null}
       </div>

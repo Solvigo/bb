@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { SecondaryPanelEmptyState } from "../SecondaryPanelEmptyState";
 import type {
   AgentSurfaceTab,
   AgentSurfaceTabProps,
@@ -8,13 +9,12 @@ import type {
 
 function TabCrashNotice({ label }: { label: string }) {
   return (
-    <div className="grid h-full place-items-center px-6 text-center">
-      <p className="max-w-[46ch] text-[13px] leading-relaxed text-tower-fg-faint">
-        <span className="text-tower-fg-dim">{label}</span> stopped working and
-        is showing nothing rather than guessing. The rest of this surface is
-        unaffected — switch tabs and carry on.
-      </p>
-    </div>
+    <SecondaryPanelEmptyState
+      icon="AlertTriangle"
+      title={`${label} stopped working`}
+      description="The rest of this surface is unaffected. Switch tabs and carry on."
+      role="alert"
+    />
   );
 }
 

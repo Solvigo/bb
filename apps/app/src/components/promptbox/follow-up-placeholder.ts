@@ -26,7 +26,7 @@ export function getFollowUpPromptPlaceholder(
       return "Retry by sending a follow-up message";
     case "idle":
     case "active":
-      return "Ask for a follow-up. @ to mention files, folders, sections, or threads";
+      return "Get going";
     default:
       return assertNever(displayStatus);
   }
@@ -51,7 +51,7 @@ export function getCompactFollowUpPromptPlaceholder(
       return "Send a follow-up";
     case "idle":
     case "active":
-      return "Ask a follow-up";
+      return "Get going";
     default:
       return assertNever(displayStatus);
   }

@@ -58,8 +58,8 @@ export function PlatformSection({
   onNavigate?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-0.5 px-2 group-data-[collapsible=icon]:hidden">
-      <div className={cn(labelClassName, "mt-2 mb-0.5")}>Platform</div>
+    <div className="flex flex-col px-2 group-data-[collapsible=icon]:hidden">
+      <div className={cn(labelClassName, "mb-1 mt-3")}>Platform</div>
       {PLATFORM_ROWS.map((row) => (
         <NavLink
           key={row.key}
@@ -67,8 +67,8 @@ export function PlatformSection({
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
-              "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
-              isActive ? "bg-state-active" : "hover:bg-state-hover",
+              "flex h-8 min-w-0 items-center gap-2 rounded-md px-2 transition-colors",
+              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
             )
           }
         >
@@ -76,10 +76,10 @@ export function PlatformSection({
             name={row.icon}
             className="size-4 shrink-0 text-subtle-foreground"
           />
-          <span className="min-w-0 flex-1 truncate text-[13.5px] text-foreground">
+          <span className="min-w-0 flex-1 truncate text-sm text-sidebar-foreground">
             {row.label}
           </span>
-          <span className="shrink-0 font-tower-mono text-[10px] text-tower-fg-faint">
+          <span className="shrink-0 text-xs text-subtle-foreground">
             {row.hint}
           </span>
         </NavLink>

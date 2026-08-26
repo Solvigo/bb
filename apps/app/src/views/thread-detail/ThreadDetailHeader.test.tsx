@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode, Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
@@ -54,6 +54,26 @@ afterEach(() => {
 describe("ThreadDetailHeader", () => {
   // The header seam now belongs to AppPageHeader, so AppPageHeader.test.tsx
   // guards it for every header instead of this one call site.
+
+  it("keeps a closed right panel recoverable from the permanent header", () => {
+    const onToggleSecondaryPanel = vi.fn();
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={onToggleSecondaryPanel}
+          threadHeaderGitActions={[]}
+          threadTitle="Recoverable panel"
+        />
+      </PaneContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    expect(onToggleSecondaryPanel).toHaveBeenCalledOnce();
+  });
 
   it("leaves the open right-panel collapse control to the panel header", () => {
     render(

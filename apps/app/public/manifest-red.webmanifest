@@ -3,8 +3,8 @@
   "short_name": "Airways",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "background_color": "#181818",
+  "theme_color": "#181818",
   "icons": [
     {
       "src": "/icon-192-red.png",

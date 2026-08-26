@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppPageHeader } from "./AppPageHeader";
 
@@ -36,5 +36,11 @@ describe("AppPageHeader", () => {
     const header = container.querySelector("header");
     expect(header?.classList).toContain("border-b");
     expect(header?.classList).toContain("z-[21]");
+  });
+
+  it("lets a surface move the sidebar control into its own header", () => {
+    render(<AppPageHeader showSidebarToggle={false} />);
+
+    expect(screen.queryByRole("button", { name: /Toggle sidebar/ })).toBeNull();
   });
 });

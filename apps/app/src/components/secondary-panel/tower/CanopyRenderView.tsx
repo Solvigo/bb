@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { SecondaryPanelEmptyState } from "../SecondaryPanelEmptyState";
 import { ageLabel, useCrewRpc } from "./useCrewRpc";
 
 /**
@@ -143,7 +144,7 @@ export function CanopyRenderView({ artifactId }: { artifactId: number }) {
   const unresolved = annos.data?.unresolved ?? 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
+    <div className="flex h-full min-h-0 flex-col bg-tower-surface font-tower-sans">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-tower-border px-4 py-2.5">
         <span className="font-tower-mono text-[10px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim">
           Canopy · {render.data?.taskId ?? "artifact"} #{artifactId}
@@ -164,7 +165,7 @@ export function CanopyRenderView({ artifactId }: { artifactId: number }) {
               · as of {ageLabel(render.ageSeconds)}
             </>
           ) : (
-            "loading…"
+            "preparing preview"
           )}
         </span>
       </div>
@@ -182,9 +183,18 @@ export function CanopyRenderView({ artifactId }: { artifactId: number }) {
               className="h-full w-full rounded-[12px] border border-tower-border bg-white"
             />
           ) : (
-            <div className="grid h-full place-items-center italic text-tower-fg-faint">
-              {render.error ? "no canopy to render" : "loading canopy…"}
-            </div>
+            <SecondaryPanelEmptyState
+              className="min-h-full"
+              icon={render.error ? "FileText" : "Spinner"}
+              iconClassName={render.error ? undefined : "animate-spin"}
+              title={render.error ? "No canopy to render" : "Loading canopy"}
+              description={
+                render.error
+                  ? "This artifact could not be rendered."
+                  : "Preparing this artifact preview…"
+              }
+              aria-busy={render.error ? undefined : "true"}
+            />
           )}
 
           {/* comment composer for a fresh selection */}

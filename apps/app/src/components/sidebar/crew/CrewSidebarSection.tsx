@@ -2,13 +2,12 @@ import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useCrews, type Crew } from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
 
 export const SIDEBAR_SECTION_LABEL_CLASS =
-  "px-2 font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim";
+  "px-2 text-xs font-medium text-muted-foreground";
 
 function CrewEntry({
   crew,
@@ -28,13 +27,13 @@ function CrewEntry({
     getThreadRoutePath({ projectId: crew.projectId, threadId });
   return (
     <li>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center">
         <button
           type="button"
           aria-label={open ? `Collapse ${crew.name}` : `Expand ${crew.name}`}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="grid size-5 shrink-0 place-items-center rounded text-subtle-foreground hover:bg-state-hover"
+          className="grid size-6 shrink-0 place-items-center rounded text-subtle-foreground hover:bg-sidebar-accent"
         >
           <Icon name={open ? "ChevronDown" : "ChevronRight"} className="size-3.5" />
         </button>
@@ -43,15 +42,18 @@ function CrewEntry({
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
-              "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-              isActive ? "bg-state-active" : "hover:bg-state-hover",
+              "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
+              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
             )
           }
         >
-          <PlatedInsignia
-            rank="commander"
-            state={anyWorking ? "working" : "waiting"}
-            plate={22}
+          <Icon
+            name="Folder"
+            className={cn(
+              "size-4 shrink-0",
+              anyWorking ? "text-muted-foreground" : "text-subtle-foreground",
+            )}
+            aria-hidden
           />
           <span className="flex min-w-0 flex-col">
             <span className="truncate text-sm font-medium text-foreground">
@@ -64,7 +66,7 @@ function CrewEntry({
         </NavLink>
       </div>
       {open && crew.leads.length > 0 ? (
-        <ul className="mt-0.5 ml-6 flex flex-col gap-0.5">
+        <ul className="ml-6 mt-0.5 flex flex-col">
           {crew.leads.map((lead) => (
             <li key={lead.threadId}>
               <NavLink
@@ -73,15 +75,20 @@ function CrewEntry({
                 title={lead.status ?? undefined}
                 className={({ isActive }) =>
                   cn(
-                    "flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors",
-                    isActive ? "bg-state-active" : "hover:bg-state-hover",
+                    "flex h-7 min-w-0 items-center gap-2 rounded-md px-2 transition-colors",
+                    isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
                   )
                 }
               >
-                <PlatedInsignia
-                  rank="lead"
-                  state={lead.working ? "working" : "waiting"}
-                  plate={18}
+                <Icon
+                  name="UserRound"
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    lead.working
+                      ? "text-muted-foreground"
+                      : "text-subtle-foreground",
+                  )}
+                  aria-hidden
                 />
                 <span className="truncate text-[13px] text-foreground">
                   {lead.name}
@@ -124,8 +131,8 @@ export function CrewSidebarSection({
   const { crews, loaded, failed, timedOut, reload } = useCrews();
 
   return (
-    <div className="flex flex-col gap-1 px-2 pb-2 group-data-[collapsible=icon]:hidden">
-      <div className="mt-2 mb-0.5 flex items-center justify-between gap-2">
+    <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
+      <div className="mb-1 mt-3 flex items-center justify-between gap-2">
         <span className={SIDEBAR_SECTION_LABEL_CLASS}>Crews</span>
         {headerTrailing}
       </div>

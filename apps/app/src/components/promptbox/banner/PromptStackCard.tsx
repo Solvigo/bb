@@ -21,7 +21,7 @@ export const PROMPT_STACK_COMPACT_INLAY_SEGMENT_CLASS = cn(
 
 const BASE_CHROME = cn(
   PROMPT_STACK_CARD_RADIUS_CLASS,
-  "border border-border bg-surface-raised-solid",
+  "border border-tower-input-border bg-tower-surface",
 );
 
 export interface PromptStackCardProps {
