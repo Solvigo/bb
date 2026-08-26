@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
 import {
+  escapeShouldUndo,
   hasExpired,
   latestUndoTarget,
   partitionExpired,
@@ -106,5 +107,29 @@ describe("withoutEntry", () => {
     const entries = [pendingSend("a", 1000)];
 
     expect(withoutEntry(entries, "gone")).toHaveLength(1);
+  });
+});
+
+describe("escapeShouldUndo", () => {
+  const open = {
+    hasPending: true,
+    defaultPrevented: false,
+    isOverlayOpen: false,
+  };
+
+  it("undoes inside an open window", () => {
+    expect(escapeShouldUndo(open)).toBe(true);
+  });
+
+  it("leaves Escape alone once nothing is pending", () => {
+    expect(escapeShouldUndo({ ...open, hasPending: false })).toBe(false);
+  });
+
+  it("yields to an overlay that already owns Escape", () => {
+    expect(escapeShouldUndo({ ...open, isOverlayOpen: true })).toBe(false);
+  });
+
+  it("yields to a handler that already claimed the keypress", () => {
+    expect(escapeShouldUndo({ ...open, defaultPrevented: true })).toBe(false);
   });
 });

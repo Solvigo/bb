@@ -76,3 +76,36 @@ export function withoutEntry(
 ): PendingSend[] {
   return entries.filter((entry) => entry.id !== id);
 }
+
+/**
+ * Overlays that own Escape outright while they are open. Undo yields to these
+ * rather than closing a menu and cancelling a send on the same keypress.
+ */
+export const ESCAPE_OWNED_BY_OVERLAY_SELECTOR = [
+  '[role="dialog"][data-state="open"]',
+  '[role="alertdialog"][data-state="open"]',
+  '[role="menu"]',
+  '[role="listbox"]',
+].join(",");
+
+export interface EscapeShouldUndoArgs {
+  hasPending: boolean;
+  defaultPrevented: boolean;
+  isOverlayOpen: boolean;
+}
+
+/**
+ * Escape undoes only inside an open window, and only when nothing with a
+ * stronger claim on the key is showing.
+ *
+ * Inside the window undo outranks the composer's own Escape-to-blur: the
+ * composer keeps focus after a send, so leaving blur in front would spend the
+ * user's first Escape on releasing the editor and let the message go.
+ */
+export function escapeShouldUndo({
+  hasPending,
+  defaultPrevented,
+  isOverlayOpen,
+}: EscapeShouldUndoArgs): boolean {
+  return hasPending && !defaultPrevented && !isOverlayOpen;
+}
