@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ESCAPE_OWNED_BY_OVERLAY_SELECTOR,
+  escapeShouldUndo,
   latestUndoTarget,
   partitionExpired,
   UNDO_SEND_WINDOW_MS,
@@ -143,18 +145,30 @@ export function useUndoSendQueue({
       return;
     }
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key !== "Escape" || event.defaultPrevented) {
+      if (event.key !== "Escape") {
         return;
       }
       const target = latestUndoTarget(entriesRef.current);
-      if (!target) {
+      if (
+        !target ||
+        !escapeShouldUndo({
+          hasPending: true,
+          defaultPrevented: event.defaultPrevented,
+          isOverlayOpen:
+            document.querySelector(ESCAPE_OWNED_BY_OVERLAY_SELECTOR) !== null,
+        })
+      ) {
         return;
       }
       event.preventDefault();
+      // Stops the composer's own Escape-to-blur from also running: the editor
+      // still holds focus after a send, and undo puts the draft back into it.
+      event.stopPropagation();
       undo(target.id);
     }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Capture, so undo is decided before the event reaches the editor.
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [hasEntries, undo]);
 
   useEffect(() => () => flushAllRef.current(), [flushKey]);
