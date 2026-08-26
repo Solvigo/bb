@@ -45,6 +45,7 @@ import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPrompt
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
+import { PendingSendList } from "@/components/promptbox/banner/PendingSendList";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -102,6 +103,8 @@ import {
   shouldQueueFollowUpMessage,
   type FollowUpExecutionSelection,
 } from "./threadDetailPromptSubmission";
+import type { PendingSend } from "./undoSendQueue";
+import { useUndoSendQueue } from "./useUndoSendQueue";
 
 const ignorePromptBannerFileClick = () => {};
 
@@ -253,6 +256,7 @@ export function ThreadDetailPromptArea({
   queuedMessagesRef.current = queuedMessages;
   const [bottomPluginFocusNonce, setBottomPluginFocusNonce] = useState(0);
   const [editFocusNonce, setEditFocusNonce] = useState(0);
+  const [undoFocusNonce, setUndoFocusNonce] = useState(0);
   const focusBottomPluginComposer = useCallback(() => {
     setBottomPluginFocusNonce((nonce) => nonce + 1);
   }, []);
@@ -658,7 +662,90 @@ export function ThreadDetailPromptArea({
     supportsServiceTier,
   ]);
 
-  const handleSend = useCallback(async () => {
+  // A pending send is delivered up to a whole undo window after it was typed,
+  // so its dispatch reads the runtime and execution selection as they are then,
+  // not as they were at submit time.
+  const threadRuntimeDisplayStatusRef = useRef(runtimeDisplayStatus);
+  threadRuntimeDisplayStatusRef.current = runtimeDisplayStatus;
+  const followUpExecutionSelectionRef = useRef(followUpExecutionSelection);
+  followUpExecutionSelectionRef.current = followUpExecutionSelection;
+
+  const dispatchPendingSend = useCallback(
+    async (entry: PendingSend) => {
+      if (entry.dispatch.kind === "send") {
+        try {
+          await sendMessage.mutateAsync(entry.dispatch.request);
+        } catch (nextError) {
+          promptDraft.restoreIfEmpty(entry.draft);
+          appToast.error(
+            getMutationErrorMessage({
+              error: nextError,
+              fallbackMessage: "Failed to send message",
+              lifecycleOperation: "send_message",
+            }),
+          );
+        }
+        return;
+      }
+
+      // Queue-vs-send is decided here rather than at submit time: the runtime
+      // can start or settle while the message is sitting in its undo window.
+      const isQueuingMessage = shouldQueueFollowUpMessage(
+        threadRuntimeDisplayStatusRef.current,
+      );
+      try {
+        if (isQueuingMessage) {
+          const request = buildCreateQueuedFollowUpRequest({
+            threadId: thread.id,
+            input: entry.input,
+            execution: followUpExecutionSelectionRef.current,
+          });
+          if (request) {
+            await createQueuedMessage.mutateAsync(request);
+          }
+        } else {
+          const request = buildAutoFollowUpRequest({
+            threadId: thread.id,
+            input: entry.input,
+            execution: followUpExecutionSelectionRef.current,
+          });
+          if (request) {
+            await sendMessage.mutateAsync(request);
+          }
+        }
+      } catch (nextError) {
+        promptDraft.restoreIfEmpty(entry.draft);
+        appToast.error(
+          getMutationErrorMessage({
+            error: nextError,
+            fallbackMessage: isQueuingMessage
+              ? "Failed to queue message"
+              : "Failed to send message",
+            lifecycleOperation: isQueuingMessage
+              ? "queue_message"
+              : "send_message",
+          }),
+        );
+      }
+    },
+    [createQueuedMessage, promptDraft, sendMessage, thread.id],
+  );
+
+  const restorePendingSend = useCallback(
+    (entry: PendingSend) => {
+      promptDraft.setDraft(entry.draft);
+      setUndoFocusNonce((nonce) => nonce + 1);
+    },
+    [promptDraft],
+  );
+
+  const undoSend = useUndoSendQueue({
+    flushKey: thread.id,
+    onDispatch: dispatchPendingSend,
+    onUndo: restorePendingSend,
+  });
+
+  const handleSend = useCallback(() => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
     const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
@@ -671,51 +758,18 @@ export function ThreadDetailPromptArea({
 
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
-
-    try {
-      if (isQueuingMessage) {
-        const request = buildCreateQueuedFollowUpRequest({
-          threadId: thread.id,
-          input: submittedInput,
-          execution: followUpExecutionSelection,
-        });
-        if (request) {
-          await createQueuedMessage.mutateAsync(request);
-        }
-      } else {
-        const request = buildAutoFollowUpRequest({
-          threadId: thread.id,
-          input: submittedInput,
-          execution: followUpExecutionSelection,
-        });
-        if (request) {
-          await sendMessage.mutateAsync(request);
-        }
-      }
-    } catch (nextError) {
-      promptDraft.restoreIfEmpty(submittedDraft);
-      appToast.error(
-        getMutationErrorMessage({
-          error: nextError,
-          fallbackMessage: isQueuingMessage
-            ? "Failed to queue message"
-            : "Failed to send message",
-          lifecycleOperation: isQueuingMessage
-            ? "queue_message"
-            : "send_message",
-        }),
-      );
-    }
+    undoSend.enqueue({
+      draft: submittedDraft,
+      input: submittedInput,
+      dispatch: { kind: "auto" },
+    });
   }, [
-    createQueuedMessage,
     currentPromptDraft,
     currentPromptDraftInput,
-    followUpExecutionSelection,
     isDefaultExecutionOptionsLoading,
     promptDraft,
-    sendMessage,
     setBottomAttachmentError,
-    thread.id,
+    undoSend,
     runtimeDisplayStatus,
   ]);
   const handleModifierSubmit = useCallback(async () => {
@@ -735,24 +789,13 @@ export function ThreadDetailPromptArea({
     }
 
     if (shortcutRequest.kind === "draft") {
-      setIsFollowUpShortcutSending(true);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
-
-      try {
-        await sendMessage.mutateAsync(shortcutRequest.request);
-      } catch (nextError) {
-        promptDraft.restoreIfEmpty(submittedDraft);
-        appToast.error(
-          getMutationErrorMessage({
-            error: nextError,
-            fallbackMessage: "Failed to send message",
-            lifecycleOperation: "send_message",
-          }),
-        );
-      } finally {
-        setIsFollowUpShortcutSending(false);
-      }
+      undoSend.enqueue({
+        draft: submittedDraft,
+        input: submittedInput,
+        dispatch: { kind: "send", request: shortcutRequest.request },
+      });
       return;
     }
 
@@ -775,10 +818,10 @@ export function ThreadDetailPromptArea({
     currentPromptDraft,
     currentPromptDraftInput,
     promptDraft,
-    sendMessage,
     sendQueuedMessageById,
     setBottomAttachmentError,
     thread.id,
+    undoSend,
   ]);
 
   const handleSendQueuedImmediately = useCallback(
@@ -791,7 +834,7 @@ export function ThreadDetailPromptArea({
     [sendQueuedMessageById],
   );
 
-  const bottomFocusEndKey = `${composerFocusRequestNonce}:${bottomPluginFocusNonce}`;
+  const bottomFocusEndKey = `${composerFocusRequestNonce}:${bottomPluginFocusNonce}:${undoFocusNonce}`;
 
   const handlePromptBannerFileClick = useCallback(
     (selection: WorkspaceChangedFileSelection) => {
@@ -873,7 +916,7 @@ export function ThreadDetailPromptArea({
   );
 
   const handleBottomComposerSubmit = useCallback(() => {
-    void handleSend();
+    handleSend();
   }, [handleSend]);
   const handleBottomComposerModifierSubmit = useCallback(() => {
     void handleModifierSubmit();
@@ -1262,6 +1305,11 @@ export function ThreadDetailPromptArea({
             onDelete={handleDeleteQueuedMessage}
           />
         )}
+        <PendingSendList
+          entries={undoSend.entries}
+          now={undoSend.now}
+          onUndo={undoSend.undo}
+        />
       </>
     ),
     [
@@ -1302,6 +1350,9 @@ export function ThreadDetailPromptArea({
       submitMode.kind,
       thread.archivedAt,
       thread.id,
+      undoSend.entries,
+      undoSend.now,
+      undoSend.undo,
       workspaceChangedFilesSection,
       workspaceStatusPending,
     ],
