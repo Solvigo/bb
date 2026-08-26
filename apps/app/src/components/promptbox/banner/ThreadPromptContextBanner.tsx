@@ -68,10 +68,10 @@ export interface ThreadPromptParentThreadSection {
   href: string;
   /**
    * How the current thread relates to the linked thread: a fork renders
-   * "Forked from …", a side chat renders "Side chat of …", any other child
-   * renders "Parent …".
+   * "Forked from …", a side chat renders "Side chat of …", a handover
+   * renders "Continued from …", any other child renders "Parent …".
    */
-  relationship: "parent" | "fork" | "side-chat";
+  relationship: "parent" | "fork" | "side-chat" | "handover";
 }
 
 /**
@@ -350,6 +350,11 @@ const PARENT_SECTION_COPY: Record<
     bodyLead: "This thread is a side chat of ",
     ariaPrefix: "Side chat of",
   },
+  handover: {
+    verb: "Continued from",
+    bodyLead: "This thread continues from ",
+    ariaPrefix: "Continued from",
+  },
 };
 
 const PARENT_SECTION_ICON: Record<
@@ -359,6 +364,7 @@ const PARENT_SECTION_ICON: Record<
   parent: "UserRound",
   fork: "Fork",
   "side-chat": "SideChat",
+  handover: "Repeat",
 };
 
 function parentSectionAriaLabel(

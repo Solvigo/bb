@@ -44,6 +44,7 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
     manageable: true,
     registrySkillId: null,
+    publishGlobally: false,
     ...overrides,
   };
 }

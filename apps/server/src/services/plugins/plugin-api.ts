@@ -579,6 +579,7 @@ export function createPluginApi(options: {
     "thread.created": [],
     "thread.active": [],
     "thread.idle": [],
+    "thread.compacted": [],
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],

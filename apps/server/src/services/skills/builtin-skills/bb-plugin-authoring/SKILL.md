@@ -387,18 +387,21 @@ preview URLs expire and never reveal the host id or absolute root.
 bb.events.on("thread.created", ({ thread }) => { ... });
 bb.events.on("thread.active", ({ thread }) => { ... });
 bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
+bb.events.on("thread.compacted", ({ thread, turnId }) => { ... });        // turnId: string
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
 bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.deleted", ({ thread }) => { ... });
 ```
 
-Exactly six events. `thread.active` fires when an applied lifecycle
-transition enters the running `active` state. `thread.archived` fires after a
-thread is archived, including cascade archives (archiving a parent archives
-its children too, each with its own event). Observe-only handlers run
-fire-and-forget after the transition and can never block or veto it. `thread`
-is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
-and counted in the plugin's handler stats (`bb plugin list`).
+Exactly seven events. `thread.active` fires when an applied lifecycle
+transition enters the running `active` state. `thread.compacted` fires when
+the thread's context is compacted mid-turn — useful for a plugin that needs to
+know a context loss happened (e.g. to re-send standing orders). `thread.archived`
+fires after a thread is archived, including cascade archives (archiving a
+parent archives its children too, each with its own event). Observe-only
+handlers run fire-and-forget after the transition and can never block or veto
+it. `thread` is the same DTO `GET /api/v1/threads/:id` serves. Errors are
+caught, logged, and counted in the plugin's handler stats (`bb plugin list`).
 
 Lifecycle events are broadcast to all loaded plugins regardless of sidebar
 visibility.
@@ -1617,9 +1620,9 @@ Remaining reference examples in `examples/plugins/`:
   plugin is `needs-configuration`; `bb plugin reload <id>` remains available
   for other recovery cases.
 - Descriptors without `default` produce `| undefined` values.
-- Thread events are observe-only; there are exactly six
-  (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
-  `thread.archived`, `thread.deleted`).
+- Thread events are observe-only; there are exactly seven
+  (`thread.created`, `thread.active`, `thread.idle`, `thread.compacted`,
+  `thread.failed`, `thread.archived`, `thread.deleted`).
 - Service throw of NeedsConfigurationError changes plugin status; schedule
   throws only set the schedule's last_error. Name-matching means no import
   is needed for the error class.

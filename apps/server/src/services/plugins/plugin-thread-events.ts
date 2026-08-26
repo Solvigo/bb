@@ -34,6 +34,14 @@ export function emitPluginThreadDeleted(thread: Thread): void {
   emitter?.emitThreadDeleted(thread);
 }
 
+/** Called when a `thread/compacted` stream event is applied (events.ts). */
+export function emitPluginThreadCompacted(
+  thread: Thread,
+  turnId: string,
+): void {
+  emitter?.emitThreadCompacted(thread, turnId);
+}
+
 /**
  * Called with every lifecycle-event outcome; forwards applied transitions
  * into `active`/`idle`/`error` as their curated plugin lifecycle events.

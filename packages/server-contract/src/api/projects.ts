@@ -416,6 +416,12 @@ export const skillSummarySchema = z.object({
   manageable: z.boolean(),
   /** Exact registry entry that installed this skill; `null` for every other source. */
   registrySkillId: z.string().min(1).nullable(),
+  /**
+   * When true, the skill is copied into each machine's global agent skill roots
+   * (~/.agents/skills and ~/.claude/skills) on install. Only meaningful for
+   * centrally installed bb-user skills; every other scope is always false.
+   */
+  publishGlobally: z.boolean(),
 });
 export type SkillSummary = z.infer<typeof skillSummarySchema>;
 
@@ -508,6 +514,24 @@ export const updateSkillRequestSchema = z
   })
   .strict();
 export type UpdateSkillRequest = z.infer<typeof updateSkillRequestSchema>;
+
+export const setSkillPublishGloballyRequestSchema = z
+  .object({
+    skillId: installedSkillIdSchema,
+    environmentId: z.string().min(1).nullable(),
+    publishGlobally: z.boolean(),
+  })
+  .strict();
+export type SetSkillPublishGloballyRequest = z.infer<
+  typeof setSkillPublishGloballyRequestSchema
+>;
+
+export const setSkillPublishGloballyResponseSchema = z.object({
+  publishGlobally: z.boolean(),
+});
+export type SetSkillPublishGloballyResponse = z.infer<
+  typeof setSkillPublishGloballyResponseSchema
+>;
 
 export const projectResponseSchema = projectSchema.extend({
   sources: z.array(projectSourceSchema),

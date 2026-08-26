@@ -1354,6 +1354,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           lastAssistantText: getLastThreadOutput(deps.db, thread.id),
         }));
       },
+      emitThreadCompacted(thread, turnId) {
+        emitThreadEvent("thread.compacted", () => ({
+          thread: buildThreadDto(thread),
+          turnId,
+        }));
+      },
       emitThreadFailed(thread) {
         emitThreadEvent("thread.failed", () => ({
           thread: buildThreadDto(thread),

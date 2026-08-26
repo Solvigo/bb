@@ -154,7 +154,11 @@ export const createThreadRequestSchema = z
       });
     }
     const originKind = value.originKind ?? value.childOrigin;
-    if (originKind === null && value.input.length === 0) {
+    // Only "fork" seeds a thread without input: it clones the source's
+    // provider session, so the thread has real history even with nothing
+    // new to say. Every other originKind (including "handover", which never
+    // clones a session) needs its own input like a plain start does.
+    if (originKind !== "fork" && value.input.length === 0) {
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",

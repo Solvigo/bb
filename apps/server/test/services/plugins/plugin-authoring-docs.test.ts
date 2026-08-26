@@ -125,6 +125,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.created": ["thread"],
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
+  "thread.compacted": ["thread", "turnId"],
   "thread.failed": ["thread", "error"],
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],

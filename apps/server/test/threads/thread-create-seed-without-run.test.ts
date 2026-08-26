@@ -1012,4 +1012,74 @@ describe("thread creation child-thread boundary validation", () => {
       },
     );
   });
+
+  it("rejects a sourceThreadId with no originKind", async () => {
+    await withChildBoundaryHarness(
+      "source-no-origin-kind",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        const error = await captureCreateError(() =>
+          createThreadFromRequest(harness.deps, {
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: textInput("Untagged source reference"),
+            origin: "app",
+            projectId,
+            providerId: "codex",
+            sourceThreadId,
+            startedOnBehalfOf: null,
+          }),
+        );
+        expect(error.status).toBe(400);
+        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.message).toBe(
+          "sourceThreadId requires an originKind",
+        );
+      },
+    );
+  });
+
+  it("creates a handover thread that records lineage with no session-clone step", async () => {
+    await withChildBoundaryHarness(
+      "handover-no-session",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        // Deliberately no seedTurnStarted for the source: a handover must not
+        // require (or attempt to clone) a live source provider session.
+        const handoverInput = textInput("Continuing as the new provider");
+        const handover = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: handoverInput,
+          origin: "app",
+          originKind: "handover",
+          projectId,
+          providerId: "codex",
+          sourceThreadId,
+          startedOnBehalfOf: null,
+        });
+
+        const persistedHandover = getThread(harness.db, handover.id);
+        expect(persistedHandover?.originKind).toBe("handover");
+        expect(persistedHandover?.sourceThreadId).toBe(sourceThreadId);
+        expect(persistedHandover?.parentThreadId).toBeNull();
+
+        const queuedStart = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === handover.id,
+        );
+        if (queuedStart.command.type !== "thread.start") {
+          throw new Error("Expected a thread.start command");
+        }
+        expect(queuedStart.command.input).toEqual(handoverInput);
+        // No fork descriptor: a handover never clones a provider session.
+        expect(queuedStart.command.fork).toBeUndefined();
+      },
+    );
+  });
 });
