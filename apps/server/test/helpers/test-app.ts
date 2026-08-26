@@ -17,6 +17,7 @@ import {
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
+import { createBrowserAutomationServices } from "../../src/services/browser/create-browser-automation.js";
 import { resolveThreadStorageRootPath } from "../../src/services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
@@ -150,6 +151,8 @@ export async function createTestAppHarness(
     logger: testLogger,
     openTimeoutMs: 50,
   });
+  const { browserAutomation, desktopAutomationChannel } =
+    createBrowserAutomationServices({ db, logger: testLogger });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
     hub,
@@ -178,8 +181,10 @@ export async function createTestAppHarness(
   const deps: ServerAppDeps = {
     appVersion,
     bbAppManagedConfig,
+    browserAutomation,
     config,
     db,
+    desktopAutomationChannel,
     hub,
     lifecycleDedupers,
     logger: testLogger,

@@ -204,6 +204,18 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
+  BrowserClickRequest,
+  BrowserCloseResult,
+  BrowserEvalRequest,
+  BrowserEvalResult,
+  BrowserListResponse,
+  BrowserNavigateRequest,
+  BrowserOpenRequest,
+  BrowserSnapshot,
+  BrowserTarget,
+  BrowserTargetRefRequest,
+  BrowserThreadScopeQuery,
+  BrowserTypeRequest,
   UpdateThreadSectionRequest,
   UpdateTerminalRequest,
   UpdateHostRequest,
@@ -314,6 +326,13 @@ import {
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
+  browserClickRequestSchema,
+  browserEvalRequestSchema,
+  browserNavigateRequestSchema,
+  browserOpenRequestSchema,
+  browserTargetRefRequestSchema,
+  browserThreadScopeQuerySchema,
+  browserTypeRequestSchema,
 } from "./api-types.js";
 import type { ApiError } from "./errors.js";
 
@@ -871,6 +890,77 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<EnvironmentArchiveThreadsResponse>(),
+    }),
+  },
+
+  browser: {
+    open: defineRoute({
+      path: "/browser/open",
+      method: "post",
+      request: jsonRequest<EmptyInput, BrowserOpenRequest>(
+        browserOpenRequestSchema,
+      ),
+      response: jsonResponse<BrowserTarget>(),
+    }),
+    list: defineRoute({
+      path: "/browser/list",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, BrowserThreadScopeQuery>(
+        browserThreadScopeQuerySchema,
+      ),
+      response: jsonResponse<BrowserListResponse>(),
+    }),
+    /**
+     * PROPOSE-UPSTREAM: navigate is an addition to plans/bb-browser.md's command
+     * shape (the plan re-opens instead). Shared grammar with agent-browser.
+     */
+    navigate: defineRoute({
+      path: "/browser/navigate",
+      method: "post",
+      request: jsonRequest<EmptyInput, BrowserNavigateRequest>(
+        browserNavigateRequestSchema,
+      ),
+      response: jsonResponse<BrowserTarget>(),
+    }),
+    snapshot: defineRoute({
+      path: "/browser/snapshot",
+      method: "post",
+      request: jsonRequest<EmptyInput, BrowserTargetRefRequest>(
+        browserTargetRefRequestSchema,
+      ),
+      response: jsonResponse<BrowserSnapshot>(),
+    }),
+    click: defineRoute({
+      path: "/browser/click",
+      method: "post",
+      request: jsonRequest<EmptyInput, BrowserClickRequest>(
+        browserClickRequestSchema,
+      ),
+      response: jsonResponse<BrowserTarget>(),
+    }),
+    type: defineRoute({
+      path: "/browser/type",
+      method: "post",
+      request: jsonRequest<EmptyInput, BrowserTypeRequest>(
+        browserTypeRequestSchema,
+      ),
+      response: jsonResponse<BrowserTarget>(),
+    }),
+    eval: defineRoute({
+      path: "/browser/eval",
+      method: "post",
+      request: jsonRequest<EmptyInput, BrowserEvalRequest>(
+        browserEvalRequestSchema,
+      ),
+      response: jsonResponse<BrowserEvalResult>(),
+    }),
+    close: defineRoute({
+      path: "/browser/close",
+      method: "post",
+      request: jsonRequest<EmptyInput, BrowserTargetRefRequest>(
+        browserTargetRefRequestSchema,
+      ),
+      response: jsonResponse<BrowserCloseResult>(),
     }),
   },
 

@@ -21,6 +21,7 @@ import {
 } from "./services/system/periodic-sweeps.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
+import { createBrowserAutomationServices } from "./services/browser/create-browser-automation.js";
 import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerRuntimeConfig } from "./types.js";
@@ -95,6 +96,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     hub,
     logger,
   });
+  const { browserAutomation, desktopAutomationChannel } =
+    createBrowserAutomationServices({ db, logger });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config: runtimeConfig,
     hub,
@@ -140,8 +143,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     {
       appVersion,
       bbAppManagedConfig,
+      browserAutomation,
       config: runtimeConfig,
       db,
+      desktopAutomationChannel,
       hub,
       lifecycleDedupers,
       logger,

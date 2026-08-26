@@ -12,6 +12,8 @@ import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import type { TelemetryService } from "./services/system/telemetry.js";
 import type { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
+import type { BrowserAutomationLifecycle } from "./services/browser/browser-automation-lifecycle.js";
+import type { DesktopAutomationChannelCoordinator } from "./services/browser/desktop-automation-channel.js";
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { NotificationHub } from "./ws/hub.js";
 import type { WatchInterestCoordinator } from "./ws/watch-interests.js";
@@ -41,8 +43,10 @@ export interface ServerRuntimeConfig {
 }
 
 export interface AppDeps {
+  browserAutomation: BrowserAutomationLifecycle;
   config: ServerRuntimeConfig;
   db: DbConnection;
+  desktopAutomationChannel: DesktopAutomationChannelCoordinator;
   hub: NotificationHub;
   lifecycleDedupers: LifecycleDedupers;
   logger: ServerLogger;

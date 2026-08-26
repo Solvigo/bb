@@ -34,6 +34,7 @@ import { createAppVersionService } from "../../../apps/server/src/services/syste
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
+import { createBrowserAutomationServices } from "../../../apps/server/src/services/browser/create-browser-automation.js";
 import type {
   ServerLogger,
   ServerRuntimeConfig,
@@ -245,6 +246,8 @@ async function startIntegrationServer(
     logger: testLogger,
     openTimeoutMs: 50,
   });
+  const { browserAutomation, desktopAutomationChannel } =
+    createBrowserAutomationServices({ db, logger: testLogger });
   const machineAuth = await createMachineAuthService({
     dataDir: serverDataDir,
     db,
@@ -278,8 +281,10 @@ async function startIntegrationServer(
   const { app, injectWebSocket } = createApp({
     appVersion,
     bbAppManagedConfig,
+    browserAutomation,
     config,
     db,
+    desktopAutomationChannel,
     hub,
     lifecycleDedupers,
     logger: testLogger,
