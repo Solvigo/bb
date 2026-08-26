@@ -6,7 +6,7 @@ import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
-import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -23,8 +23,7 @@ import type {
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
-import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
-import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
+import { ThreadPendingInteractionSurface } from "@/components/thread/pending-interactions/ThreadPendingInteractionSurface";
 import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
@@ -1359,14 +1358,8 @@ export function ThreadDetailPromptArea({
   );
 
   if (activePendingInteraction && !shouldHideComposer) {
-    const pendingInteractionComposer = isPluginPendingInteraction(
-      activePendingInteraction,
-    ) ? (
-      <PluginPendingInteractionComposer
-        interaction={activePendingInteraction}
-      />
-    ) : (
-      <ThreadPendingInteractionBanner
+    const pendingInteractionComposer = (
+      <ThreadPendingInteractionSurface
         interaction={activePendingInteraction}
         threadId={thread.id}
       />
