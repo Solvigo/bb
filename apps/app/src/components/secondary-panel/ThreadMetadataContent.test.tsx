@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EnvironmentRow, ParentSelectorRow } from "./ThreadMetadataContent";
 import { parentThreads } from "./ThreadMetadataContent.fixtures";
+
+// Every render in this file used to outlive its test. That was survivable while
+// nothing here rendered a button; the moment two tests did, a later
+// getByRole("button") started finding the earlier test's DOM.
+afterEach(() => {
+  cleanup();
+});
 
 const localHost = { locality: "local", identity: null } as const;
 
@@ -107,6 +114,57 @@ describe("EnvironmentRow", () => {
 });
 
 describe("ParentSelectorRow", () => {
+  function renderRow(overrides: {
+    parentThreadId?: string | null;
+    canAssignToParent: boolean;
+  }) {
+    return render(
+      <MemoryRouter>
+        <ParentSelectorRow
+          thread={makeThread({
+            environmentId: null,
+            parentThreadId: overrides.parentThreadId ?? null,
+          })}
+          projectId="proj_test"
+          parentThreadDisplayName={null}
+          parentThreads={[]}
+          canAssignToParent={overrides.canAssignToParent}
+          canTakeOverThread={false}
+          isLoadingParentThreads={false}
+          isParentThreadsError={false}
+          updateThreadPending={false}
+          onAssignParent={vi.fn()}
+          onParentSelectorOpenChange={vi.fn()}
+          onRetryParentThreads={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+  }
+
+  // The row earns its space by being able to do something. Hiding it whenever
+  // a thread had no parent once removed the ONLY way to give a thread one,
+  // because the threads it hid from were exactly the assignable ones.
+  it("offers the assign menu to a thread that has no parent but could take one", () => {
+    renderRow({ canAssignToParent: true });
+
+    expect(screen.getByRole("button")).toBeTruthy();
+  });
+
+  it("shows the parent, and a way to clear it, when a thread has one", () => {
+    renderRow({ parentThreadId: "thr_parent", canAssignToParent: false });
+
+    expect(
+      screen.getByRole("button", { name: "Clear parent thread" }),
+    ).toBeTruthy();
+  });
+
+  it("renders nothing for a thread with no parent that cannot take one", () => {
+    const { container } = renderRow({ canAssignToParent: false });
+
+    expect(container.textContent).toBe("");
+    expect(container.querySelector("button")).toBeNull();
+  });
+
   it("requests candidates only when the parent menu opens", async () => {
     const onOpenChange = vi.fn();
     render(

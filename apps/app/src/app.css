@@ -468,161 +468,17 @@
     pointer-events: none;
   }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    ) {
-    overflow: hidden;
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-main] {
-    min-height: 5rem;
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-expanded-only] {
-    display: none !important;
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-scroll] {
-    min-height: 5rem !important;
-    max-height: 60vh !important;
-    overflow-y: auto;
-    padding-top: 0;
-    padding-bottom: 0;
-    padding-right: 3.5rem;
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content] {
-    display: flex;
-    align-items: center;
-    height: 100%;
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable] {
-    width: 100%;
-    min-height: 0 !important;
-    max-height: 1.7em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap !important;
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    > *,
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    :where(blockquote, h1, h2, h3, h4, h5, h6, li, ol, p, ul) {
-    display: inline;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    color: inherit;
-    font-size: inherit;
-    font-weight: inherit;
-    line-height: inherit;
-    list-style: none;
-    white-space: inherit;
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    > *
-    + *::before,
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    :where(blockquote, li)
-    > *
-    + *::before,
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    :where(ol, ul)
-    > li
-    + li::before {
-    content: " ";
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    br {
-    display: inline;
-    content: " ";
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    br::after {
-    content: " ";
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .prompt-mention-pill
-    > span:last-child {
-    min-width: 0;
-  }
 
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
-    [data-promptbox-editor-content]
-    .ProseMirror
-    p.is-editor-empty:first-child::before {
-    content: var(--promptbox-container-compact-placeholder);
-  }
 }
 
 @layer base {

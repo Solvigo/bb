@@ -108,6 +108,7 @@ export function ParentSelectorRow({
   projectId,
   parentThreadDisplayName,
   parentThreads,
+  canAssignToParent,
   isLoadingParentThreads,
   isParentThreadsError,
   updateThreadPending,
@@ -131,6 +132,18 @@ export function ParentSelectorRow({
   const selectedParentOptionLabel = parentSelectorOptions.find(
     (option) => option.value === parentSelectorValue,
   )?.label;
+
+  // The row earns its space by being able to DO something: show the parent a
+  // thread has, or offer one it could take. A thread with neither — no parent
+  // and not a root that could be given one — gets nothing, because an empty
+  // Parent line on every leaf is the clutter this rail was cleared of.
+  //
+  // Stated as one condition rather than two early returns, because the two
+  // halves are the same rule and drifting them apart is how the assign menu
+  // was made unreachable the first time.
+  if (!parentThreadId && !canAssignToParent) {
+    return null;
+  }
 
   return (
     <DetailRow
