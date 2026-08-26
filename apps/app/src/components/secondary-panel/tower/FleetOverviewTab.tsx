@@ -12,7 +12,7 @@ import { useLiveThreads } from "./useLiveThreads";
 import { useSortieActivity } from "./useSortieActivity";
 import { useItemTrail } from "./useItemTrail";
 import { SpFocusView } from "./SpFocusView";
-import { ageSince } from "./towerTime";
+import { ageSince } from "@/lib/relative-time";
 import { towerNavAtom } from "./towerNav";
 import { useRouteState } from "@/hooks/useRouteState";
 import { PlatedInsignia, RankInsignia } from "./RankInsignia";
@@ -255,7 +255,7 @@ function Card({ item }: { item: PlacedItem }) {
         </span>
         {aloft ? (
           <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-faint">
-            {aloft.label}
+            {aloft}
           </span>
         ) : null}
       </div>
@@ -582,7 +582,7 @@ function LeadCard({
               <div className="mt-0.5 truncate font-tower-mono text-[9px] text-tower-fg-muted">
                 {svNumber(focus.taskId)}
                 {focusChip ? ` · ${focusChip.label}` : ""}
-                {focusAloft ? ` · ${focusAloft.label} ago` : ""}
+                {focusAloft ? ` · ${focusAloft} ago` : ""}
               </div>
             </>
           ) : (

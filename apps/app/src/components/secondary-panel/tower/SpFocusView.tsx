@@ -4,7 +4,7 @@ import { TowerRenderSurface } from "./TowerRenderSurface";
 import { useLiveThreads } from "./useLiveThreads";
 import { PlatedInsignia } from "./RankInsignia";
 import { SwapAgentButton } from "./SwapAgentButton";
-import { ageSince } from "./towerTime";
+import { ageSince } from "@/lib/relative-time";
 
 interface BoardReport {
   rank: string;
@@ -83,7 +83,7 @@ export function SpFocusView({
           title={report?.at ?? undefined}
         >
           {report
-            ? `${report.state}${reportAge ? ` · ${reportAge.label} ago` : ""}`
+            ? `${report.state}${reportAge ? ` · ${reportAge} ago` : ""}`
             : "no report yet"}
         </span>
         {/* The agent's own header is where the thing being swapped is named, so

@@ -65,6 +65,11 @@ export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const ONBOARDING_AGENTS_QUERY_KEY = "onboardingAgents";
 export const ONBOARDING_REPOS_QUERY_KEY = "onboardingRepos";
 export const CREW_DEFAULTS_QUERY_KEY = "crewDefaults";
+/** The same subject as CREW_DEFAULTS_QUERY_KEY, read a different way: the
+ *  composer wants a nullable preload hint, the Defaults screen wants the
+ *  store's four distinct answers. One key for two shapes would let whichever
+ *  hook mounted first decide what the other one sees. */
+export const FLEET_DEFAULT_QUERY_KEY = "fleetDefault";
 export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
 export const SKILL_CONTENT_QUERY_KEY = "skillContent";
@@ -460,6 +465,7 @@ export type OnboardingReposQueryKey = readonly [
   typeof ONBOARDING_REPOS_QUERY_KEY,
 ];
 export type CrewDefaultsQueryKey = readonly [typeof CREW_DEFAULTS_QUERY_KEY];
+export type FleetDefaultQueryKey = readonly [typeof FLEET_DEFAULT_QUERY_KEY];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
   string | null,
@@ -1102,6 +1108,10 @@ export function onboardingReposQueryKey(): OnboardingReposQueryKey {
 
 export function crewDefaultsQueryKey(): CrewDefaultsQueryKey {
   return [CREW_DEFAULTS_QUERY_KEY];
+}
+
+export function fleetDefaultQueryKey(): FleetDefaultQueryKey {
+  return [FLEET_DEFAULT_QUERY_KEY];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {
