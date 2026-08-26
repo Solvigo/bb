@@ -13,6 +13,7 @@ import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
+import { listGloballyPublishedSkillNames } from "./skills-global-publish.js";
 
 /**
  * The built-in skills published to a machine's global agent skill roots so
@@ -56,18 +57,28 @@ export interface InstallGlobalCliSkillsArgs {
  * each tree hash with the skill tree registry, which is what lets a daemon
  * pull the tree bytes back over the internal skill-tree route.
  */
-function resolveGlobalCliSkills(
+function resolveGlobalInstallSkills(
   deps: GlobalSkillInstallDeps,
 ): HostInstallGlobalSkill[] {
+  const publishedDataDirSkillNames = new Set(
+    listGloballyPublishedSkillNames(deps.config.dataDir),
+  );
   return resolveServerOwnedSkillCatalogEntries({
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
     logger: deps.logger,
     skillTreeRegistry: deps.skillTreeRegistry,
-  }).flatMap(({ provenance, runtimeSource }) =>
-    provenance.kind === "builtin" &&
-    runtimeSource.kind === "tree" &&
-    GLOBAL_CLI_SKILL_NAMES.includes(runtimeSource.name)
+  }).flatMap(({ provenance, runtimeSource }) => {
+    if (runtimeSource.kind !== "tree") {
+      return [];
+    }
+    const includeBuiltin =
+      provenance.kind === "builtin" &&
+      GLOBAL_CLI_SKILL_NAMES.includes(runtimeSource.name);
+    const includePublishedDataDir =
+      provenance.kind === "user" &&
+      publishedDataDirSkillNames.has(runtimeSource.name);
+    return includeBuiltin || includePublishedDataDir
       ? [
           {
             name: runtimeSource.name,
@@ -75,8 +86,8 @@ function resolveGlobalCliSkills(
             entryPath: runtimeSource.entryPath,
           },
         ]
-      : [],
-  );
+      : [];
+  });
 }
 
 /**
@@ -114,7 +125,7 @@ export async function readGlobalCliSkillStatus(
   args: InstallGlobalCliSkillsArgs,
 ): Promise<SystemCliSkillsStatusResponse> {
   const hosts = listNonDestroyedHostsByIds(deps.db, args.hostIds);
-  const skills = resolveGlobalCliSkills(deps);
+  const skills = resolveGlobalInstallSkills(deps);
   const machines = await Promise.all(
     hosts.map(async (host) => {
       const base = { hostId: host.id, hostName: host.name };
@@ -175,7 +186,7 @@ export async function installGlobalCliSkills(
       `Machine ${missingHostId} was not found`,
     );
   }
-  const skills = resolveGlobalCliSkills(deps);
+  const skills = resolveGlobalInstallSkills(deps);
   if (skills.length === 0) {
     throw new ApiError(
       500,

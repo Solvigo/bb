@@ -128,6 +128,8 @@ import type {
   SkillContentResponse,
   SkillFilesResponse,
   UpdateSkillRequest,
+  SetSkillPublishGloballyRequest,
+  SetSkillPublishGloballyResponse,
   ProjectWithThreadsResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
@@ -268,6 +270,7 @@ import {
   projectSkillContentQuerySchema,
   projectSkillFilesQuerySchema,
   updateSkillRequestSchema,
+  setSkillPublishGloballyRequestSchema,
   promptHistoryQuerySchema,
   reorderPinnedThreadRequestSchema,
   reorderProjectRequestSchema,
@@ -482,6 +485,14 @@ export const publicApiRoutes = {
         updateSkillRequestSchema,
       ),
       response: jsonResponse<{ filePath: string; revision: string }>(),
+    }),
+    setSkillPublishGlobally: defineRoute({
+      path: "/projects/:id/skills/publish-globally",
+      method: "patch",
+      request: jsonRequest<PathProjectId, SetSkillPublishGloballyRequest>(
+        setSkillPublishGloballyRequestSchema,
+      ),
+      response: jsonResponse<SetSkillPublishGloballyResponse>(),
     }),
     branches: defineRoute({
       path: "/projects/:id/branches",

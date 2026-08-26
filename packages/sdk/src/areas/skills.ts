@@ -92,12 +92,20 @@ export interface SkillsRegistryArea {
   search(args?: RegistrySkillsSearchArgs): Promise<RegistrySkillsPage>;
 }
 
+export interface SkillPublishGloballyArgs extends SkillWorkspaceArgs {
+  skillId: string;
+  publishGlobally: boolean;
+}
+
 export interface SkillsArea {
   getContent(args: SkillContentArgs): Promise<SkillContentResponse>;
   list(args: SkillListArgs): Promise<SkillListResponse>;
   listFiles(args: SkillIdentityArgs): Promise<SkillFilesResponse>;
   registry: SkillsRegistryArea;
   remove(args: SkillDeleteArgs): Promise<{ deletedPath: string }>;
+  setPublishGlobally(
+    args: SkillPublishGloballyArgs,
+  ): Promise<{ publishGlobally: boolean }>;
   update(
     args: SkillUpdateArgs,
   ): Promise<{ filePath: string; revision: string }>;
@@ -223,6 +231,18 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         transport.api.v1.projects[":id"].skills.$delete({
           param: { id: input.projectId },
           json: body,
+        }),
+      );
+    },
+    async setPublishGlobally(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].skills["publish-globally"].$patch({
+          param: { id: input.projectId },
+          json: {
+            skillId: input.skillId,
+            environmentId: input.environmentId,
+            publishGlobally: input.publishGlobally,
+          },
         }),
       );
     },
