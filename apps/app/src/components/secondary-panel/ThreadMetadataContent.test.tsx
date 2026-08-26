@@ -106,13 +106,16 @@ describe("EnvironmentRow", () => {
   });
 });
 
+// The row hides itself for a thread with no parent — a pilot never has one, so
+// showing an empty Parent line on every root thread was noise. These cases are
+// about the MENU's behaviour, so they need a thread that still shows the row.
 describe("ParentSelectorRow", () => {
   it("requests candidates only when the parent menu opens", async () => {
     const onOpenChange = vi.fn();
     render(
       <MemoryRouter>
         <ParentSelectorRow
-          thread={makeThread({ environmentId: null })}
+          thread={makeThread({ environmentId: null, parentThreadId: "thr_parent" })}
           projectId="proj_test"
           parentThreadDisplayName={null}
           parentThreads={[]}
@@ -143,7 +146,7 @@ describe("ParentSelectorRow", () => {
     const row = (isError: boolean, candidates = parentThreads) => (
       <MemoryRouter>
         <ParentSelectorRow
-          thread={makeThread({ environmentId: null })}
+          thread={makeThread({ environmentId: null, parentThreadId: "thr_parent" })}
           projectId="proj_test"
           parentThreadDisplayName={null}
           parentThreads={candidates}
