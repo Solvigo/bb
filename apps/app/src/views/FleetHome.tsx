@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia";
 import {
@@ -108,7 +109,14 @@ export function FleetHome({ onStartThread }: { onStartThread: () => void }) {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div
+        className={cn(
+          "grid gap-3",
+          // Two-up only once there is a second card to fill the other column.
+          // A lone crew in a two-column grid leaves a hole the width of itself.
+          crews.length > 1 && "sm:grid-cols-2",
+        )}
+      >
         {crews.map((crew) => (
           <CrewCard key={crew.commanderThreadId} crew={crew} />
         ))}
