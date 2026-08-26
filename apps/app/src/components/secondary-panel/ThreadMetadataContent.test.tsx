@@ -107,6 +107,56 @@ describe("EnvironmentRow", () => {
 });
 
 describe("ParentSelectorRow", () => {
+  function renderRow(overrides: {
+    parentThreadId?: string | null;
+    canAssignToParent: boolean;
+  }) {
+    return render(
+      <MemoryRouter>
+        <ParentSelectorRow
+          thread={makeThread({
+            environmentId: null,
+            parentThreadId: overrides.parentThreadId ?? null,
+          })}
+          projectId="proj_test"
+          parentThreadDisplayName={null}
+          parentThreads={[]}
+          canAssignToParent={overrides.canAssignToParent}
+          canTakeOverThread={false}
+          isLoadingParentThreads={false}
+          isParentThreadsError={false}
+          updateThreadPending={false}
+          onAssignParent={vi.fn()}
+          onParentSelectorOpenChange={vi.fn()}
+          onRetryParentThreads={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+  }
+
+  // The row earns its space by being able to do something. Hiding it whenever
+  // a thread had no parent once removed the ONLY way to give a thread one,
+  // because the threads it hid from were exactly the assignable ones.
+  it("offers the assign menu to a thread that has no parent but could take one", () => {
+    renderRow({ canAssignToParent: true });
+
+    expect(screen.getByRole("button")).toBeTruthy();
+  });
+
+  it("shows the parent, and a way to clear it, when a thread has one", () => {
+    renderRow({ parentThreadId: "thr_parent", canAssignToParent: false });
+
+    expect(
+      screen.getByRole("button", { name: "Clear parent thread" }),
+    ).toBeTruthy();
+  });
+
+  it("renders nothing for a thread with no parent that cannot take one", () => {
+    const { container } = renderRow({ canAssignToParent: false });
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("requests candidates only when the parent menu opens", async () => {
     const onOpenChange = vi.fn();
     render(
