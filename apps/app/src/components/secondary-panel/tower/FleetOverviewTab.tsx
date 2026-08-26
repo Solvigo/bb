@@ -12,6 +12,7 @@ import { useLiveThreads } from "./useLiveThreads";
 import { useSortieActivity } from "./useSortieActivity";
 import { useItemTrail } from "./useItemTrail";
 import { SpFocusView } from "./SpFocusView";
+import { ageSince } from "./towerTime";
 import { towerNavAtom } from "./towerNav";
 import { useRouteState } from "@/hooks/useRouteState";
 import { PlatedInsignia, RankInsignia } from "./RankInsignia";
@@ -154,19 +155,6 @@ function svNumber(taskId: string): string {
 }
 
 /** Compact "time since" (v2: "40s", "4m", "2h 20m", "1d 03h"). */
-function ageSince(at?: string | null): { label: string; ms: number } | null {
-  if (!at) return null;
-  const ms = Date.now() - new Date(at).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return null;
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return { label: `${s}s`, ms };
-  const m = Math.floor(s / 60);
-  if (m < 60) return { label: `${m}m`, ms };
-  const h = Math.floor(m / 60);
-  if (h < 24) return { label: `${h}h ${m % 60}m`, ms };
-  return { label: `${Math.floor(h / 24)}d ${h % 24}h`, ms };
-}
-
 /** A flight has lost contact when the crew plugin says its attempt is gone —
  *  its own verdict, never a guess from how long the card has been sitting. */
 function hasLostContact(item: PlacedItem): boolean {

@@ -58,6 +58,7 @@ export function SwapAgentButton({
   const [swapping, setSwapping] = useState(false);
 
   const status = thread?.status ?? null;
+  const optionsLoaded = options !== undefined;
   // The refusal is honest, but a button that explains itself before you press
   // it reads better than one that explains itself after.
   const busy = status !== null && BUSY_STATUSES.has(status);
@@ -94,7 +95,28 @@ export function SwapAgentButton({
     }
   };
 
-  if (targets.length === 0) return null;
+  // A control that vanishes cannot be told apart from a build that never had
+  // it. Until the provider list has been read we do not KNOW whether there is
+  // anywhere to swap to, and once we do know, "nowhere" is an answer worth
+  // printing rather than a reason to disappear.
+  if (!optionsLoaded || targets.length === 0) {
+    return (
+      <span className={cn("flex min-w-0 items-center gap-1.5", className)}>
+        <span
+          data-testid="swap-agent-unavailable"
+          title={
+            optionsLoaded
+              ? "No other coding harness is available on this instance."
+              : "Still reading which harnesses this instance can reach."
+          }
+          className="flex shrink-0 items-center gap-1 rounded-md border border-tower-border px-2 py-0.5 font-tower-mono text-[10px] text-tower-fg-faint opacity-60"
+        >
+          <Icon name="Zap" className="size-3" />
+          {optionsLoaded ? "no swap targets" : "swap…"}
+        </span>
+      </span>
+    );
+  }
 
   return (
     <span className={cn("flex min-w-0 items-center gap-1.5", className)}>

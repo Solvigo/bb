@@ -4,6 +4,7 @@ import { TowerRenderSurface } from "./TowerRenderSurface";
 import { useLiveThreads } from "./useLiveThreads";
 import { PlatedInsignia } from "./RankInsignia";
 import { SwapAgentButton } from "./SwapAgentButton";
+import { ageSince } from "./towerTime";
 
 interface BoardReport {
   rank: string;
@@ -56,6 +57,7 @@ export function SpFocusView({
   const live = useLiveThreads()?.get(threadId);
   const projectId = live?.projectId ?? "";
   const providerId = live?.providerId ?? "";
+  const reportAge = ageSince(report?.at);
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
       {/* agent header */}
@@ -76,8 +78,13 @@ export function SpFocusView({
         <span className="font-tower-mono text-[11px] text-tower-fg-faint">
           {domain}
         </span>
-        <span className="ml-auto font-tower-mono text-[10px] text-tower-fg-faint">
-          {report ? `${report.state} · ${report.at}` : "no report yet"}
+        <span
+          className="ml-auto font-tower-mono text-[10px] text-tower-fg-faint"
+          title={report?.at ?? undefined}
+        >
+          {report
+            ? `${report.state}${reportAge ? ` · ${reportAge.label} ago` : ""}`
+            : "no report yet"}
         </span>
         {/* The agent's own header is where the thing being swapped is named, so
             it is where the swap belongs. */}

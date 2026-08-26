@@ -5,6 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigate = vi.fn();
 let threadStatus = "idle";
+let executionOptions: unknown = {
+  providers: [
+    { id: "claude-code", displayName: "Claude Code", available: true },
+    { id: "acp-cursor", displayName: "Cursor", available: true },
+    { id: "pi", displayName: "Pi", available: false },
+  ],
+};
 
 vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
 vi.mock("@/hooks/queries/thread-queries", () => ({
@@ -18,15 +25,7 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   }),
 }));
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemExecutionOptions: () => ({
-    data: {
-      providers: [
-        { id: "claude-code", displayName: "Claude Code", available: true },
-        { id: "acp-cursor", displayName: "Cursor", available: true },
-        { id: "pi", displayName: "Pi", available: false },
-      ],
-    },
-  }),
+  useSystemExecutionOptions: () => ({ data: executionOptions }),
 }));
 
 import { SwapAgentButton } from "./SwapAgentButton";
@@ -34,6 +33,13 @@ import { SwapAgentButton } from "./SwapAgentButton";
 describe("the swap control", () => {
   beforeEach(() => {
     threadStatus = "idle";
+    executionOptions = {
+      providers: [
+        { id: "claude-code", displayName: "Claude Code", available: true },
+        { id: "acp-cursor", displayName: "Cursor", available: true },
+        { id: "pi", displayName: "Pi", available: false },
+      ],
+    };
     navigate.mockClear();
   });
   afterEach(() => {
@@ -103,5 +109,31 @@ describe("the swap control", () => {
     // The store refuses this honestly; explaining before the press reads better.
     expect(button.disabled).toBe(true);
     expect(button.title).toMatch(/turn boundary/i);
+  });
+
+  // A control that disappears is indistinguishable from a build that never had
+  // it — which is exactly how an hour went missing hunting for this button on a
+  // rig whose provider list had not answered yet.
+  it("says it is still reading rather than vanishing", () => {
+    executionOptions = undefined;
+    render(<SwapAgentButton threadId="thr_source" />);
+
+    expect(screen.queryByTestId("swap-agent-button")).toBeNull();
+    const placeholder = screen.getByTestId("swap-agent-unavailable");
+    expect(placeholder.getAttribute("title")).toContain("Still reading");
+  });
+
+  it("says there is nowhere to go when the instance has no other harness", () => {
+    executionOptions = {
+      providers: [
+        { id: "claude-code", displayName: "Claude Code", available: true },
+      ],
+    };
+    render(<SwapAgentButton threadId="thr_source" />);
+
+    expect(screen.queryByTestId("swap-agent-button")).toBeNull();
+    expect(screen.getByTestId("swap-agent-unavailable").textContent).toContain(
+      "no swap targets",
+    );
   });
 });
