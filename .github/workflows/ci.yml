@@ -37,6 +37,13 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: checks
 
+      # Fleet-patched can carry stale committed template output; regenerate from
+      # the built plugin SDK before typecheck/tests run their --check guards.
+      - name: Regenerate template artifacts
+        run: |
+          pnpm exec turbo run build --filter=@bb/plugin-sdk --cache-dir=.turbo/cache --output-logs=new-only
+          node packages/templates/scripts/generate-templates.mjs
+
       - name: Build, typecheck, and lint
         run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
 
@@ -89,6 +96,11 @@ jobs:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: test-${{ matrix.shard }}
+
+      - name: Regenerate template artifacts
+        run: |
+          pnpm exec turbo run build --filter=@bb/plugin-sdk --cache-dir=.turbo/cache --output-logs=new-only
+          node packages/templates/scripts/generate-templates.mjs
 
       - name: Test
         run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only ${{ matrix.args }}
