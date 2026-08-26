@@ -200,6 +200,8 @@ import {
 } from "./root-compose-environment-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
+import { FleetHome } from "./FleetHome";
+import { useCrews } from "@/components/sidebar/crew/useCrews";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
 import {
   useThreadFileTabs,
@@ -3200,6 +3202,18 @@ export function RootComposeView() {
     !startedComposing &&
     projects !== undefined &&
     projects.length === 0;
+  // The operator lands on their fleet, not an empty prompt: a bare composer
+  // invites starting work with nobody responsible for it, which is the habit
+  // the crew-centric rail exists to break. Only once they have a crew — before
+  // that the existing welcome is still the right first screen — and never over
+  // a fork draft, which is already a specific thing the operator asked for.
+  const { crews: homeCrews, loaded: homeCrewsLoaded } = useCrews();
+  const showFleetHome =
+    !isForkDraft &&
+    !startedComposing &&
+    !showEmptyWelcome &&
+    homeCrewsLoaded &&
+    homeCrews.length > 0;
   const handleStartComposing = useCallback(
     (prefill?: string) => {
       if (prefill) {
@@ -3557,7 +3571,9 @@ export function RootComposeView() {
             onPanelChange: handleSecondaryPanelChange,
           }}
         >
-          {showEmptyWelcome ? (
+          {showFleetHome ? (
+            <FleetHome onStartThread={handleStartComposing} />
+          ) : showEmptyWelcome ? (
             <RootComposeEmptyWelcome
               onCompose={handleStartComposing}
               onAddProject={quickCreateProject.openCreateDialog}

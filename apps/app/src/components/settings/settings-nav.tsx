@@ -30,6 +30,9 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "PackageReceive", id: "updates", label: "Updates" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "Layers", id: "plugins", label: "Plugins" },
+  { icon: "Code", id: "providers", label: "Coding harnesses" },
+  { icon: "ElectricPlugs", id: "connections", label: "Connections" },
+  { icon: "SlidersHorizontal", id: "defaults", label: "Defaults" },
   { icon: "MessageSquare", id: "community", label: "Community" },
   { icon: "Archive", id: "archived", label: "Archived threads" },
 ] as const satisfies readonly {
@@ -42,16 +45,17 @@ export type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
 
 export type SettingsSectionId = SettingsNavSection["id"];
 
-export const SETTINGS_PROVIDER_ENTRIES = [
-  { id: "codex", label: "Codex" },
-  { id: "claude-code", label: "Claude Code" },
-] as const;
-export type SettingsProviderId =
-  (typeof SETTINGS_PROVIDER_ENTRIES)[number]["id"];
-
-function isSettingsProviderId(value: string): value is SettingsProviderId {
-  return SETTINGS_PROVIDER_ENTRIES.some((provider) => provider.id === value);
-}
+/**
+ * A harness id is RUNTIME DATA, not a closed set the nav gets to decide.
+ *
+ * This used to be a hardcoded pair, which is why an instance that knew four
+ * harnesses showed two in the sidebar and the other two could not be reached
+ * at all. The harnesses now live on one page that asks the instance; the
+ * per-harness route survives as a deep link into that page, and any id is
+ * allowed through — the page says so if the instance does not know it, which
+ * is a better answer than the nav redirecting as though the URL were malformed.
+ */
+export type SettingsProviderId = string;
 
 export function isSettingsSectionId(value: string): value is SettingsSectionId {
   return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
@@ -70,7 +74,6 @@ export interface SettingsNavState {
   hasUnknownSection: boolean;
   /** Enabled plugins that declared settings or settingsSection slots. */
   pluginEntries: PluginListItem[];
-  providerEntries: typeof SETTINGS_PROVIDER_ENTRIES;
   /** Buckets visible on this host. */
   sections: readonly SettingsNavSection[];
 }
@@ -107,25 +110,25 @@ export function useSettingsNavState(): SettingsNavState {
   const activeMachineId = machineMatch?.params.hostId ?? null;
   const activePluginId = pluginMatch?.params.pluginId ?? null;
   const providerParam = providerMatch?.params.providerId;
-  const activeProviderId =
-    providerParam !== undefined && isSettingsProviderId(providerParam)
-      ? providerParam
-      : null;
+  const activeProviderId = providerParam ?? null;
   const sectionParam =
     activePluginId === null && providerMatch === null
       ? sectionMatch?.params.section
       : undefined;
   const hasUnknownSection =
-    (sectionParam !== undefined && !isSettingsSectionId(sectionParam)) ||
-    (providerParam !== undefined && !isSettingsProviderId(providerParam));
+    sectionParam !== undefined && !isSettingsSectionId(sectionParam);
   const activeSection: SettingsSectionId | null =
     activeMachineId !== null
       ? "machines"
-      : activePluginId !== null || providerMatch !== null
-        ? null
-        : sectionParam !== undefined && isSettingsSectionId(sectionParam)
-          ? sectionParam
-          : "general";
+      : // A harness route is a deep link INTO the harnesses page, so the nav
+        // stays on that row rather than falling through to General.
+        providerMatch !== null
+        ? "providers"
+        : activePluginId !== null
+          ? null
+          : sectionParam !== undefined && isSettingsSectionId(sectionParam)
+            ? sectionParam
+            : "general";
 
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "plugins" && toolsHubEnabled) {
@@ -148,7 +151,6 @@ export function useSettingsNavState(): SettingsNavState {
     activeSection,
     hasUnknownSection,
     pluginEntries,
-    providerEntries: SETTINGS_PROVIDER_ENTRIES,
     sections,
   };
 }

@@ -55,7 +55,7 @@ export function CommunitySettingsSection() {
   return (
     <SettingsSection
       title="Community"
-      description="Chat with other bb users and follow development on GitHub."
+      description="Chat with other Solvigo Airways users and follow development on GitHub."
     >
       <div className="space-y-5">
         <CommunityLinkRow

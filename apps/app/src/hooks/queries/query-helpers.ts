@@ -41,6 +41,19 @@ function normalizeErrorMessage(message: string): string {
   return message.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+/**
+ * The server answered, and its answer was "that isn't here". Distinct from a
+ * read that failed: a missing row is permanent and offering a retry for it puts
+ * a lie in a button, while a genuine failure is worth trying again. Callers
+ * that render a dead end owe the operator the right one.
+ */
+export function isNotFoundReadError(error: unknown): boolean {
+  if (error instanceof HttpError || error instanceof BbHttpError) {
+    return error.status === 404;
+  }
+  return false;
+}
+
 export function isTransientReadError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") {
     return true;

@@ -9,7 +9,7 @@ interface RootComposeEmptyWelcomeProps {
 }
 
 const IMPORT_PROJECTS_PROMPT =
-  "Search my home directory (max depth 3) for git repositories touched in the last 30 days and import only those projects into bb using the cli";
+  "Search my home directory (max depth 3) for git repositories touched in the last 30 days and import only those projects using the cli";
 
 const LEARN_PROMPT =
   "What can bb do, and how can you (my agent) interact with it? Summarize bb's capabilities and how you'd use the bb CLI to work with threads and projects.";
@@ -142,14 +142,21 @@ export function RootComposeEmptyWelcome({
           </filter>
         </defs>
       </svg>
-      {/* Filter on the parent so its SourceAlpha is the masked glyph below. */}
+      {/* Filter on the parent so its SourceAlpha is the glyph below. The lockup
+          sheet sanctions the plateless orange jet for product surfaces (the
+          plate is for icons), and the gloss still rides its alpha. */}
       <div
         role="img"
-        aria-label="bb"
-        className="h-24 w-28 select-none"
+        aria-label="Solvigo Airways"
+        className="size-24 select-none"
         style={{ filter: "url(#bb-gloss)" }}
       >
-        <div className="bb-mark-fill size-full" />
+        <img
+          src="/solvigo-airways-glyph.svg"
+          alt=""
+          className="size-full select-none object-contain"
+          draggable={false}
+        />
       </div>
       <div className="flex w-full max-w-[360px] flex-col gap-1">
         <WelcomeAction

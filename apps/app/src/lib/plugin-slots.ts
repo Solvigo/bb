@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
+  PluginAgentSurfaceTabRegistration,
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
@@ -37,6 +38,8 @@ export interface PluginRegistrationSet {
   threadLists?: readonly PluginThreadListRegistration[];
   /** Optional for the same reason as `threadLists`: bundles built earlier. */
   threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
+  /** Optional for the same reason: a bundle built before the slot existed. */
+  agentSurfaceTabs?: readonly PluginAgentSurfaceTabRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
@@ -69,6 +72,9 @@ export interface PluginSidebarFooterActionSlot
   extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
+export interface PluginAgentSurfaceTabSlot
+  extends PluginAgentSurfaceTabRegistration, PluginSlotBase {}
+
 export interface PluginThreadHeaderActionSlot
   extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
@@ -89,6 +95,7 @@ export interface PluginSlotSnapshot {
   sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
   threadLists: readonly PluginThreadListSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
+  agentSurfaceTabs: readonly PluginAgentSurfaceTabSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
   messageActions: readonly PluginMessageActionSlot[];
@@ -104,6 +111,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   sidebarFooterActions: [],
   threadLists: [],
   threadHeaderActions: [],
+  agentSurfaceTabs: [],
   fileOpeners: [],
   messageDirectives: [],
   messageActions: [],
@@ -126,6 +134,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     sidebarFooterActions: PluginSidebarFooterActionSlot[];
     threadLists: PluginThreadListSlot[];
     threadHeaderActions: PluginThreadHeaderActionSlot[];
+    agentSurfaceTabs: PluginAgentSurfaceTabSlot[];
     fileOpeners: PluginFileOpenerSlot[];
     messageDirectives: PluginMessageDirectiveSlot[];
     messageActions: PluginMessageActionSlot[];
@@ -139,6 +148,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     sidebarFooterActions: [],
     threadLists: [],
     threadHeaderActions: [],
+    agentSurfaceTabs: [],
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
@@ -178,6 +188,9 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.threadLists ?? []) {
       next.threadLists.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.agentSurfaceTabs ?? []) {
+      next.agentSurfaceTabs.push({ ...registration, pluginId, generation });
     }
     for (const registration of set.threadHeaderActions ?? []) {
       next.threadHeaderActions.push({ ...registration, pluginId, generation });

@@ -164,6 +164,11 @@ interface ProjectListProps {
 }
 
 interface ProjectListActionButtonsProps {
+  /**
+   * False in the crew rail, where starting a bare thread is not an action the
+   * operator is offered — search is all this row carries there.
+   */
+  showNewThread?: boolean;
   splitEnabled?: boolean;
   newThreadSplit?: {
     onPointerDown?: PointerEventHandler<HTMLElement>;
@@ -801,6 +806,7 @@ function ProjectListNavigationLoadingRow({
 }
 
 export function ProjectListActionButtons({
+  showNewThread = true,
   splitEnabled = false,
   newThreadSplit,
   onNewChat,
@@ -863,6 +869,7 @@ export function ProjectListActionButtons({
         </div>
       ) : (
         <div className="flex min-w-0 items-center gap-0.5">
+          {showNewThread ? (
           <Button
             type="button"
             size="sm"
@@ -896,6 +903,7 @@ export function ProjectListActionButtons({
               <AppCommandShortcutHint shortcut={newThreadShortcut} />
             </span>
           </Button>
+          ) : null}
           {threadSearch ? (
             <span className="flex shrink-0 items-center gap-1">
               <AppCommandShortcutHint shortcut={threadSearchShortcut} />

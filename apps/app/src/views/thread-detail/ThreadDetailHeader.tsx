@@ -27,6 +27,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
+import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
@@ -53,8 +54,13 @@ interface ThreadDetailHeaderProps {
    * while a narrow split hides their inline controls.
    */
   actionsMenu: ((includeResponsiveActions: boolean) => ReactNode) | null;
-  /** Pill shown beside the title for side chats and hierarchical child threads. */
-  childPillLabel: "child" | "side chat" | null;
+  /** Pill shown beside the title for a side chat, which is a kind, not a rank. */
+  childPillLabel: "side chat" | null;
+  /**
+   * Where this agent sits in its crew, rendered before the title. Null for a
+   * commander, which is the top of its own crew and has nothing above it.
+   */
+  crewContext?: ReactNode;
   isSecondaryPanelOpen: boolean;
   /** Closes this pane; only provided when the layout is split (>1 pane). */
   onClosePane?: () => void;
@@ -70,6 +76,7 @@ interface ThreadDetailHeaderProps {
 export function ThreadDetailHeader({
   actionsMenu,
   childPillLabel,
+  crewContext,
   isSecondaryPanelOpen,
   onClosePane,
   onOpenThreadGitAction,
@@ -154,7 +161,7 @@ export function ThreadDetailHeader({
       >
         <p
           className={cn(
-            "relative min-w-0 truncate text-sm font-normal transition-colors",
+            "relative flex min-w-0 items-center gap-2 truncate text-base font-semibold transition-colors",
             isSplitPaneHeader && !isFocused && CONTEXT_INACTIVE_TEXT_CLASS,
             beginPaneDrag &&
               cn(
@@ -166,6 +173,17 @@ export function ThreadDetailHeader({
           )}
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
         >
+          {/* A root thread IS the commander — the emblem that never flies.
+              Anything below it leads with its crew trail instead, so a deep
+              link says whose conversation this is before it says its name. */}
+          {crewContext ?? (
+            <PlatedInsignia
+              rank="commander"
+              state="working"
+              plate={26}
+              title="Commander"
+            />
+          )}
           <ThreadTitleMentions title={threadTitle} />
         </p>
       </div>

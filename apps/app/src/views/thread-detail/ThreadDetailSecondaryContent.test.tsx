@@ -465,7 +465,10 @@ beforeEach(() => {
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {
-  it("keeps the standalone panel hide control in the panel toolbar", () => {
+  // The Tower panel is a floating card with no collapse controls of its own
+  // (see "Tower: secondary panel as a floating card"); the panel is shown and
+  // hidden from the thread header instead, so it publishes no inline toggle.
+  it("gives the standalone panel no inline hide control of its own", () => {
     renderThreadDetail({
       isCompactViewport: false,
       isSecondaryPanelOpen: true,
@@ -477,10 +480,10 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       screen
         .getByTestId("inline-secondary-panel")
         .getAttribute("data-inline-panel-toggle"),
-    ).toBe("button");
+    ).toBe("hidden");
   });
 
-  it("places the hosted panel hide control at the outer edge of its own toolbar", () => {
+  it("gives the hosted panel no inline hide control of its own", () => {
     renderThreadDetail({
       isCompactViewport: false,
       isFocusedHosted: true,
@@ -497,7 +500,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       screen
         .getByTestId("inline-secondary-panel")
         .getAttribute("data-inline-panel-toggle"),
-    ).toBe("button");
+    ).toBe("hidden");
   });
 
   it("keeps the thread header inside the timeline column beside the side panel", () => {

@@ -44,16 +44,26 @@ afterEach(() => {
 });
 
 describe("useSettingsNavState", () => {
-  it("resolves Codex and Claude Code as separate provider pages", () => {
+  it("carries a harness route through as a deep link, not its own page", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/providers/claude-code"),
     });
 
     expect(result.current.activeProviderId).toBe("claude-code");
-    expect(result.current.activeSection).toBeNull();
-    expect(
-      result.current.providerEntries.map((provider) => provider.id),
-    ).toEqual(["codex", "claude-code"]);
+    expect(result.current.activeSection).toBe("providers");
+  });
+
+  // The harness list is the instance's, not the nav's. It used to be a
+  // hardcoded pair, so an instance that knew four showed two and the other two
+  // could not be reached at all — including by typing the URL, which the nav
+  // treated as a malformed section and redirected away from.
+  it("lets a harness the nav has never heard of through to the page", () => {
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/providers/acp-cursor"),
+    });
+
+    expect(result.current.activeProviderId).toBe("acp-cursor");
+    expect(result.current.hasUnknownSection).toBe(false);
   });
 
   it("shows the Machines section", () => {

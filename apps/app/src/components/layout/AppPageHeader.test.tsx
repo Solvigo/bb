@@ -6,6 +6,11 @@ import { AppPageHeader } from "./AppPageHeader";
 
 vi.mock("@/components/ui/sidebar.js", () => ({
   useIsSidebarShowing: () => true,
+  // The header now hosts the sidebar toggle in its actions instead of the
+  // app pinning it to the top-left corner.
+  SidebarTrigger: (props: Record<string, unknown>) => (
+    <button type="button" {...props} />
+  ),
 }));
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({

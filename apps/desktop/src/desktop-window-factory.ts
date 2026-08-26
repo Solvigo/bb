@@ -172,7 +172,7 @@ function createWindowOptions(
     minHeight: MIN_WINDOW_HEIGHT,
     minWidth: MIN_WINDOW_WIDTH,
     show: false,
-    title: "bb",
+    title: "Solvigo Airways",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
     webPreferences: {

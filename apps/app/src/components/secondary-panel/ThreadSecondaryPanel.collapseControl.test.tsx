@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -19,7 +20,10 @@ function renderPanel(args: {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
     <Wrapper>
-      <TooltipProvider>
+      {/* The panel reads route state now — it resolves which agent it is
+          showing from the URL rather than being told. */}
+      <MemoryRouter>
+        <TooltipProvider>
         <PanelGroup direction="horizontal">
           <ThreadSecondaryPanel
             activeTab={createThreadInfoFixedPanelTab()}
@@ -36,7 +40,8 @@ function renderPanel(args: {
             {...args}
           />
         </PanelGroup>
-      </TooltipProvider>
+        </TooltipProvider>
+      </MemoryRouter>
     </Wrapper>,
   );
 }

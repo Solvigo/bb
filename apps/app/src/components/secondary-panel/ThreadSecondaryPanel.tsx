@@ -29,6 +29,17 @@ import {
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
+import { towerNavAtom } from "./tower/towerNav";
+import {
+  listAgentSurfaceTabs,
+  onAgentTeardown,
+  type AgentSurfaceTab,
+} from "./tower/agentSurfaceRegistry";
+import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
+import { registerBuiltInAgentSurfaceTabs } from "./tower/builtInAgentSurfaceTabs";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import { useRouteState } from "@/hooks/useRouteState";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
@@ -62,7 +73,6 @@ import {
   ThreadInfoTabContent,
 } from "./ThreadSecondaryPanelTabContent";
 import {
-  CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
@@ -79,7 +89,7 @@ import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
-import { TabPill } from "@/components/ui/tab-pill";
+import { PinnedIconTab } from "./PinnedIconTab";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 export type {
@@ -91,7 +101,7 @@ export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 // Shared with the split-workspace host's empty-state panel, which must resize
 // within the same bounds as the real panel it stands in for.
 export const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
-export const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
+export const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 82;
 
 export function isSecondaryPanelLayoutTransition(
   propertyName: string,
@@ -448,6 +458,64 @@ export function ThreadSecondaryPanel({
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
+  // Tower fleet overview is a CLIENT-ONLY view (never synced to the pinned
+  // server's strict tab contract). It shows by default and yields to any real
+  // fixed view (Info/Diff) or file tab the operator opens.
+  // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
+  // contract). "crew" is the default surface; the views show over the empty
+  // new-tab / info states but yield to any real content the operator opens.
+  // The agent this panel belongs to: in this app an agent IS a thread, and the
+  // panel is opened inside one. The board already resolved it this way; now the
+  // whole surface does, so every tab is handed the same agent.
+  registerBuiltInAgentSurfaceTabs();
+  const { threadId: openInThreadId } = useRouteState();
+  // The commander's own rendering surface takes its tabs from the SAME registry
+  // the per-agent surface uses, so a tab registered once — by a built-in or by a
+  // plugin — appears at every level instead of only the two below this one.
+  const { agentSurfaceTabs: pluginSurfaceTabs } = usePluginSlots();
+  const towerTabs = useMemo<AgentSurfaceTab[]>(
+    () => [
+      ...listAgentSurfaceTabs(),
+      ...pluginSurfaceTabs.map((slot) => ({
+        id: `plugin:${slot.pluginId}:${slot.id}`,
+        label: slot.label,
+        icon: pluginIconName(slot.icon),
+        title: slot.title,
+        component: slot.component as unknown as AgentSurfaceTab["component"],
+        pluginId: slot.pluginId,
+        generation: slot.generation,
+      })),
+    ],
+    [pluginSurfaceTabs],
+  );
+  const [towerView, setTowerView] = useState<string | null>("crew");
+  // Same contract the per-agent surface gives a tab: a disposer narrowed to
+  // this agent, so a tab never tears down its context because a different
+  // agent's surface closed.
+  const registerTowerTeardown = useCallback(
+    (dispose: () => void) =>
+      onAgentTeardown((agentId) => {
+        if (agentId === openInThreadId) dispose();
+      }),
+    [openInThreadId],
+  );
+  // Chat-link navigation: a bb-tower: link in the commander chat sets this atom.
+  const towerNav = useAtomValue(towerNavAtom);
+  const lastNavNonce = useRef(0);
+  if (towerNav && towerNav.nonce !== lastNavNonce.current) {
+    lastNavNonce.current = towerNav.nonce;
+    if (towerNav.view !== towerView) setTowerView(towerNav.view);
+  }
+  const activeTabKind = activeTab?.kind ?? null;
+  // Tower views default over the empty/info state, but yield to a new-tab the
+  // operator explicitly opened (and to any real file/diff/terminal content).
+  const towerViewCanShow =
+    activeTabKind === null || activeTabKind === "thread-info";
+  const activeTowerTab =
+    towerViewCanShow && towerView !== null
+      ? (towerTabs.find((tab) => tab.id === towerView) ?? null)
+      : null;
+  const isTowerViewActive = activeTowerTab !== null;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
@@ -583,32 +651,29 @@ export function ThreadSecondaryPanel({
       style={
         !renderAsDrawer && !isSecondaryPanelResizing
           ? {
-              width: `var(--secondary-swipe-width, ${persistedWidthPercent}cqw)`,
+              // Trim the held width by the card's horizontal inset (left-2 +
+              // right gap) so the floating card clears the column on both sides.
+              width: `calc(var(--secondary-swipe-width, ${persistedWidthPercent}cqw) - 1rem)`,
             }
           : undefined
       }
       className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden bg-sidebar",
+        "flex min-h-0 flex-col overflow-hidden bg-tower-render",
         // Drawer: fill the drawer shell. Inline: the fixed-width, left-pinned
         // content the panel clips into view (or fills the panel while resizing).
-        renderAsDrawer && "min-w-0 flex-1",
+        renderAsDrawer && "h-full min-w-0 flex-1",
+        // Tower: a floating card inset from the surface, not a full-bleed column.
+        // The inset (not h-full) defines the box, so it floats with a gap.
+        !renderAsDrawer &&
+          // A soft drop, deliberately with NO horizontal bleed: the panel's own
+          // wrapper must keep `overflow-clip` (that clip IS the open/close reveal
+          // animation), so a shadow that spread sideways would be sliced off
+          // against the conversation column. The negative spread pulls the blur
+          // back in so the shadow falls below the card rather than beside it.
+          "rounded-xl border border-tower-input-border shadow-[0_6px_18px_-10px_rgba(0,0,0,0.55)]",
         !renderAsDrawer && [
-          "absolute inset-y-0 left-0",
-          // Inside the split-workspace host, the hairline resize handle is the
-          // visible seam; elsewhere the panel carries its own hairline border
-          // (it slides with the panel through the open/close animation).
-          // Collapsing the conversation drops the timeline and the resize
-          // handle to zero width, so this border would land directly on the app
-          // sidebar's own `border-r` and read as one thick double seam. The
-          // sidebar owns that boundary, so give the border up while collapsed.
-          // Collapsing the conversation drops the timeline and the resize
-          // handle to zero width, so this border would land directly on the app
-          // sidebar's own `border-r` and read as one thick 2px seam. The
-          // sidebar owns that boundary, so give the border up while collapsed.
-          hostLayout === null &&
-            !isConversationCollapsed &&
-            "border-l border-border-seam",
-          isSecondaryPanelResizing && "right-0",
+          "absolute inset-y-2 left-2",
+          isSecondaryPanelResizing ? "right-2" : "",
           !isOpen && "pointer-events-none",
         ],
       )}
@@ -620,7 +685,10 @@ export function ThreadSecondaryPanel({
         <div
           data-testid="thread-secondary-panel-top-chrome"
           className={cn(
-            CHROME_ROW_CLASS,
+            // Ends level with the conversation header: that header is 48px from
+            // the top, and this card is inset 8px with a 1px edge, so the row
+            // plus its own bottom border has to come to 39px.
+            "flex h-[38px] items-center",
             "min-w-0 justify-between gap-2 px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
@@ -628,7 +696,7 @@ export function ThreadSecondaryPanel({
         >
           <div
             className={cn(
-              "flex min-w-0 flex-1 items-center gap-1",
+              "flex min-w-0 flex-1 items-center gap-1 text-tower-tab",
               // When this panel owns the window's top-left (conversation
               // collapsed, on either thread surface, with the sidebar
               // collapsed), reserve the traffic-light
@@ -652,16 +720,35 @@ export function ThreadSecondaryPanel({
             // without claiming the unimplemented tab contract.
             role="toolbar"
             aria-label="Right panel views"
+            // header tab-button icon color
           >
+            {towerTabs.map((tab) => (
+              <PinnedIconTab
+                key={tab.id}
+                ariaLabel={`Show ${tab.label.toLowerCase()}`}
+                isActive={activeTowerTab?.id === tab.id}
+                label={tab.label}
+                leadingVisual={<Icon name={tab.icon} />}
+                onClick={() => setTowerView(tab.id)}
+                title={tab.title}
+                usesDesktopChrome={usesDesktopChrome}
+                activeTreatment="fill"
+              />
+            ))}
             {showInfoTab ? (
               <PinnedIconTab
                 ariaLabel="Show thread info panel"
                 isActive={
-                  activeFixedPanel === "thread-info" && !hasActiveFileTab
+                  !isTowerViewActive &&
+                  activeFixedPanel === "thread-info" &&
+                  !hasActiveFileTab
                 }
                 label="Info"
                 leadingVisual={<Icon name="Info" />}
-                onClick={() => onPanelChange("thread-info")}
+                onClick={() => {
+                  setTowerView(null);
+                  onPanelChange("thread-info");
+                }}
                 title="Thread info"
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"
@@ -675,10 +762,15 @@ export function ThreadSecondaryPanel({
                     : "Show diff panel"
                 }
                 ariaKeyshortcuts={diffShortcut?.ariaKeyshortcuts}
-                isActive={isDiffPanelActive && !hasActiveFileTab}
+                isActive={
+                  !isTowerViewActive && isDiffPanelActive && !hasActiveFileTab
+                }
                 label="Diff"
                 leadingVisual={<Icon name="FileDiff" />}
-                onClick={() => onPanelChange("git-diff")}
+                onClick={() => {
+                  setTowerView(null);
+                  onPanelChange("git-diff");
+                }}
                 title="Diff"
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"
@@ -785,14 +877,23 @@ export function ThreadSecondaryPanel({
           />
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-sidebar">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-tower-surface">
         {/*
           The browser deck owns native-view visibility/retention and renders
           content only when a browser tab is active. The normal content slot is
           suppressed in that case because the deck fills the region.
         */}
         {browserDeck}
-        {isBrowserTabActive ? null : hasActiveFileTab ? (
+        {isBrowserTabActive ? null : activeTowerTab && openInThreadId ? (
+          <AgentSurfaceTabContent
+            key={`${activeTowerTab.id}:${activeTowerTab.generation ?? 0}`}
+            tab={activeTowerTab}
+            agentId={openInThreadId}
+            onTeardown={registerTowerTeardown}
+            viewerRole="commander"
+            visible
+          />
+        ) : hasActiveFileTab ? (
           <div
             className={
               isTerminalTabActive || fileTabContentFillsRegion
@@ -891,58 +992,6 @@ interface NewTabButtonProps {
   onOpenNewTab: () => void;
   shortcut: AppShortcutPresentation | null;
   usesDesktopChrome: boolean;
-}
-
-interface PinnedIconTabProps {
-  activeTreatment: "fill" | "underline";
-  ariaLabel: string;
-  ariaKeyshortcuts?: string;
-  isActive: boolean;
-  label: string;
-  leadingVisual: ReactNode;
-  onClick: () => void;
-  title: string;
-  usesDesktopChrome: boolean;
-}
-
-function PinnedIconTab({
-  activeTreatment,
-  ariaLabel,
-  ariaKeyshortcuts,
-  isActive,
-  label,
-  leadingVisual,
-  onClick,
-  title,
-  usesDesktopChrome,
-}: PinnedIconTabProps) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          data-testid={label === "Info" ? "thread-info-tab" : undefined}
-          className={cn(
-            "shrink-0",
-            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-          )}
-        >
-          <TabPill
-            label={label}
-            ariaLabel={ariaLabel}
-            ariaKeyshortcuts={ariaKeyshortcuts}
-            iconOnly
-            leadingVisual={leadingVisual}
-            title={title}
-            isActive={isActive}
-            activeTreatment={activeTreatment}
-            onSelect={onClick}
-            closeAction={null}
-          />
-        </div>
-      </TooltipTrigger>
-      <TooltipContent>{title}</TooltipContent>
-    </Tooltip>
-  );
 }
 
 function NewTabButton({

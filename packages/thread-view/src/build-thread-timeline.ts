@@ -509,6 +509,57 @@ function provisioningTerminalDetailLine(
   return `${label} (${durationToCompactString(elapsedMs)})`;
 }
 
+/** How many trailing output lines a FAILED provisioning keeps: enough to see
+ *  what the tool actually said, not enough to bury the steps above it. */
+const FAILED_OUTPUT_TAIL_LINES = 12;
+
+/**
+ * The steps, and the build output only when it can still tell you something.
+ *
+ * Provisioning emits two kinds of entry: STEPS, which are the progress an
+ * operator wants ("creating worktree", "installing dependencies"), and OUTPUT,
+ * which is the tool's raw stdout. Concatenating both put hundreds of lines of
+ * package-manager chatter into the conversation, and the steps — the only part
+ * that answers "what is it doing" — were lost inside it.
+ *
+ * So: steps always. Output only when the run FAILED, and then only its tail,
+ * because a failure's last lines are the reason and everything above them is
+ * noise. A successful run says how many lines it folded rather than hiding the
+ * fact that there were any — the operator should know output exists, not have
+ * to read it. And when there are NO steps, the output is the only progress
+ * there is, so it is shown in full rather than folded to a number.
+ */
+function summariseProvisioningTranscript(
+  transcript: readonly EventProjectionProvisioningTranscriptEntry[],
+  status: TimelineOperationMessage["status"],
+): string[] {
+  const steps = transcript.filter((entry) => entry.type === "step");
+  const output = transcript.filter((entry) => entry.type === "output");
+  const lines = steps.flatMap(formatProvisioningTranscriptEntryLines);
+
+  if (output.length === 0) {
+    return lines;
+  }
+  const outputLines = output.flatMap(formatProvisioningTranscriptEntryLines);
+  // With no steps recorded, the output IS the progress — folding it would leave
+  // the operator with a count and nothing else, which is worse than the wall.
+  if (steps.length === 0) {
+    return outputLines;
+  }
+  if (status === "error") {
+    const tail = outputLines.slice(-FAILED_OUTPUT_TAIL_LINES);
+    const hidden = outputLines.length - tail.length;
+    if (hidden > 0) {
+      lines.push(`… ${hidden} earlier output ${hidden === 1 ? "line" : "lines"}`);
+    }
+    return [...lines, ...tail];
+  }
+  lines.push(
+    `${outputLines.length} output ${outputLines.length === 1 ? "line" : "lines"} not shown`,
+  );
+  return lines;
+}
+
 function buildTimelineOperationDetail(
   message: TimelineOperationMessage,
 ): string | null {
@@ -516,10 +567,10 @@ function buildTimelineOperationDetail(
     return message.detail ?? null;
   }
 
-  const transcriptLines =
-    message.provisioning?.transcript?.flatMap(
-      formatProvisioningTranscriptEntryLines,
-    ) ?? [];
+  const transcriptLines = summariseProvisioningTranscript(
+    message.provisioning?.transcript ?? [],
+    message.status,
+  );
   const terminalLine = provisioningTerminalDetailLine(message);
   const detailLines = (message.detail ?? "")
     .split(/\n|•/u)

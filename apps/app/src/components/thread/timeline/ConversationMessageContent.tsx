@@ -61,6 +61,7 @@ import {
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
+import { PRODUCT_NAME } from "@/lib/product";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -444,7 +445,7 @@ function UserConversationMessage({
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
         sourceKind="system"
-        sourceName="BB"
+        sourceName={PRODUCT_NAME}
         sourceThreadId={null}
         sourceIsPluginSideChat={false}
         systemMessageKind={systemMessageKind}
@@ -470,7 +471,7 @@ function UserConversationMessage({
             />
           </div>
         ) : null}
-        <div className="rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
+        <div className="rounded-[18px] border border-tower-border bg-tower-raised px-4 py-2.5 text-sm leading-relaxed text-foreground">
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}

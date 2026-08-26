@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
+import {
+  nextNavNonce,
+  parseTowerLink,
+  towerNavAtom,
+} from "@/components/secondary-panel/tower/towerNav";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
@@ -55,18 +60,22 @@ import {
   useThreadPendingInteractions,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
-import { isTransientReadError } from "@/hooks/queries/query-helpers";
+import {
+  isNotFoundReadError,
+  isTransientReadError,
+} from "@/hooks/queries/query-helpers";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { ThreadNotFound } from "./ThreadNotFound.js";
+import { CrewContextTrail } from "@/components/secondary-panel/tower/CrewContextTrail";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import {
   ThreadActionsMenu,
   type ThreadActionsMenuResponsiveAction,
 } from "@/components/thread/ThreadActionsMenu";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
-import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -420,19 +429,12 @@ export function resolveHostFilePreviewLinkRootPath({
   return null;
 }
 
-function ThreadDetailNotFound() {
-  return (
-    <PageShell contentClassName="min-h-full items-center justify-center">
-      <p className="py-12 text-center text-sm text-destructive">Not found</p>
-    </PageShell>
-  );
-}
 
 function RoutedThreadDetailView() {
   const { projectId, threadId } = useRouteState();
 
   if (!projectId || !threadId) {
-    return <ThreadDetailNotFound />;
+    return <ThreadNotFound reason="bad-link" />;
   }
 
   return (
@@ -518,6 +520,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isFetching,
     isLoadingError,
     error,
+    refetch: refetchThread,
   } = useThread(threadId ?? "", {
     enabled: hasThreadDetailBootstrapSettled,
     // A successful bootstrap just populated this exact query with a fresh
@@ -1870,9 +1873,18 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       workspacePreviewRootPath,
     ],
   );
+  const setTowerNav = useSetAtom(towerNavAtom);
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
-    ({ href }) => handleOpenUrlByPreference(href),
-    [handleOpenUrlByPreference],
+    ({ href }) => {
+      // Tower links navigate the right pane instead of opening a URL.
+      const nav = parseTowerLink(href);
+      if (nav) {
+        setTowerNav({ ...nav, nonce: nextNavNonce() });
+        return true;
+      }
+      return handleOpenUrlByPreference(href);
+    },
+    [handleOpenUrlByPreference, setTowerNav],
   );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
@@ -2175,11 +2187,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   }
   if (!thread || thread.projectId !== projectId) {
     return (
-      <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-destructive">
-          {error ? "Failed to load thread." : "Not found"}
-        </p>
-      </PageShell>
+      <ThreadNotFound
+        onRetry={
+          error && !isNotFoundReadError(error)
+            ? () => void refetchThread()
+            : undefined
+        }
+        projectId={projectId}
+        reason={error && !isNotFoundReadError(error) ? "load-failed" : "missing"}
+      />
     );
   }
   const canAssignToParent = isThreadRoot;
@@ -2279,27 +2295,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ...responsiveWorkspaceActions,
     ...responsiveGitActions,
   ];
-  const workspaceOpenButton =
-    workspaceOpenPath && preferredDirectoryTarget ? (
-      <ThreadWorkspaceOpenButton
-        preferredTarget={preferredDirectoryTarget}
-        targets={directoryOpenTargets}
-        onOpenPreferredTarget={async () => {
-          await openPathInPreferredDirectoryTarget({
-            lineNumber: null,
-            path: workspaceOpenPath,
-          });
-        }}
-        onOpenTarget={async (targetId) => {
-          await openPathInDirectoryTarget({
-            lineNumber: null,
-            path: workspaceOpenPath,
-            rememberTarget: true,
-            targetId,
-          });
-        }}
-      />
-    ) : undefined;
+  // Tower: the pilot chat header does not offer "open workspace in an editor".
+  const workspaceOpenButton = undefined;
   const timelineHeader = (
     <ThreadDetailHeader
       actionsMenu={(includeResponsiveActions) => (
@@ -2312,8 +2309,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           }
         />
       )}
-      childPillLabel={
-        isSideChatThread ? "side chat" : parentThreadId ? "child" : null
+      childPillLabel={isSideChatThread ? "side chat" : null}
+      crewContext={
+        parentThreadId ? (
+          <CrewContextTrail parentThreadId={parentThreadId} />
+        ) : undefined
       }
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}

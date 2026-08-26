@@ -469,8 +469,9 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   // layout can reference a stale thread; archived threads don't belong in split
   // panes). Reuses the close navigation sync: focus falls to a survivor and the
   // URL follows. The last pane is left as-is so single-pane viewing of a stale
-  // thread stays at parity with the pre-split page (a bare "Not found"). Reads
-  // the store imperatively so concurrent per-pane signals act on fresh state.
+  // thread stays at parity with the pre-split page, which now explains itself
+  // and offers a way back instead of printing "Not found". Reads the store
+  // imperatively so concurrent per-pane signals act on fresh state.
   const pruneStalePane = useCallback(
     (paneId: string) => {
       const current = store.get(splitLayoutAtom);

@@ -14,6 +14,7 @@ import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
+import { PRODUCT_NAME } from "@/lib/product";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   resetPluginSlotStoreForTest,
@@ -154,12 +155,12 @@ describe("PluginDetail official catalog lifecycle", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
     const compatibilityStatus = screen
-      .getByText("Update bb to install this plugin")
+      .getByText(`Update ${PRODUCT_NAME} to install this plugin`)
       .closest("div[class*='bg-surface-recessed']");
     expect(compatibilityStatus).not.toBeNull();
     if (compatibilityStatus === null) return;
     expect(compatibilityStatus.textContent).toContain(
-      "Update bb to install this plugin",
+      `Update ${PRODUCT_NAME} to install this plugin`,
     );
     expect(compatibilityStatus.textContent).toContain(
       "Requires bb 0.20 or newer.",
@@ -264,7 +265,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
     expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
-    expect(container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
+    expect(container.querySelector('img[src="/solvigo-airways-mono.svg"]')).toBeNull();
 
     // Uninstall is irreversible, so it sits with the other ownership actions
     // rather than beside the reversible enable toggle.
@@ -487,7 +488,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
     expect(icon).not.toBeNull();
     expect(icon?.className).toContain("size-full");
-    expect(container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
+    expect(container.querySelector('img[src="/solvigo-airways-mono.svg"]')).toBeNull();
   });
 
   it("shows a disabled Uninstall action for a built-in plugin", async () => {

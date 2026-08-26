@@ -201,6 +201,9 @@ vi.mock("react-resizable-panels", async () => {
 
 vi.mock("@/components/ui/sidebar.js", () => ({
   useIsSidebarShowing: () => sidebarState.showing,
+  // The thread header took over the sidebar toggle, so the tree under test now
+  // reaches for this too.
+  SidebarTrigger: () => null,
 }));
 
 vi.mock("@/views/RootComposeView", () => ({

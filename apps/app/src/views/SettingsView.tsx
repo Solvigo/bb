@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import {
   builtInThemes,
   defaultAppSettings,
+  type AppSettings,
   defaultAppTheme,
   defaultExperiments,
   type AppTheme,
@@ -38,6 +39,7 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
+import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
 import {
   PluginSettingsDetailSection,
   PluginsSettingsSection,
@@ -46,6 +48,8 @@ import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
+import { ConnectionsSettingsSection } from "@/components/settings/ConnectionsSettingsSection";
+import { DefaultsSettingsSection } from "@/components/settings/DefaultsSettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
@@ -878,80 +882,6 @@ export function DebugSettingsSection({
   );
 }
 
-interface ProviderSettingsSectionProps {
-  memoryEnabled: boolean;
-  subagentsDisabled: boolean;
-  workflowsDisabled: boolean;
-  disabled: boolean;
-  onMemoryEnabledChange: (enabled: boolean) => void;
-  onSubagentsDisabledChange: (disabled: boolean) => void;
-  onWorkflowsDisabledChange: (disabled: boolean) => void;
-  providerId: "codex" | "claude-code";
-}
-
-export function ProviderSettingsSection({
-  memoryEnabled,
-  subagentsDisabled,
-  workflowsDisabled,
-  disabled,
-  onMemoryEnabledChange,
-  onSubagentsDisabledChange,
-  onWorkflowsDisabledChange,
-  providerId,
-}: ProviderSettingsSectionProps) {
-  const isCodex = providerId === "codex";
-  const label = isCodex ? "Codex memory" : "Claude Code memory";
-  return (
-    <SettingsSection title={isCodex ? "Codex" : "Claude Code"}>
-      <div className="space-y-4">
-        <SettingsWithControl
-          label={label}
-          description={
-            isCodex
-              ? "Allow Codex to recall existing memories and generate new memories from bb threads."
-              : "Allow Claude Code to read and write its native auto-memory for bb threads."
-          }
-        >
-          <Switch
-            aria-label={label}
-            checked={memoryEnabled}
-            disabled={disabled}
-            onCheckedChange={onMemoryEnabledChange}
-          />
-        </SettingsWithControl>
-        <SettingsWithControl
-          label="Disable provider subagents"
-          description={
-            isCodex
-              ? "Prevent Codex from starting native subagents so agents use bb for delegation."
-              : "Hide Claude Code's native Task tool so agents use bb for delegation."
-          }
-        >
-          <Switch
-            aria-label="Disable provider subagents"
-            checked={subagentsDisabled}
-            disabled={disabled}
-            onCheckedChange={onSubagentsDisabledChange}
-          />
-        </SettingsWithControl>
-        {!isCodex ? (
-          <SettingsWithControl
-            label="Disable Workflow tool"
-            description="Hide Claude Code's native Workflow tool for bb threads."
-          >
-            <Switch
-              aria-label="Disable Workflow tool"
-              checked={workflowsDisabled}
-              disabled={disabled}
-              onCheckedChange={onWorkflowsDisabledChange}
-            />
-          </SettingsWithControl>
-        ) : null}
-      </div>
-    </SettingsSection>
-  );
-}
-
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const EXTENSIONS_EXPERIMENT_LABEL = "Extensions";
@@ -1048,48 +978,20 @@ export function SettingsView() {
   let content: ReactNode = null;
   if (activePluginId !== null) {
     content = <PluginSettingsDetailSection pluginId={activePluginId} />;
-  } else if (activeProviderId !== null) {
-    const isCodex = activeProviderId === "codex";
+  } else if (activeProviderId !== null || activeSection === "providers") {
+    // One page for every harness. The per-harness route survives as a deep
+    // link into it rather than as its own island.
     content = (
-      <ProviderSettingsSection
-        providerId={activeProviderId}
-        memoryEnabled={
-          isCodex
-            ? generalSettings.codexMemoryEnabled
-            : generalSettings.claudeCodeMemoryEnabled
-        }
-        subagentsDisabled={
-          isCodex
-            ? generalSettings.codexSubagentsDisabled
-            : generalSettings.claudeCodeSubagentsDisabled
-        }
-        workflowsDisabled={generalSettings.claudeCodeWorkflowsDisabled}
+      <ProvidersSettingsSection
+        settings={generalSettings}
         disabled={
           systemConfigQuery.data === undefined ||
           updateGeneralSettingsMutation.isPending
         }
-        onMemoryEnabledChange={(enabled) =>
-          updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
-            ...(isCodex
-              ? { codexMemoryEnabled: enabled }
-              : { claudeCodeMemoryEnabled: enabled }),
-          })
+        onSettingsChange={(next: AppSettings) =>
+          updateGeneralSettingsMutation.mutate(next)
         }
-        onSubagentsDisabledChange={(disabled) =>
-          updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
-            ...(isCodex
-              ? { codexSubagentsDisabled: disabled }
-              : { claudeCodeSubagentsDisabled: disabled }),
-          })
-        }
-        onWorkflowsDisabledChange={(disabled) =>
-          updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
-            claudeCodeWorkflowsDisabled: disabled,
-          })
-        }
+        focusProviderId={activeProviderId}
       />
     );
   } else if (activeSection === "appearance") {
@@ -1181,6 +1083,10 @@ export function SettingsView() {
     );
   } else if (activeSection === "plugins") {
     content = <PluginsSettingsSection />;
+  } else if (activeSection === "connections") {
+    content = <ConnectionsSettingsSection />;
+  } else if (activeSection === "defaults") {
+    content = <DefaultsSettingsSection />;
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
   } else if (activeSection === "archived") {

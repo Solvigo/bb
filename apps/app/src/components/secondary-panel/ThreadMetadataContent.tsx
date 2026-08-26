@@ -108,8 +108,6 @@ export function ParentSelectorRow({
   projectId,
   parentThreadDisplayName,
   parentThreads,
-  canAssignToParent,
-  canTakeOverThread,
   isLoadingParentThreads,
   isParentThreadsError,
   updateThreadPending,
@@ -133,10 +131,6 @@ export function ParentSelectorRow({
   const selectedParentOptionLabel = parentSelectorOptions.find(
     (option) => option.value === parentSelectorValue,
   )?.label;
-
-  if (!parentThreadId && !canAssignToParent && !canTakeOverThread) {
-    return null;
-  }
 
   return (
     <DetailRow
@@ -1034,6 +1028,16 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
 
   return (
     <ThreadMetadataCard>
+      <DetailRow
+        label={<DetailRowIconLabel icon="UserRound">Pilot</DetailRowIconLabel>}
+      >
+        <span
+          className="min-w-0 truncate"
+          title={getThreadDisplayTitle(thread)}
+        >
+          {getThreadDisplayTitle(thread)}
+        </span>
+      </DetailRow>
       <ParentSelectorRow
         thread={thread}
         projectId={projectId}

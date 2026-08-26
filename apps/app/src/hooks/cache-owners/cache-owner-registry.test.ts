@@ -106,6 +106,10 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentQueryKey",
     "threadSearchQueryKeyPrefix",
   ],
+  "hooks/cache-owners/fleet-default-cache-owner.ts": [
+    "crewDefaultsQueryKey",
+    "fleetDefaultQueryKey",
+  ],
   "hooks/cache-owners/host-directory-cache-owner.ts": [
     "hostDirectoryQueryKey",
   ],

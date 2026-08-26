@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import { useId, useSyncExternalStore, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import type { SystemVersionResponse } from "@bb/server-contract";
@@ -35,6 +29,7 @@ import {
 } from "@/hooks/useUpdateInventory";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import { formatHostUpdateStatus } from "@/lib/host-update-status";
+import { useNow } from "@/hooks/useNow";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { sdk } from "@/lib/sdk";
@@ -624,16 +619,6 @@ export function MachineUpdatesRows({
   );
 }
 
-/** Re-renders the relative "checked" stamp so it can't sit on a stale minute. */
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(timer);
-  }, [intervalMs]);
-  return now;
-}
-
 /**
  * Settings → Updates: one consolidated, per-machine view of bb and provider
  * CLI updates. Replaces the stacked update/provider-health toasts (BB-48).
@@ -731,7 +716,7 @@ export function UpdatesSettingsSection() {
   return (
     <>
       <UpdatesSection
-        title="bb"
+        title="Solvigo Airways"
         footnote="Connected machines follow the server version automatically."
         action={
           <>

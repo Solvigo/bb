@@ -14,8 +14,13 @@ import {
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 
 describe("secondary panel surface tone", () => {
-  it("uses the same sidebar background token as the primary sidebar", () => {
-    expect(SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS).toBe("bg-sidebar");
+  // The Tower dresses the rendering area in its own warm grey scale rather than
+  // the app's neutral sidebar tone, and the chrome carries only a bottom border
+  // — the panel's own card edge supplies the top one.
+  it("wears the Tower header tone with a single seam", () => {
+    expect(SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS).toBe(
+      "bg-tower-header border-b border-tower-header-border",
+    );
   });
 });
 

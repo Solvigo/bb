@@ -256,7 +256,7 @@ export function PluginUpdatesSourceCard({
             // toast — just the explanation one click away.
             <div className="pt-3">
               <SettingsWithControl
-                label={`${blockedVersion} isn't compatible with this bb`}
+                label={`${blockedVersion} isn't compatible with this version`}
                 description={
                   plugin.updateState.blockedReasons[0] ??
                   `Staying on ${plugin.version}.`

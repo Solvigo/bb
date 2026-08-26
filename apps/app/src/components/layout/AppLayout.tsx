@@ -14,11 +14,9 @@ import { RESOURCE_ROUTE_LABEL_EVENT } from "@bb/shared-ui/resource-list";
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
-import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
@@ -53,17 +51,9 @@ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider
 import { usePluginSlots, type PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
 import {
-  BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
-  CHROME_ROW_CLASS,
   getBbDesktopInfo,
-  MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
-  MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
-  MACOS_WINDOW_DRAG_CLASS,
-  shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   getLegacyProjectComposeRoutePath,
   getProjectSettingsRoutePath,
@@ -81,7 +71,6 @@ import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import {
   useAppCommandHandler,
-  useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
@@ -93,6 +82,7 @@ import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { PRODUCT_NAME } from "@/lib/product";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -196,88 +186,8 @@ function resetSidebarResizeDocumentState(): void {
   document.body.style.userSelect = "";
 }
 
-interface SidebarTriggerOverlayProps {
-  reserveMacosTrafficLights: boolean;
-  usesDesktopChrome: boolean;
-}
-
-/**
- * Sidebar toggle pinned at the app's top-left, rendered once at the layout root
- * — outside the sliding sidebar panel and the content inset — so it holds a
- * constant position while the sidebar animates in/out behind it, instead of
- * riding whichever container would otherwise host it. The collapsed page header
- * reserves its footprint as animated padding (see AppPageHeader), so toggling
- * slides the header content smoothly past it rather than snapping around a
- * toggle that mounts/unmounts in the header.
- *
- * Desktop chrome keeps the strip a window-drag region; only the button itself
- * is no-drag, so the title strip above and below the (shorter) button stays
- * draggable rather than becoming an oversized dead zone. When macOS traffic
- * lights are visible it offsets past them; in fullscreen, where the lights are
- * hidden, it uses the same small top-left inset as browser chrome.
- */
-function SidebarTriggerOverlay({
-  reserveMacosTrafficLights,
-  usesDesktopChrome,
-}: SidebarTriggerOverlayProps) {
-  const shortcut = useAppCommandShortcut("sidebar.toggle");
-  const triggerProps = {
-    "aria-label": shortcut
-      ? `Toggle sidebar (${shortcut.label})`
-      : "Toggle sidebar",
-    "aria-keyshortcuts": shortcut?.ariaKeyshortcuts,
-  };
-  if (usesDesktopChrome) {
-    return (
-      <div
-        data-testid="app-desktop-sidebar-trigger"
-        className={cn(
-          "fixed top-0 z-50",
-          CHROME_ROW_CLASS,
-          reserveMacosTrafficLights
-            ? MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS
-            : "left-0",
-          !reserveMacosTrafficLights && BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
-          MACOS_WINDOW_DRAG_CLASS,
-        )}
-      >
-        {/* The overlay's CHROME_ROW_CLASS box-centers the trigger on the shared
-            traffic-light axis, matching the sidebar arrows and page-title
-            header in desktop chrome. */}
-        <SidebarTrigger
-          className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
-          {...triggerProps}
-        />
-        <AppCommandShortcutHint
-          shortcut={shortcut}
-          className={cn(
-            "absolute left-full ml-1",
-            MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
-          )}
-        />
-      </div>
-    );
-  }
-  return (
-    <div
-      data-testid="app-sidebar-trigger-overlay"
-      className={cn(
-        "fixed top-[env(safe-area-inset-top)] left-[env(safe-area-inset-left)] z-50",
-        CHROME_ROW_CLASS,
-        BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
-      )}
-    >
-      <SidebarTrigger {...triggerProps} />
-      <AppCommandShortcutHint
-        shortcut={shortcut}
-        className="absolute left-full ml-1"
-      />
-    </div>
-  );
-}
-
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
-  "/": { title: "bb" },
+  "/": { title: PRODUCT_NAME },
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
@@ -575,12 +485,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     !isRootView &&
     !(splitWorkspaceActive && pluginPanelMatch !== null);
   const [desktopInfo] = useState(getBbDesktopInfo);
-  const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const reserveMacosTrafficLights = shouldReserveMacosTrafficLights({
-    desktopInfo,
-    windowState: desktopWindowState,
-  });
   const sidebarProviderStyle: SidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
   };
@@ -687,7 +592,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return pluginPanel.title;
     }
     if (routeBreadcrumbs) {
-      const sectionLabel = routeBreadcrumbs[0]?.label ?? "BB";
+      const sectionLabel = routeBreadcrumbs[0]?.label ?? PRODUCT_NAME;
       const pageLabel = routeBreadcrumbs.at(-1)?.label ?? sectionLabel;
       return pageLabel === sectionLabel
         ? sectionLabel
@@ -708,7 +613,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return projectLabel ?? projectId;
     }
     const routeTitle = resolveRouteTitle(location.pathname)?.title;
-    return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
+    return routeTitle && routeTitle.length > 0 ? routeTitle : PRODUCT_NAME;
   })();
   // The sidebar list omits archived threads and side chats, so it can't answer
   // whether the currently-viewed thread is blocked on input. Read the current
@@ -871,10 +776,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </main>
                 </div>
               </SidebarInset>
-              <SidebarTriggerOverlay
-                reserveMacosTrafficLights={reserveMacosTrafficLights}
-                usesDesktopChrome={usesDesktopChrome}
-              />
             </SidebarStateBridge>
             <ProjectPathDialog
               target={quickCreateProject.projectPathDialog.target}

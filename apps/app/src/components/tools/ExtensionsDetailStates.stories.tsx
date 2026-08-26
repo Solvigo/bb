@@ -194,7 +194,7 @@ function SkillLeading({ provider }: { provider: SkillProvider | null }) {
   if (provider === null) {
     return (
       <img
-        src="/bb-mark.svg"
+        src="/solvigo-airways-mono.svg"
         alt=""
         aria-hidden
         className="size-4 object-contain dark:invert"
