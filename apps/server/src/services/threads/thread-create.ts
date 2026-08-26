@@ -12,6 +12,7 @@ import type {
   ThreadVisibility,
 } from "@bb/domain";
 import { supportsNativeFork } from "@bb/agent-providers";
+import { assertNever } from "@bb/core-ui";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -876,18 +877,29 @@ export async function createThreadFromRequest(
     }
   }
 
-  // Only "fork" provisions by cloning the source provider session.
-  // "handover" records lineage via sourceThreadId with no clone step.
-  const fork =
-    request.originKind === "fork"
-      ? resolveForkDescriptor(deps, {
-          childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
-          originKind: request.originKind,
-          providerId: request.providerId,
-          sourceSeqEnd: request.sourceSeqEnd,
-          sourceThread,
-        })
-      : null;
+  // Only "fork" provisions by cloning the source provider session; every
+  // other originKind (including a future one) must say so explicitly here
+  // rather than falling through into fork semantics by default.
+  let fork: ThreadForkDescriptor | null;
+  switch (request.originKind) {
+    case null:
+    case undefined:
+    case "handover":
+      // Handover records lineage via sourceThreadId with no clone step.
+      fork = null;
+      break;
+    case "fork":
+      fork = resolveForkDescriptor(deps, {
+        childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
+        originKind: request.originKind,
+        providerId: request.providerId,
+        sourceSeqEnd: request.sourceSeqEnd,
+        sourceThread,
+      });
+      break;
+    default:
+      fork = assertNever(request.originKind);
+  }
 
   // A fork/side-chat must clone the source provider session. If that clone
   // cannot be resolved (source has no active session, provider lacks fork

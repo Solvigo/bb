@@ -278,6 +278,7 @@ export interface PluginMentionProviderRecord {
   ) => { context: string } | Promise<{ context: string }>;
 }
 
+
 /** Runtime record of a registered background service. */
 export interface PluginBackgroundServiceRecord {
   name: string;

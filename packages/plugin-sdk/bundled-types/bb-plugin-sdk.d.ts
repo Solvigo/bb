@@ -889,9 +889,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             running: "running";
             paused: "paused";
+            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1121,9 +1121,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             running: "running";
             paused: "paused";
+            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1250,9 +1250,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             running: "running";
             paused: "paused";
+            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1322,9 +1322,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             running: "running";
             paused: "paused";
+            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1573,10 +1573,6 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         user: "user";
         agent: "agent";
     }>;
-    origin: z$1.ZodOptional<z$1.ZodEnum<{
-        "operator-steer": "operator-steer";
-        "crew-tasking": "crew-tasking";
-    }>>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
     systemMessageKind: z$1.ZodOptional<z$1.ZodEnum<{
         "ownership-assigned": "ownership-assigned";
@@ -2086,8 +2082,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
             pending: "pending";
-            in_progress: "in_progress";
             completed: "completed";
+            in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -8275,10 +8271,6 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
         "queue-if-active": "queue-if-active";
         "steer-if-active": "steer-if-active";
     }>;
-    origin: z$1.ZodOptional<z$1.ZodEnum<{
-        "operator-steer": "operator-steer";
-        "crew-tasking": "crew-tasking";
-    }>>;
     senderThreadId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type SendMessageRequest = z$1.infer<typeof sendMessageRequestSchema>;

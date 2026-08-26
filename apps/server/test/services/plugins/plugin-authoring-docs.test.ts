@@ -241,8 +241,18 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "onTeardown",
   ],
   fileOpener: ["path", "source"],
-  messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
-  messageAction: ["threadId", "message", "selectedText", "openPanel"],
+  messageDirective: [
+    "attributes",
+    "source",
+    "message",
+    "openWorkspaceFile",
+  ],
+  messageAction: [
+    "threadId",
+    "message",
+    "selectedText",
+    "openPanel",
+  ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
