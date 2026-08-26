@@ -106,27 +106,13 @@ describe("EnvironmentRow", () => {
   });
 });
 
-// A row with a parent carries two controls: the selector trigger and the clear
-// button beside it. The trigger is the unlabelled one — named by the parent it
-// is showing, which is the thing these cases vary.
-function parentSelectorTrigger(): HTMLElement {
-  const trigger = screen
-    .getAllByRole("button")
-    .find((button) => button.getAttribute("aria-label") !== "Clear parent thread");
-  if (!trigger) throw new Error("no parent-selector trigger rendered");
-  return trigger;
-}
-
-// The row hides itself for a thread with no parent — a pilot never has one, so
-// showing an empty Parent line on every root thread was noise. These cases are
-// about the MENU's behaviour, so they need a thread that still shows the row.
 describe("ParentSelectorRow", () => {
   it("requests candidates only when the parent menu opens", async () => {
     const onOpenChange = vi.fn();
     render(
       <MemoryRouter>
         <ParentSelectorRow
-          thread={makeThread({ environmentId: null, parentThreadId: "thr_parent" })}
+          thread={makeThread({ environmentId: null })}
           projectId="proj_test"
           parentThreadDisplayName={null}
           parentThreads={[]}
@@ -143,7 +129,7 @@ describe("ParentSelectorRow", () => {
     );
 
     expect(onOpenChange).not.toHaveBeenCalled();
-    fireEvent.pointerDown(parentSelectorTrigger(), {
+    fireEvent.pointerDown(screen.getByRole("button"), {
       button: 0,
       ctrlKey: false,
     });
@@ -157,7 +143,7 @@ describe("ParentSelectorRow", () => {
     const row = (isError: boolean, candidates = parentThreads) => (
       <MemoryRouter>
         <ParentSelectorRow
-          thread={makeThread({ environmentId: null, parentThreadId: "thr_parent" })}
+          thread={makeThread({ environmentId: null })}
           projectId="proj_test"
           parentThreadDisplayName={null}
           parentThreads={candidates}
@@ -174,7 +160,7 @@ describe("ParentSelectorRow", () => {
     );
     const result = render(row(true, []));
 
-    fireEvent.pointerDown(parentSelectorTrigger(), {
+    fireEvent.pointerDown(screen.getByRole("button"), {
       button: 0,
       ctrlKey: false,
     });

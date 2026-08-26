@@ -132,12 +132,6 @@ export function ParentSelectorRow({
     (option) => option.value === parentSelectorValue,
   )?.label;
 
-  // Tower: a pilot never has a parent, so the parent row is hidden whenever the
-  // thread has none; it still appears for child / side-chat threads.
-  if (!parentThreadId) {
-    return null;
-  }
-
   return (
     <DetailRow
       label={<DetailRowIconLabel icon="UserRound">Parent</DetailRowIconLabel>}
