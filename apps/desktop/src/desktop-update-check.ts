@@ -12,6 +12,20 @@ export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 export const DESKTOP_UPDATE_CHECK_TIMEOUT_MS = 5_000;
 export const DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS = 15 * 60 * 1000;
 
+interface ShouldEnableDesktopVersionCheckArgs {
+  env: NodeJS.ProcessEnv;
+  isPackaged: boolean;
+}
+
+export function shouldEnableDesktopVersionCheck(
+  args: ShouldEnableDesktopVersionCheckArgs,
+): boolean {
+  if (args.env.BB_DESKTOP_VERSION_CHECK === "0") {
+    return false;
+  }
+  return args.isPackaged || args.env.BB_DESKTOP_VERSION_CHECK === "1";
+}
+
 type DesktopUpdateIntervalHandle = ReturnType<typeof setInterval>;
 
 export interface DesktopUpdateLogger {
