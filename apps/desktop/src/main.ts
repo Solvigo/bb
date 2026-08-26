@@ -110,6 +110,7 @@ import { registerDesktopContextMenu } from "./desktop-context-menu.js";
 import {
   createDesktopUpdateService,
   DESKTOP_UPDATE_FEED_URL,
+  shouldEnableDesktopVersionCheck,
   type DesktopUpdateService,
 } from "./desktop-update-check.js";
 import { DESKTOP_RELEASE_INFO } from "./desktop-update-provider.js";
@@ -2114,7 +2115,10 @@ async function runDesktopApp(): Promise<void> {
 
   desktopUpdateService = createDesktopUpdateService({
     currentVersion: desktopVersion,
-    enabled: app.isPackaged || process.env.BB_DESKTOP_VERSION_CHECK === "1",
+    enabled: shouldEnableDesktopVersionCheck({
+      env: process.env,
+      isPackaged: app.isPackaged,
+    }),
     feedUrl: desktopUpdateFeedUrl,
     logger: createDesktopLogger(),
   });
