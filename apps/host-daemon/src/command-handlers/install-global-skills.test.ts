@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  access,
   mkdtemp,
   mkdir,
   readFile,
@@ -196,5 +197,56 @@ describe("install global skills", () => {
     const drifted = await readGlobalSkillsStatus(statusCommand, { homeDir });
     expect(drifted.entries[1]?.treeHash).not.toBe(payload.treeHash);
     expect(drifted.entries[0]?.treeHash).toBe(payload.treeHash);
+  });
+
+  it("removes a skill from global roots when it drops off the install set", async () => {
+    const dataDir = await makeTempDir();
+    const homeDir = await makeTempDir();
+    const payload = createTreePayload("bb-cli", "installed body");
+    const reviewPayload = createTreePayload("review", "review body");
+    const installBoth = {
+      type: "host.install_global_skills" as const,
+      skills: [
+        { name: "bb-cli", treeHash: payload.treeHash, entryPath: "SKILL.md" },
+        {
+          name: "review",
+          treeHash: reviewPayload.treeHash,
+          entryPath: "SKILL.md",
+        },
+      ],
+    };
+    const installCliOnly = {
+      type: "host.install_global_skills" as const,
+      skills: [
+        { name: "bb-cli", treeHash: payload.treeHash, entryPath: "SKILL.md" },
+      ],
+    };
+    const fetchSkillTree = async (treeHash: string) =>
+      treeHash === reviewPayload.treeHash ? reviewPayload : payload;
+
+    await installGlobalSkills(installBoth, {
+      dataDir,
+      fetchSkillTree,
+      homeDir,
+    });
+    await expect(
+      access(path.join(homeDir, ".agents", "skills", "review")),
+    ).resolves.toBeUndefined();
+
+    await installGlobalSkills(installCliOnly, {
+      dataDir,
+      fetchSkillTree,
+      homeDir,
+    });
+
+    await expect(
+      access(path.join(homeDir, ".agents", "skills", "review")),
+    ).rejects.toThrow();
+    await expect(
+      access(path.join(homeDir, ".claude", "skills", "review")),
+    ).rejects.toThrow();
+    await expect(
+      readFile(path.join(homeDir, ".agents", "skills", "bb-cli", "SKILL.md"), "utf8"),
+    ).resolves.toContain("installed body");
   });
 });

@@ -21,6 +21,11 @@ import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/pr
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
+import {
+  clearGloballyPublishedSkill,
+  isSkillGloballyPublished,
+  setSkillGloballyPublished,
+} from "./skills-global-publish.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
@@ -156,6 +161,7 @@ export function assembleSkillList(
         filePath: skill.filePath,
         manageable: mapped.manageable && !skill.linked,
         registrySkillId: null,
+        publishGlobally: false,
       });
     }
   }
@@ -196,6 +202,9 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
         filePath: path.join(rootPath, runtimeSource.entryPath),
         manageable: !builtin,
         registrySkillId: builtin ? null : readRegistrySkillProvenance(rootPath),
+        publishGlobally: builtin
+          ? false
+          : isSkillGloballyPublished(deps.config.dataDir, runtimeSource.name),
       };
     })
     .filter((skill): skill is SkillSummary => skill !== null)
@@ -222,6 +231,7 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
         filePath: path.join(rootPath, runtimeSource.entryPath),
         manageable: false,
         registrySkillId: null,
+        publishGlobally: false,
       };
     })
     .filter((skill): skill is SkillSummary => skill !== null)
@@ -614,6 +624,7 @@ export async function deleteProjectSkill(
       throw new ApiError(404, "not_found", "Skill not found");
     }
     await fs.rm(realSkillPath, { recursive: true, force: false });
+    await clearGloballyPublishedSkill(deps.config.dataDir, skill.name);
     return realSkillPath;
   }
   let daemonName = skill.name;
@@ -635,4 +646,28 @@ export async function deleteProjectSkill(
     },
   });
   return result.deletedPath;
+}
+
+export async function setProjectSkillPublishGlobally(
+  deps: AppDeps,
+  args: {
+    skillId: string;
+    publishGlobally: boolean;
+    workspace: CommandWorkspace;
+  },
+): Promise<{ publishGlobally: boolean }> {
+  const skill = await resolveProjectSkill(deps, args);
+  if (skill.scope !== "bb-user" || !isServerOwnedSkill(deps, skill)) {
+    throw new ApiError(
+      403,
+      "forbidden",
+      "Only centrally installed bb skills can be published globally",
+    );
+  }
+  await setSkillGloballyPublished({
+    dataDir: deps.config.dataDir,
+    skillName: skill.name,
+    publishGlobally: args.publishGlobally,
+  });
+  return { publishGlobally: args.publishGlobally };
 }

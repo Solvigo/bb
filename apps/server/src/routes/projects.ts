@@ -55,6 +55,7 @@ import {
   listProjectSkillFiles,
   listProjectSkills,
   readProjectSkill,
+  setProjectSkillPublishGlobally,
   writeProjectSkill,
 } from "../services/skills/skill-listing.js";
 import {
@@ -793,6 +794,25 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       workspace,
     });
     return context.json(result);
+  });
+
+  patch(routes.setSkillPublishGlobally, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveProjectCommandWorkspace(deps, {
+      projectId,
+      ...(payload.environmentId !== null
+        ? { environmentId: payload.environmentId }
+        : {}),
+    });
+    return context.json(
+      await setProjectSkillPublishGlobally(deps, {
+        skillId: payload.skillId,
+        publishGlobally: payload.publishGlobally,
+        workspace,
+      }),
+    );
   });
 
   get(routes.branches, async (context, query) => {

@@ -41,6 +41,7 @@ function installedSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
     manageable: true,
     registrySkillId: registrySkill.id,
+    publishGlobally: false,
     ...overrides,
   };
 }

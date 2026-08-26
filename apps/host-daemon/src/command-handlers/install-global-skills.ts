@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import {
   CommandDispatchError,
@@ -22,6 +23,72 @@ const GLOBAL_SKILL_ROOT_SEGMENTS: readonly (readonly string[])[] = [
   [".agents", "skills"],
   [".claude", "skills"],
 ];
+
+const globalSkillsManifestSchema = z
+  .object({
+    version: z.literal(1),
+    names: z.array(z.string().min(1)),
+  })
+  .strict();
+
+function resolveGlobalSkillsManifestPath(dataDir: string): string {
+  return path.join(dataDir, "global-skills-manifest.json");
+}
+
+async function readGlobalSkillsManifest(
+  dataDir: string,
+): Promise<readonly string[]> {
+  try {
+    const parsed = globalSkillsManifestSchema.safeParse(
+      JSON.parse(
+        await fs.readFile(resolveGlobalSkillsManifestPath(dataDir), "utf8"),
+      ),
+    );
+    return parsed.success ? parsed.data.names : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeGlobalSkillsManifest(
+  dataDir: string,
+  names: readonly string[],
+): Promise<void> {
+  const filePath = resolveGlobalSkillsManifestPath(dataDir);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const temporaryPath = `${filePath}.bb-write-${process.pid}`;
+  try {
+    await fs.writeFile(
+      temporaryPath,
+      `${JSON.stringify({ version: 1, names: [...names] })}\n`,
+      { encoding: "utf8", mode: 0o600 },
+    );
+    await fs.rename(temporaryPath, filePath);
+  } finally {
+    await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
+}
+
+/**
+ * Flag-off and uninstall remove copies from global roots on the next install
+ * pass by reconciling against the last manifest the daemon wrote.
+ */
+async function removeUnpublishedGlobalSkills(args: {
+  dataDir: string;
+  homeDir: string;
+  installedNames: readonly string[];
+  previousNames: readonly string[];
+}): Promise<void> {
+  const installed = new Set(args.installedNames);
+  for (const name of args.previousNames) {
+    if (installed.has(name)) {
+      continue;
+    }
+    for (const destinationPath of globalSkillPaths(args.homeDir, name)) {
+      await fs.rm(destinationPath, { force: true, recursive: true });
+    }
+  }
+}
 
 export interface InstallGlobalSkillsOptions {
   dataDir: string;
@@ -114,6 +181,8 @@ export async function installGlobalSkills(
   }
   const homeDir = options.homeDir ?? os.homedir();
   const installations: { name: string; path: string }[] = [];
+  const previousNames = await readGlobalSkillsManifest(options.dataDir);
+  const installedNames: string[] = [];
 
   for (const skill of command.skills) {
     const sourceRootPath = await ensureStoredSkillTree({
@@ -140,7 +209,16 @@ export async function installGlobalSkills(
       });
       installations.push({ name: skill.name, path: destinationPath });
     }
+    installedNames.push(skill.name);
   }
+
+  await removeUnpublishedGlobalSkills({
+    dataDir: options.dataDir,
+    homeDir,
+    installedNames,
+    previousNames,
+  });
+  await writeGlobalSkillsManifest(options.dataDir, installedNames);
 
   return { installations };
 }

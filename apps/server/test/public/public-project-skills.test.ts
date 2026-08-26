@@ -840,6 +840,7 @@ describe("public project skills route", () => {
           filePath: "/data/skills/bb-helper/SKILL.md",
           manageable: true,
           registrySkillId: null,
+          publishGlobally: false,
         },
         {
           id: skillId("/cwd/.claude/skills/cp/SKILL.md"),
@@ -851,6 +852,7 @@ describe("public project skills route", () => {
           filePath: "/cwd/.claude/skills/cp/SKILL.md",
           manageable: true,
           registrySkillId: null,
+          publishGlobally: false,
         },
         {
           id: skillId("/home/.claude/skills/cu/SKILL.md"),
@@ -862,6 +864,7 @@ describe("public project skills route", () => {
           filePath: "/home/.claude/skills/cu/SKILL.md",
           manageable: true,
           registrySkillId: null,
+          publishGlobally: false,
         },
         {
           id: skillId("/home/.codex/skills/cx/SKILL.md"),
@@ -873,6 +876,7 @@ describe("public project skills route", () => {
           filePath: "/home/.codex/skills/cx/SKILL.md",
           manageable: true,
           registrySkillId: null,
+          publishGlobally: false,
         },
       ]);
       // Queried once per command-surface provider, with the env workspace cwd.
