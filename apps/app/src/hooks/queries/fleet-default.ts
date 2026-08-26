@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { invalidateFleetDefault } from "../cache-owners/fleet-default-cache-owner";
+
 import { fetchWithAppSurface } from "@/lib/app-surface";
 import { callPluginRpc } from "@/lib/plugin-sdk-hooks";
-import { crewDefaultsQueryKey, fleetDefaultQueryKey } from "./query-keys";
+import { fleetDefaultQueryKey } from "./query-keys";
 
 const CREW_PLUGIN_ID = "crew";
 const READ_TIMEOUT_MS = 10_000;
@@ -171,10 +173,7 @@ export function useSetFleetDefault() {
       parseWrite(
         await callDefaults("crew_defaults_set", pair, WRITE_TIMEOUT_MS),
       ),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: fleetDefaultQueryKey() });
-      void queryClient.invalidateQueries({ queryKey: crewDefaultsQueryKey() });
-    },
+    onSuccess: () => invalidateFleetDefault(queryClient),
   });
 }
 
@@ -185,9 +184,6 @@ export function useClearFleetDefault() {
       parseWrite(
         await callDefaults("crew_defaults_clear", null, WRITE_TIMEOUT_MS),
       ),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: fleetDefaultQueryKey() });
-      void queryClient.invalidateQueries({ queryKey: crewDefaultsQueryKey() });
-    },
+    onSuccess: () => invalidateFleetDefault(queryClient),
   });
 }
