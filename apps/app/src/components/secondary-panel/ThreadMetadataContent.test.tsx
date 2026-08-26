@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EnvironmentRow, ParentSelectorRow } from "./ThreadMetadataContent";
 import { parentThreads } from "./ThreadMetadataContent.fixtures";
+
+// Every render in this file used to outlive its test. That was survivable while
+// nothing here rendered a button; the moment two tests did, a later
+// getByRole("button") started finding the earlier test's DOM.
+afterEach(() => {
+  cleanup();
+});
 
 const localHost = { locality: "local", identity: null } as const;
 
