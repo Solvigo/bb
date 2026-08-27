@@ -536,8 +536,8 @@ function AgentCard({
   );
 
   return (
-    <article className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-tower-border bg-tower-surface">
-      <header className="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-tower-border px-4 py-3">
+    <article className="group/agent flex h-[510px] flex-col overflow-hidden rounded-xl border border-tower-border bg-tower-surface transition-colors hover:border-tower-border-strong">
+      <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-tower-border px-3.5 py-2.5">
         {onOpen ? (
           <button
             type="button"
@@ -551,21 +551,24 @@ function AgentCard({
           <div className="min-w-0">{identity}</div>
         )}
 
-        <div className="flex shrink-0 items-center gap-2 text-xs text-tower-fg-faint">
-          <span className="rounded-full border border-tower-border bg-tower-panel px-2.5 py-1">
-            {activeItems.length} active
+        <div className="flex shrink-0 items-center gap-1.5 text-xs text-tower-fg-faint">
+          <span className="rounded-full bg-tower-panel px-2.5 py-1">
+            {workingCount > 0
+              ? `${workingCount} working`
+              : `${activeItems.length} active`}
           </span>
           {reviewCount > 0 ? (
-            <span className="rounded-full border border-tower-border bg-tower-panel px-2.5 py-1 text-tower-fg-muted">
-              {reviewCount} in review
+            <span className="rounded-full bg-tower-panel px-2.5 py-1 text-tower-fg-muted">
+              {reviewCount} review
             </span>
           ) : null}
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {/* Agent context stays compact so the thread remains the primary work surface. */}
-        <section className="shrink-0 border-b border-tower-border bg-tower-panel px-4 py-3">
+        {/* Keep orientation dense and quiet. This is metadata for the live agent
+            thread below, not a second card competing with it. */}
+        <section className="shrink-0 border-b border-tower-border bg-tower-inset px-3.5 py-2.5">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className={EYE}>Current task</div>
@@ -594,19 +597,26 @@ function AgentCard({
             </div>
           </div>
           {risk ? (
-            <div className="mt-3 rounded-lg border border-tower-border bg-tower-surface px-3 py-2">
-              <span className="text-xs font-medium text-tower-fg-body">
-                Needs attention
-              </span>{" "}
-              <span className="text-xs leading-relaxed text-tower-fg-muted">
-                {risk}
-              </span>
+            <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-tower-border bg-tower-surface px-2.5 py-2">
+              <Icon
+                name="AlertTriangle"
+                className="mt-0.5 size-3.5 shrink-0 text-tower-fg-muted"
+                aria-hidden
+              />
+              <div className="min-w-0">
+                <span className="text-xs font-medium text-tower-fg-body">
+                  Needs attention
+                </span>{" "}
+                <span className="text-xs leading-relaxed text-tower-fg-muted">
+                  {risk}
+                </span>
+              </div>
             </div>
           ) : null}
         </section>
 
         <details className="group shrink-0 border-b border-tower-border">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-xs text-tower-fg-muted transition-colors hover:bg-tower-panel [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2 text-xs text-tower-fg-muted transition-colors hover:bg-tower-panel [&::-webkit-details-marker]:hidden">
             <Icon name="ListTodo" className="size-3.5" aria-hidden />
             <span className="font-medium">Task queue</span>
             <span className="text-tower-fg-faint">
@@ -618,7 +628,7 @@ function AgentCard({
               aria-hidden
             />
           </summary>
-          <div className="max-h-64 overflow-y-auto border-t border-tower-border bg-tower-inset p-4">
+          <div className="max-h-56 overflow-y-auto border-t border-tower-border bg-tower-inset p-3.5">
             <TaskStageProgress items={items} />
             {activeItems.length === 0 ? (
               <p className="py-4 text-center text-xs text-tower-fg-faint">
@@ -652,7 +662,7 @@ function AgentCard({
         </details>
 
         {/* The lead's thread is the agent card's primary surface. */}
-        <section className="flex min-h-0 flex-1 flex-col gap-2 p-4">
+        <section className="flex min-h-0 flex-1 flex-col gap-2 p-3.5">
           <div className="flex shrink-0 items-center justify-between gap-2 px-0.5">
             <span className="text-xs font-medium text-tower-fg-muted">
               Agent thread
@@ -663,7 +673,7 @@ function AgentCard({
           </div>
           {hasThread && threadId ? (
             <div
-              className="min-h-0 flex-1 overflow-hidden rounded-xl border border-tower-border bg-tower-transcript p-1 [zoom:0.9] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
+              className="min-h-0 flex-1 overflow-hidden rounded-lg border border-tower-border bg-tower-transcript p-1 [zoom:0.88] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
               style={
                 {
                   "--background": "var(--color-tower-transcript)",
@@ -690,14 +700,14 @@ function AgentCard({
 function FleetLoadingState() {
   return (
     <div
-      className="grid min-h-full grid-cols-1 gap-4 px-4 pb-4 @[1240px]/board:grid-cols-2"
+      className="grid min-h-full grid-cols-1 content-start gap-3.5 px-4 pb-4 @[900px]/board:grid-cols-2"
       aria-label="Preparing crew activity"
       aria-busy="true"
     >
       {[0, 1].map((index) => (
         <div
           key={index}
-          className="min-h-[520px] animate-pulse overflow-hidden rounded-xl border border-tower-border bg-tower-surface"
+          className="h-[510px] animate-pulse overflow-hidden rounded-xl border border-tower-border bg-tower-surface"
         >
           <div className="flex h-16 items-center gap-3 border-b border-tower-border px-4">
             <div className="size-9 rounded-md bg-tower-input" />
@@ -853,6 +863,17 @@ export function FleetOverviewTab({
     false;
   const unassigned = byRow.get(UNASSIGNED) ?? [];
   const chores = queue.data?.chores ?? null;
+  const workingAgentCount = rows.filter((row) =>
+    (byRow.get(row.threadId) ?? []).some((item) => item.col === "in_flight"),
+  ).length;
+  const attentionCount = rows.filter((row) => {
+    const items = byRow.get(row.threadId) ?? [];
+    return (
+      isEscalated(row.threadId) ||
+      items.some(hasLostContact) ||
+      items.some((item) => item.col === "clearance")
+    );
+  }).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-surface">
@@ -862,9 +883,11 @@ export function FleetOverviewTab({
         </div>
       ) : null}
 
-      <div className="@container/board min-h-0 flex-1 overflow-auto pt-3">
+      <div className="@container/board min-h-0 flex-1 overflow-auto">
         {(fleet.loading || !crewKnown) && rows.length === 0 ? (
-          <FleetLoadingState />
+          <div className="pt-3">
+            <FleetLoadingState />
+          </div>
         ) : fleet.timedOut && rows.length === 0 ? (
           // Slow and broken need different words. This machine also runs the
           // fleet's CI, so a late answer is a normal condition here rather than
@@ -890,50 +913,67 @@ export function FleetOverviewTab({
             }
           />
         ) : (
-          // Two agent workspaces per row when each can stay readable. A nested
-          // agent surface has half the width again, so it stacks.
-          <div
-            className={
-              "grid gap-4 px-4 pb-4 " +
-              // Two per row is the Captain's preference, but only where two
-              // READABLE cards fit. The sheet's card is 691px; at the 720px
-              // breakpoint each got 402px and the stage ticks collapsed to
-              // 6.5px and collided. So the pair is asked for at a width that
-              // can actually hold it, and below that one full-width card wins
-              // over two illegible ones.
-              "grid-cols-1 @[1240px]/board:grid-cols-2"
-            }
-          >
-            {rows.map((r) => (
-              <AgentCard
-                key={r.threadId}
-                threadId={r.threadId}
-                projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
-                providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
-                label={agentLabel(
-                  r.handle,
-                  liveIds?.get(r.threadId)?.title,
-                  r.threadId,
-                )}
-                onOpen={() => setFocusedSp(r.threadId)}
-                items={byRow.get(r.threadId) ?? []}
-                escalated={isEscalated(r.threadId)}
-                hasThread
-              />
-            ))}
-            {/* the commander's undispatched pipeline (not yet handed to a lead) */}
-            {!crewRootThreadId && unassigned.length > 0 ? (
-              <AgentCard
-                threadId={null}
-                projectId=""
-                providerId=""
-                label="Unassigned"
-                items={unassigned}
-                escalated={false}
-                hasThread={false}
-              />
-            ) : null}
-          </div>
+          <>
+            <div className="sticky top-0 z-10 flex min-h-14 items-center justify-between gap-4 border-b border-tower-border bg-tower-surface px-4 py-2.5">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-tower-fg">
+                  Coding agents
+                </h2>
+                <p className="mt-0.5 text-xs text-tower-fg-faint">
+                  Live threads, current assignments, and review queues
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5 text-xs text-tower-fg-muted">
+                <span className="rounded-full bg-tower-panel px-2.5 py-1">
+                  {rows.length} {rows.length === 1 ? "agent" : "agents"}
+                </span>
+                {workingAgentCount > 0 ? (
+                  <span className="rounded-full bg-tower-panel px-2.5 py-1">
+                    {workingAgentCount} working
+                  </span>
+                ) : null}
+                {attentionCount > 0 ? (
+                  <span className="rounded-full border border-tower-border bg-tower-input px-2.5 py-1 text-tower-fg-body">
+                    {attentionCount} need input
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            {/* At ordinary harness widths, two coding-agent workspaces fit
+                comfortably side by side. Each card owns its scroll and height,
+                so adding an agent grows the board—not every card above it. */}
+            <div className="grid grid-cols-1 content-start items-start gap-3.5 px-4 py-4 @[900px]/board:grid-cols-2">
+              {rows.map((r) => (
+                <AgentCard
+                  key={r.threadId}
+                  threadId={r.threadId}
+                  projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
+                  providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
+                  label={agentLabel(
+                    r.handle,
+                    liveIds?.get(r.threadId)?.title,
+                    r.threadId,
+                  )}
+                  onOpen={() => setFocusedSp(r.threadId)}
+                  items={byRow.get(r.threadId) ?? []}
+                  escalated={isEscalated(r.threadId)}
+                  hasThread
+                />
+              ))}
+              {/* the commander's undispatched pipeline (not yet handed to a lead) */}
+              {!crewRootThreadId && unassigned.length > 0 ? (
+                <AgentCard
+                  threadId={null}
+                  projectId=""
+                  providerId=""
+                  label="Unassigned"
+                  items={unassigned}
+                  escalated={false}
+                  hasThread={false}
+                />
+              ) : null}
+            </div>
+          </>
         )}
         {/* De-minimis work, collapsed to one line for the whole board. It sits
             OUTSIDE the crew cards because the count is fleet-wide: putting it

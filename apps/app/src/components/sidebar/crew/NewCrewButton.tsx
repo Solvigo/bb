@@ -45,7 +45,7 @@ export function NewCrewButton({
         data-testid="new-crew-button"
         className={cn(
           "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors",
-          "bg-sidebar-accent text-sidebar-foreground hover:bg-state-active disabled:opacity-60",
+          "text-sidebar-foreground hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent disabled:opacity-60",
           className,
         )}
       >
