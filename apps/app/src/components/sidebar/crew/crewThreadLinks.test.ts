@@ -33,7 +33,8 @@ function* sourceFiles(dir: string): Generator<string> {
       yield* sourceFiles(full);
       continue;
     }
-    if (!/\.tsx?$/.test(entry) || /\.(test|stories)\.tsx?$/.test(entry)) continue;
+    if (!/\.tsx?$/.test(entry) || /\.(test|stories)\.tsx?$/.test(entry))
+      continue;
     yield full;
   }
 }

@@ -11,8 +11,18 @@ vi.mock("@/lib/ws", () => ({
 }));
 
 const THREADS = [
-  { id: "thr_cmd", title: "Commander · Airways", projectId: "p", parentThreadId: null },
-  { id: "thr_lead", title: "Lead · shell", projectId: "p", parentThreadId: "thr_cmd" },
+  {
+    id: "thr_cmd",
+    title: "Commander · Airways",
+    projectId: "p",
+    parentThreadId: null,
+  },
+  {
+    id: "thr_lead",
+    title: "Lead · shell",
+    projectId: "p",
+    parentThreadId: "thr_cmd",
+  },
 ];
 
 describe("useCrews", () => {
@@ -54,7 +64,9 @@ describe("useCrews", () => {
 
     await waitFor(() => {
       const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
-      expect(calls.filter(([u]) => String(u).includes("/threads"))).toHaveLength(1);
+      expect(
+        calls.filter(([u]) => String(u).includes("/threads")),
+      ).toHaveLength(1);
     });
   });
 
@@ -64,12 +76,15 @@ describe("useCrews", () => {
     // machine — the box running this app also runs the fleet's CI.
     vi.stubGlobal(
       "fetch",
-      vi.fn((_url: string, init?: RequestInit) =>
-        new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
-          });
-        }),
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(
+                Object.assign(new Error("aborted"), { name: "AbortError" }),
+              );
+            });
+          }),
       ),
     );
     vi.useFakeTimers();

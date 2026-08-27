@@ -8,6 +8,15 @@ export interface CrewLead {
   /** the lead's own last report, when the crew plugin has one */
   status: string | null;
   working: boolean;
+  /** commander | lead | sortie, straight from the plugin. Null when unranked. */
+  rank: string | null;
+  /**
+   * What the instrument says, or null when it could not say. Deliberately not
+   * folded into `working`: `working` is what the agent last REPORTED, liveness
+   * is what it is actually doing, and collapsing the two would lose the case
+   * where they disagree — which is the case worth seeing.
+   */
+  liveness: AgentLiveness | null;
   /**
    * The agents reporting to this one. Sorties under a lead, and — because the
    * thread tree has no depth limit — whatever reports to a sortie, nested
@@ -25,6 +34,8 @@ export interface Crew {
   leads: CrewLead[];
   /** one line: what this crew is doing right now */
   status: string;
+  /** The commander is an agent too — same instrument, same honesty about null. */
+  liveness: AgentLiveness | null;
 }
 
 interface ThreadRow {
@@ -35,10 +46,20 @@ interface ThreadRow {
   parentThreadId?: string | null;
 }
 
+/**
+ * The verdict the crew plugin's instrument reached, or null when it could not
+ * reach one. Null is NORMAL — it is loudly not a guess, and never means "idle".
+ */
+export interface AgentLiveness {
+  verdict: string;
+  at?: string | number | null;
+}
+
 interface FleetRow {
   threadId: string;
   handle: string | null;
   rank: string;
+  liveness?: AgentLiveness | null;
 }
 
 interface BoardRow {
@@ -58,6 +79,19 @@ function agentName(raw: string): string {
  * for real — the rig's server wedged and every crew call hung past 20s.
  */
 const READ_TIMEOUT_MS = 8_000;
+
+/**
+ * The fleet read gets its own budget, because it stopped being a cheap call.
+ * Per-row liveness needs a process-table read and a per-row event read, and the
+ * call was measured at 18.2s cold, 7.4s, then 4.8s warm on a live rig — against
+ * a shared 8s ceiling. The result was not an error anywhere: the read timed out,
+ * the sidebar fell back to its threads-only paint, and every rank and verdict
+ * silently went missing on exactly the cold load a person actually sees.
+ *
+ * The short ceiling stays where it earns its keep — the thread list, which
+ * answers in ~40ms and whose hang is what left a spinner running for a session.
+ */
+const FLEET_READ_TIMEOUT_MS = 30_000;
 /**
  * A retry gets more patience than the first attempt. Retrying a TIMEOUT with
  * the same patience is theatre: the button does exactly what already failed and
@@ -124,8 +158,14 @@ function assembleCrews(
 ): Crew[] {
   const live = new Set(threads.map((t) => t.id));
   const handleOf = new Map<string, string>();
+  const rankOf = new Map<string, string>();
+  const livenessOf = new Map<string, AgentLiveness>();
   for (const r of fleet?.rows ?? []) {
     if (r.handle) handleOf.set(r.threadId, r.handle);
+    if (r.rank) rankOf.set(r.threadId, r.rank);
+    // Absent and null both mean "no verdict": the map simply has no entry, so
+    // a reader cannot mistake a missing verdict for a quiet one.
+    if (r.liveness) livenessOf.set(r.threadId, r.liveness);
   }
   const reportOf = new Map<string, { state: string; note: string } | null>();
   for (const b of board?.rows ?? []) reportOf.set(b.threadId, b.report);
@@ -159,6 +199,8 @@ function assembleCrews(
           name: agentName(handleOf.get(t.id) ?? titleOf(t)),
           status: report?.note ?? null,
           working: report?.state === "working",
+          rank: rankOf.get(t.id) ?? null,
+          liveness: livenessOf.get(t.id) ?? null,
           sorties: agentsUnder(t.id, seen),
         };
       });
@@ -172,6 +214,7 @@ function assembleCrews(
         commanderThreadId: commander.id,
         name: titleOf(commander),
         projectId: commander.projectId ?? "",
+        liveness: livenessOf.get(commander.id) ?? null,
         leads,
         status:
           leads.length === 0
@@ -278,7 +321,10 @@ async function loadOnce(timeoutMs: number = READ_TIMEOUT_MS): Promise<void> {
   });
 
   const [fleet, board] = await Promise.all([
-    crewRpc<{ rows: FleetRow[] }>("crew_fleet", timeoutMs),
+    crewRpc<{ rows: FleetRow[] }>(
+      "crew_fleet",
+      Math.max(timeoutMs, FLEET_READ_TIMEOUT_MS),
+    ),
     crewRpc<{ rows: BoardRow[] }>("crew_board", timeoutMs),
   ]);
   publish({

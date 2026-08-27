@@ -3,7 +3,12 @@ import { NavLink } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { useCrews, type Crew, type CrewLead } from "./useCrews";
+import {
+  useCrews,
+  type AgentLiveness,
+  type Crew,
+  type CrewLead,
+} from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
 
 export const SIDEBAR_SECTION_LABEL_CLASS =
@@ -59,8 +64,11 @@ function CrewEntry({
             aria-hidden
           />
           <span className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium text-foreground">
-              {crew.name}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-sm font-medium text-foreground">
+                {crew.name}
+              </span>
+              <LivenessDot liveness={crew.liveness} />
             </span>
             <span className="truncate text-xs text-muted-foreground">
               {crew.status}
@@ -81,6 +89,34 @@ function CrewEntry({
         </ul>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * How a verdict reads at a glance. `DISAGREEMENT` is deliberately loud: the
+ * instrument refuses to pick a winner when its signals conflict, and a row that
+ * quietly rendered it as "unknown" would hide the most interesting agent on the
+ * screen. No verdict at all draws nothing — absent is not idle.
+ */
+const LIVENESS_TONE: Record<string, string> = {
+  working: "bg-success",
+  tasked: "bg-success/60",
+  stalled: "bg-warning-text",
+  orphaned: "bg-warning-text",
+  DISAGREEMENT: "bg-destructive-text",
+  dead: "bg-subtle-foreground",
+  finished: "bg-subtle-foreground",
+};
+
+function LivenessDot({ liveness }: { liveness: AgentLiveness | null }) {
+  if (!liveness) return null;
+  const tone = LIVENESS_TONE[liveness.verdict] ?? "bg-subtle-foreground";
+  return (
+    <span
+      role="img"
+      aria-label={liveness.verdict}
+      className={cn("size-1.5 shrink-0 rounded-full", tone)}
+    />
   );
 }
 
@@ -122,6 +158,7 @@ function AgentRow({
         <span className="truncate text-[13px] text-foreground">
           {agent.name}
         </span>
+        <LivenessDot liveness={agent.liveness} />
       </NavLink>
       {agent.sorties.length > 0 ? (
         <ul className="ml-4 flex flex-col border-l border-tower-border pl-1">
