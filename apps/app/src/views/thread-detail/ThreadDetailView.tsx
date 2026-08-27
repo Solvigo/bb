@@ -140,6 +140,7 @@ import {
   ThreadStorageFilePreviewTabContent,
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
+import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { registerDesktopAutomationThreadHandlers } from "@/components/desktop-automation/DesktopAutomationBridge";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import {

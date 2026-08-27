@@ -1,4 +1,4 @@
-import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from "electron";
+import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from "electron";
 import {
   bbDesktopAutomationClickRequestSchema,
   bbDesktopAutomationEvalRequestSchema,

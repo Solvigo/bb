@@ -98,36 +98,37 @@ export type DesktopAutomationOpenResult = z.infer<
   typeof desktopAutomationOpenResultSchema
 >;
 
-export const desktopAutomationResponseMessageSchema = z
-  .object({
-    type: z.literal("response"),
-    requestId: requestIdSchema,
-    ok: z.literal(true),
-    result: z.unknown(),
-  })
-  .strict();
-export const desktopAutomationErrorResponseMessageSchema = z
-  .object({
-    type: z.literal("response"),
-    requestId: requestIdSchema,
-    ok: z.literal(false),
-    error: z
-      .object({
-        code: z.string().min(1).max(64),
-        message: z.string().min(1).max(1024),
-      })
-      .strict(),
-  })
-  .strict();
+export const desktopAutomationResponseMessageSchema = z.union([
+  z
+    .object({
+      type: z.literal("response"),
+      requestId: requestIdSchema,
+      ok: z.literal(true),
+      result: z.unknown(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("response"),
+      requestId: requestIdSchema,
+      ok: z.literal(false),
+      error: z
+        .object({
+          code: z.string().min(1).max(64),
+          message: z.string().min(1).max(1024),
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+export type DesktopAutomationResponseMessage = z.infer<
+  typeof desktopAutomationResponseMessageSchema
+>;
 
-export const desktopAutomationClientMessageSchema = z.discriminatedUnion(
-  "type",
-  [
-    desktopAutomationRegisterMessageSchema,
-    desktopAutomationResponseMessageSchema,
-    desktopAutomationErrorResponseMessageSchema,
-  ],
-);
+export const desktopAutomationClientMessageSchema = z.union([
+  desktopAutomationRegisterMessageSchema,
+  desktopAutomationResponseMessageSchema,
+]);
 export type DesktopAutomationClientMessage = z.infer<
   typeof desktopAutomationClientMessageSchema
 >;

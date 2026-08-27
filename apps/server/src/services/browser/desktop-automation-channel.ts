@@ -5,8 +5,6 @@ import type {
   DesktopAutomationSnapshotResult,
 } from "@bb/server-contract";
 import {
-  BROWSER_VERB,
-  desktopAutomationErrorResponseMessageSchema,
   desktopAutomationResponseMessageSchema,
 } from "@bb/server-contract";
 
@@ -102,21 +100,21 @@ export class DesktopAutomationChannelCoordinator {
   }
 
   handleClientMessage(raw: unknown): void {
-    const responseOk = desktopAutomationResponseMessageSchema.safeParse(raw);
-    if (responseOk.success) {
-      this.resolvePending(responseOk.data.requestId, responseOk.data.result);
+    const parsed = desktopAutomationResponseMessageSchema.safeParse(raw);
+    if (!parsed.success) {
       return;
     }
-    const responseErr = desktopAutomationErrorResponseMessageSchema.safeParse(raw);
-    if (responseErr.success) {
-      this.rejectPending(
-        responseErr.data.requestId,
-        new DesktopAutomationCommandError(
-          responseErr.data.error.code,
-          responseErr.data.error.message,
-        ),
-      );
+    if (parsed.data.ok) {
+      this.resolvePending(parsed.data.requestId, parsed.data.result);
+      return;
     }
+    this.rejectPending(
+      parsed.data.requestId,
+      new DesktopAutomationCommandError(
+        parsed.data.error.code,
+        parsed.data.error.message,
+      ),
+    );
   }
 
   async forwardCommand(args: ForwardCommandArgs): Promise<unknown> {
