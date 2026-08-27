@@ -10,6 +10,7 @@ import {
   destroyPersistedBrowserView,
 } from "./browserViewVisibilityCoordinator";
 import { notifyAutomationTabClosedByUser } from "@/components/desktop-automation/DesktopAutomationBridge";
+import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 
 export interface BrowserTabDeckProps {
   browserTabs: readonly BrowserFixedPanelTab[];

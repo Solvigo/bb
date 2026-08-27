@@ -1,9 +1,10 @@
 import { z } from "zod";
-import {
-  BROWSER_SELECTOR_MAX_LENGTH,
-  BROWSER_TYPED_TEXT_MAX_LENGTH,
-  BROWSER_URL_MAX_LENGTH,
-} from "@bb/server-contract";
+
+/** Mirrors server-contract browser bounds; kept local to avoid a package edge. */
+const BROWSER_URL_MAX_LENGTH = 2048;
+const BROWSER_SELECTOR_MAX_LENGTH = 4096;
+const BROWSER_TYPED_TEXT_MAX_LENGTH = 4096;
+const BROWSER_EVAL_SCRIPT_MAX_LENGTH = 65536;
 
 const targetIdSchema = z.string().min(1).max(128);
 const tabIdSchema = z.string().min(1).max(256);
@@ -82,7 +83,7 @@ export type BbDesktopAutomationTypeRequest = z.infer<
 export const bbDesktopAutomationEvalRequestSchema = z
   .object({
     targetId: targetIdSchema,
-    script: z.string().min(1).max(65536),
+    script: z.string().min(1).max(BROWSER_EVAL_SCRIPT_MAX_LENGTH),
   })
   .strict();
 export type BbDesktopAutomationEvalRequest = z.infer<
