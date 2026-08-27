@@ -55,6 +55,7 @@
     />
     <script>
       (function () {
+        var mq = window.matchMedia("(prefers-color-scheme: dark)");
         function getFaviconColorSuffix() {
           try {
             var color = localStorage.getItem("bb.faviconColor");
