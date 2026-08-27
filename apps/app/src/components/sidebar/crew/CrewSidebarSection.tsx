@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { useProjectNames } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useCrews,
   type AgentLiveness,
@@ -56,7 +57,10 @@ function CrewEntry({
           }
         >
           <Icon
-            name="Folder"
+            // The folder belongs to the project above it. A commander is an
+            // agent — the one you talk to — and drawing it as a folder too made
+            // the two tiers read as one.
+            name="UserRound"
             className={cn(
               "size-4 shrink-0",
               anyWorking ? "text-muted-foreground" : "text-subtle-foreground",
@@ -188,6 +192,48 @@ function AgentRow({
  * that interviews the operator; pressing it twice resumes that interview rather
  * than leaving a second half-built crew behind.
  */
+interface ProjectGroup {
+  projectId: string;
+  /** Null while the name has not arrived — never a stand-in string. */
+  name: string | null;
+  crews: Crew[];
+}
+
+/**
+ * Crews under the project they belong to, which is the tree's real root: a
+ * project is a folder someone chose, and its agents live inside it.
+ *
+ * Grouping needs only the id the crew already carries, so it never waits on
+ * the name query. A group whose name has not arrived renders its crews with no
+ * header rather than a placeholder — an unnamed project is a name we do not
+ * have yet, and inventing one is how a sidebar starts lying.
+ */
+function groupByProject(
+  crews: readonly Crew[],
+  nameOf: ReadonlyMap<string, string>,
+): ProjectGroup[] {
+  const groups = new Map<string, ProjectGroup>();
+  for (const crew of crews) {
+    const existing = groups.get(crew.projectId);
+    if (existing) {
+      existing.crews.push(crew);
+      continue;
+    }
+    groups.set(crew.projectId, {
+      projectId: crew.projectId,
+      name: nameOf.get(crew.projectId) ?? null,
+      crews: [crew],
+    });
+  }
+  // Named projects first and alphabetical; anything still unnamed sinks to the
+  // bottom rather than jumping around as names land.
+  return [...groups.values()].sort((a, b) => {
+    if (a.name === null) return b.name === null ? 0 : 1;
+    if (b.name === null) return -1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 /**
  * The rail's primary object is the CREW, not the thread: one entry per crew —
  * its commander, expanding to the leads reporting to it. Raw threads keep a
@@ -203,11 +249,12 @@ export function CrewSidebarSection({
   onNavigate?: () => void;
 }) {
   const { crews, loaded, failed, timedOut, reload } = useCrews();
+  const projectNameOf = useProjectNames();
 
   return (
     <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
       <div className="mb-1 mt-3 flex items-center justify-between gap-2">
-        <span className={SIDEBAR_SECTION_LABEL_CLASS}>Crews</span>
+        <span className={SIDEBAR_SECTION_LABEL_CLASS}>Projects</span>
         {headerTrailing}
       </div>
       {!loaded ? (
@@ -229,16 +276,34 @@ export function CrewSidebarSection({
         </p>
       ) : crews.length === 0 ? (
         <p className="px-2 py-1 text-xs italic text-muted-foreground">
-          No crews yet — start one above.
+          No projects yet — create one above.
         </p>
       ) : (
-        <ul className="flex flex-col gap-1">
-          {crews.map((crew) => (
-            <CrewEntry
-              key={crew.commanderThreadId}
-              crew={crew}
-              onNavigate={onNavigate}
-            />
+        <ul className="flex flex-col gap-2">
+          {groupByProject(crews, projectNameOf).map((group) => (
+            <li key={group.projectId}>
+              {group.name === null ? null : (
+                <div className="flex min-h-6 items-center gap-1.5 px-2">
+                  <Icon
+                    name="Folder"
+                    className="size-3.5 shrink-0 text-subtle-foreground"
+                    aria-hidden
+                  />
+                  <span className="truncate text-xs font-medium text-muted-foreground">
+                    {group.name}
+                  </span>
+                </div>
+              )}
+              <ul className="flex flex-col gap-1">
+                {group.crews.map((crew) => (
+                  <CrewEntry
+                    key={crew.commanderThreadId}
+                    crew={crew}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </ul>
+            </li>
           ))}
         </ul>
       )}

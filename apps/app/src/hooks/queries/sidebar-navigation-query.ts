@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
@@ -46,6 +47,30 @@ export function useSidebarNavigation(options?: QueryOptions) {
     enabled,
     ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
   });
+}
+
+/**
+ * Every project's display name by id, from the same shared cache as
+ * {@link useProjectDisplayName} — read-only, so it adds no subscriptions of its
+ * own.
+ *
+ * Empty until the bootstrap lands. A caller that groups by project should group
+ * on the id it already holds and use this only to LABEL, so a slow name query
+ * cannot hide a project that exists.
+ */
+export function useProjectNames(): ReadonlyMap<string, string> {
+  const { data } = useQuery<SidebarBootstrapResponse>({
+    queryKey: sidebarNavigationQueryKey(),
+    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
+    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+  });
+  return useMemo(() => {
+    const names = new Map<string, string>();
+    if (!data) return names;
+    names.set(PERSONAL_PROJECT_ID, data.personalProject.name);
+    for (const project of data.projects) names.set(project.id, project.name);
+    return names;
+  }, [data]);
 }
 
 /**
