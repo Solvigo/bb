@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom, useSetAtom } from "jotai";
 import {
@@ -725,20 +725,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const openNewTab = useCallback(() => {
     openTab({ kind: "new-tab" });
   }, [openTab]);
-  const hasRedirectedLegacyInfoTabRef = useRef(false);
-  useEffect(() => {
-    const shouldReplaceLegacyInfoTab =
-      !hasRedirectedLegacyInfoTabRef.current &&
-      activeFixedSecondaryTab?.kind === "thread-info";
-    hasRedirectedLegacyInfoTabRef.current = true;
-    if (
-      shouldReplaceLegacyInfoTab ||
-      (fixedPanelTabsState.secondary.activeTabId === null &&
-        fixedPanelTabsState.secondary.tabs.length === 0)
-    ) {
-      openNewTab();
-    }
-  }, [activeFixedSecondaryTab, fixedPanelTabsState.secondary, openNewTab]);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   // The in-app browser surface only exists on desktop; on web this stays false
   // and handled web links keep their external-open behavior.
