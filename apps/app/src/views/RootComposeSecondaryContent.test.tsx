@@ -148,7 +148,6 @@ function createSecondaryPanel(
     onPanelChange: noop,
     onPanelFocus: noop,
     showGitDiffTab: false,
-    showInfoTab: false,
   };
 }
 

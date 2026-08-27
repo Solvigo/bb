@@ -68,10 +68,7 @@ import {
 } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
-import {
-  GitDiffTabContent,
-  ThreadInfoTabContent,
-} from "./ThreadSecondaryPanelTabContent";
+import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";
 import {
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
@@ -227,6 +224,10 @@ export interface ThreadSecondaryPanelProps {
   canUseGitUi: boolean;
   defaultMergeBaseBranch?: string;
   environmentId?: string;
+  /**
+   * Legacy metadata content retained for callers during the panel-state
+   * migration. The removed Info surface no longer renders it.
+   */
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
   fileTabContent?: ReactNode;
@@ -252,7 +253,6 @@ export interface ThreadSecondaryPanelProps {
   isOpen: boolean;
   showConversationCollapseControl?: boolean;
   showGitDiffTab?: boolean;
-  showInfoTab?: boolean;
   showNewTabButton?: boolean;
   /** Renders the global sidebar toggle with the panel's trailing controls. */
   showSidebarToggle?: boolean;
@@ -339,7 +339,6 @@ export function ThreadSecondaryPanel({
   canUseGitUi,
   defaultMergeBaseBranch,
   environmentId,
-  metadataContent,
   fileTabs,
   fileTabContent,
   fileTabContentFillsRegion,
@@ -349,7 +348,6 @@ export function ThreadSecondaryPanel({
   isOpen,
   showConversationCollapseControl = true,
   showGitDiffTab = true,
-  showInfoTab = false,
   showNewTabButton = true,
   showSidebarToggle = false,
   inlinePanelToggle = "button",
@@ -498,7 +496,9 @@ export function ThreadSecondaryPanel({
     ],
     [pluginSurfaceTabs],
   );
-  const [towerView, setTowerView] = useState<string | null>(null);
+  const [towerView, setTowerView] = useState<string | null>(
+    () => towerTabs[0]?.id ?? null,
+  );
   // Same contract the per-agent surface gives a tab: a disposer narrowed to
   // this agent, so a tab never tears down its context because a different
   // agent's surface closed.
@@ -521,10 +521,9 @@ export function ThreadSecondaryPanel({
   // operator explicitly opened (and to any real file/diff/terminal content).
   const towerViewCanShow =
     activeTabKind === null || activeTabKind === "thread-info";
-  const activeTowerTab =
-    towerViewCanShow && towerView !== null
-      ? (towerTabs.find((tab) => tab.id === towerView) ?? null)
-      : null;
+  const activeTowerTab = towerViewCanShow
+    ? (towerTabs.find((tab) => tab.id === towerView) ?? towerTabs[0] ?? null)
+    : null;
   const isTowerViewActive = activeTowerTab !== null;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
@@ -742,25 +741,6 @@ export function ThreadSecondaryPanel({
                 activeTreatment="fill"
               />
             ))}
-            {showInfoTab ? (
-              <PinnedIconTab
-                ariaLabel="Show thread info panel"
-                isActive={
-                  !isTowerViewActive &&
-                  activeFixedPanel === "thread-info" &&
-                  !hasActiveFileTab
-                }
-                label="Info"
-                leadingVisual={<Icon name="Info" />}
-                onClick={() => {
-                  setTowerView(null);
-                  onPanelChange("thread-info");
-                }}
-                title="Thread info"
-                usesDesktopChrome={usesDesktopChrome}
-                activeTreatment="fill"
-              />
-            ) : null}
             {shouldShowGitDiffTab ? (
               <PinnedIconTab
                 ariaLabel={
@@ -934,7 +914,11 @@ export function ThreadSecondaryPanel({
             workspaceRootPath={workspaceRootPath}
           />
         ) : (
-          <ThreadInfoTabContent metadataContent={metadataContent} />
+          <SecondaryPanelEmptyState
+            icon="Layers"
+            title="No lead views available"
+            description="Lead views will appear here when they are available."
+          />
         )}
       </div>
     </aside>
