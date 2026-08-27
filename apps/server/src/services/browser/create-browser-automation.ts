@@ -10,7 +10,9 @@ export function createBrowserAutomationServices(args: {
   browserAutomation: BrowserAutomationLifecycle;
   desktopAutomationChannel: DesktopAutomationChannelCoordinator;
 } {
-  const desktopAutomationChannel = new DesktopAutomationChannelCoordinator();
+  const desktopAutomationChannel = new DesktopAutomationChannelCoordinator({
+    logger: args.logger,
+  });
   const browserAutomation = new BrowserAutomationLifecycle({
     channel: desktopAutomationChannel,
     db: args.db,

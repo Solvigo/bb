@@ -61,4 +61,80 @@ describe("desktop automation channel coordinator", () => {
       text: "hello",
     });
   });
+
+  it("dispatches to the most recently registered client, not the oldest", () => {
+    const channel = new DesktopAutomationChannelCoordinator();
+    const stale = { send: vi.fn(), close: vi.fn() };
+    const current = { send: vi.fn(), close: vi.fn() };
+    // Simulates a desktop app relaunch: the old window's socket never sent a
+    // close frame (e.g. the process was killed), so it is still "connected"
+    // from the server's point of view when the new window registers.
+    channel.registerClient(stale);
+    channel.registerClient(current);
+
+    void channel.forwardCommand({
+      verb: BROWSER_VERB.open,
+      threadId: "thr_test",
+      targetId: "tgt_test",
+      payload: { targetId: "tgt_test", url: "https://example.com", visible: true },
+    });
+
+    expect(current.send).toHaveBeenCalledTimes(1);
+    expect(stale.send).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the remaining client once the preferred one disconnects", () => {
+    const channel = new DesktopAutomationChannelCoordinator();
+    const first = { send: vi.fn(), close: vi.fn() };
+    const second = { send: vi.fn(), close: vi.fn() };
+    channel.registerClient(first);
+    channel.registerClient(second);
+    channel.unregisterClient(second);
+
+    void channel.forwardCommand({
+      verb: BROWSER_VERB.open,
+      threadId: "thr_test",
+      targetId: "tgt_test",
+      payload: { targetId: "tgt_test", url: "https://example.com", visible: true },
+    });
+
+    expect(first.send).toHaveBeenCalledTimes(1);
+    expect(second.send).not.toHaveBeenCalled();
+  });
+
+  it("names the connected client count and logs a warning on timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const warn = vi.fn();
+      const channel = new DesktopAutomationChannelCoordinator({
+        logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn },
+      });
+      const stale = { send: vi.fn(), close: vi.fn() };
+      const current = { send: vi.fn(), close: vi.fn() };
+      channel.registerClient(stale);
+      channel.registerClient(current);
+
+      const pending = channel.forwardCommand({
+        verb: BROWSER_VERB.open,
+        threadId: "thr_test",
+        targetId: "tgt_test",
+        payload: { targetId: "tgt_test", url: "https://example.com", visible: true },
+      });
+      // Swallow the rejection immediately so the unhandled-rejection watcher
+      // doesn't fire before the assertion below awaits it.
+      pending.catch(() => undefined);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      await expect(pending).rejects.toThrow(/2 desktop client\(s\) connected/);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toMatchObject({
+        verb: BROWSER_VERB.open,
+        threadId: "thr_test",
+        connectedClientCount: 2,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
