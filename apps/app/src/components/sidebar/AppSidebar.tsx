@@ -17,14 +17,18 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
-import { CrewSidebarSection, NewCrewButton } from "./crew/CrewSidebarSection";
+import {
+  ChatsSidebarSection,
+  CrewSidebarSection,
+  NewCrewButton,
+} from "./crew/CrewSidebarSection";
 import { AirwaysMark } from "./crew/BrandLockup";
 import { PlatformSection } from "./crew/PlatformSection";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+import type { QuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -65,6 +69,13 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
 );
 
 interface AppSidebarProps {
+  /**
+   * The create-project controller from the layout that RENDERS its dialog.
+   * The sidebar must not call the hook itself: its dialog state would be a
+   * second, separate copy, and opening it would set state on a dialog nothing
+   * renders — a button that looks alive and does nothing.
+   */
+  quickCreateProject: QuickCreateProjectController;
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   showTopReserve: boolean;
@@ -72,19 +83,16 @@ interface AppSidebarProps {
   toolsRoutePath?: string;
 }
 
-const SIDEBAR_THREADS_LABEL_CLASS =
-  "cursor-pointer select-none px-4 py-1 text-xs font-medium text-muted-foreground hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden";
-
 const SIDEBAR_ACCOUNT_LABEL = PRODUCT_NAME.split(" ")[0] ?? PRODUCT_NAME;
 
 export function AppSidebar({
+  quickCreateProject,
   onResizeMouseDown,
   isResizing,
   showTopReserve,
   settingsRoutePath,
   toolsRoutePath,
 }: AppSidebarProps) {
-  const quickCreateProject = useQuickCreateProjectController();
   // A plugin may replace the sidebar's scrolling thread list. It never
   // replaces the chrome around it: the New-thread button, the search field,
   // the plugin nav rows, and the footer stay host-rendered in every sidebar.
@@ -311,16 +319,18 @@ export function AppSidebar({
           <NewCrewButton />
         </div>
         <PlatformSection onNavigate={closeOnMobile} />
-        <CrewSidebarSection onNavigate={closeOnMobile} />
-        {/* Crews are THE object. Raw threads live behind ONE collapsed
-            disclosure at the very bottom — the escape hatch to anything the
-            crew view has not surfaced. */}
+        {/* Two bands, and every thread is in one of them: PROJECTS carries the
+            agent trees, CHATS carries the threads nobody has crewed. The old
+            "All threads" drawer was the escape hatch for whatever the crew view
+            did not surface — with both bands present there is nothing left
+            unsurfaced, and a second list over the same threads is the
+            duplication this layout exists to end. */}
         <SidebarContent>
-          <details className="group/threads min-h-0" data-testid="sidebar-threads-disclosure">
-            <summary className={SIDEBAR_THREADS_LABEL_CLASS}>
-              All threads
-            </summary>
-            {threadListProvider ? (
+          {threadSearch.isActive ? (
+            // Searching replaces the bands rather than adding a third list:
+            // the thread list owns result rendering and arrow-key navigation,
+            // and it is the only thing here that reaches every thread at once.
+            threadListProvider ? (
               <PluginThreadList
                 slot={threadListProvider}
                 builtInFallback={builtInThreadList}
@@ -329,8 +339,35 @@ export function AppSidebar({
               />
             ) : (
               builtInThreadList
-            )}
-          </details>
+            )
+          ) : (
+            <>
+              <CrewSidebarSection
+                onNavigate={closeOnMobile}
+                headerTrailing={
+                  quickCreateProject.isAvailable ? (
+                    <button
+                      type="button"
+                      aria-label="New project from a folder"
+                      onClick={quickCreateProject.openCreateDialog}
+                      disabled={quickCreateProject.isCreating}
+                      className="grid size-5 shrink-0 place-items-center rounded text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
+                    >
+                      <Icon
+                        name="FolderPlus"
+                        className="size-3.5"
+                        aria-hidden
+                      />
+                    </button>
+                  ) : null
+                }
+              />
+              <ChatsSidebarSection
+                onNavigate={closeOnMobile}
+                onNewChat={handleNewChat}
+              />
+            </>
+          )}
         </SidebarContent>
         <SidebarFooter className="relative px-3 py-2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-20 before:h-px before:bg-tower-border">
           <OverflowFade placement="above" tone="sidebar" size="sm" />

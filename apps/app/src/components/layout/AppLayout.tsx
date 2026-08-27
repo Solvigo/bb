@@ -733,6 +733,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               />
             ) : (
               <AppSidebar
+                quickCreateProject={quickCreateProject}
                 onResizeMouseDown={handleResizeMouseDown}
                 isResizing={isSidebarResizing}
                 showTopReserve={true}
