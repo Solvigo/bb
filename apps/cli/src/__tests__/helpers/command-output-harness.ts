@@ -29,23 +29,29 @@ vi.mock("../../client.js", async () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
+  const createStubbedTransport = (baseUrl: string) => {
+    const realTransport = createHttpTransport({ baseUrl, runtime: "node" });
+    return {
+      ...realTransport,
+      api: serverClientState.createClient(baseUrl)?.api ?? {},
+      readJson: (responsePromise: MockTransportPromise) =>
+        realTransport.readJson(responsePromise.then(toResponse)),
+      readVoid: (responsePromise: MockTransportPromise) =>
+        realTransport.readVoid(responsePromise.then(toResponse)),
+    };
+  };
+  const createCliTransport = vi.fn((baseUrl: string) =>
+    createStubbedTransport(baseUrl),
+  );
   const createCliBbSdk = vi.fn(
     (baseUrl: string, options: MockCliBbSdkOptions = {}) => {
-      const realTransport = createHttpTransport({ baseUrl, runtime: "node" });
       return createBbSdk({
         context: options.context,
-        transport: {
-          ...realTransport,
-          api: serverClientState.createClient(baseUrl)?.api ?? {},
-          readJson: (responsePromise: MockTransportPromise) =>
-            realTransport.readJson(responsePromise.then(toResponse)),
-          readVoid: (responsePromise: MockTransportPromise) =>
-            realTransport.readVoid(responsePromise.then(toResponse)),
-        },
+        transport: createStubbedTransport(baseUrl),
       });
     },
   );
-  return { cliFetch, createCliBbSdk };
+  return { cliFetch, createCliBbSdk, createCliTransport };
 });
 
 vi.mock("node:readline/promises", () => ({
