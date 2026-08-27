@@ -8,6 +8,7 @@ import {
   BROWSER_VERB,
   desktopAutomationResponseMessageSchema,
 } from "@bb/server-contract";
+import type { ServerLogger } from "../../types.js";
 
 export class DesktopAutomationChannelUnavailableError extends Error {
   readonly details: DesktopAutomationChannelUnavailableDetails = {
@@ -33,8 +34,10 @@ export class DesktopAutomationCommandError extends Error {
 }
 
 export class DesktopAutomationCommandTimeoutError extends Error {
-  constructor() {
-    super("Timed out waiting for desktop automation response");
+  constructor(connectedClientCount: number) {
+    super(
+      `Timed out waiting for desktop automation response (${connectedClientCount} desktop client(s) connected; the one dispatched to never replied — it may be a stale connection left over from a previous app instance)`,
+    );
     this.name = "DesktopAutomationCommandTimeoutError";
   }
 }
@@ -76,8 +79,15 @@ interface PendingCommand {
 }
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
+const noopLogger: ServerLogger = {
+  debug: () => undefined,
+  error: () => undefined,
+  info: () => undefined,
+  warn: () => undefined,
+};
 
 export class DesktopAutomationChannelCoordinator {
+  private readonly logger: ServerLogger;
   // Ordered most-recently-registered first. A desktop app relaunch (rebuild,
   // crash recovery, manual restart) opens a new socket without necessarily
   // closing the old one promptly server-side (an abrupt process kill can
@@ -86,6 +96,10 @@ export class DesktopAutomationChannelCoordinator {
   // instead of every command routing to a dead leftover connection forever.
   private clients: DesktopAutomationChannelSocket[] = [];
   private readonly pendingByRequestId = new Map<string, PendingCommand>();
+
+  constructor(deps: { logger?: ServerLogger } = {}) {
+    this.logger = deps.logger ?? noopLogger;
+  }
 
   registerClient(socket: DesktopAutomationChannelSocket): void {
     this.clients = [socket, ...this.clients.filter((s) => s !== socket)];
@@ -179,10 +193,21 @@ export class DesktopAutomationChannelCoordinator {
       return Promise.reject(new DesktopAutomationChannelUnavailableError());
     }
     const requestId = randomUUID();
+    const connectedClientCount = this.clients.length;
     return new Promise<unknown>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingByRequestId.delete(requestId);
-        reject(new DesktopAutomationCommandTimeoutError());
+        this.logger.warn(
+          {
+            requestId,
+            verb: args.verb,
+            threadId: args.threadId,
+            targetId: args.targetId ?? null,
+            connectedClientCount,
+          },
+          "desktop automation command timed out waiting for a client response",
+        );
+        reject(new DesktopAutomationCommandTimeoutError(connectedClientCount));
       }, DEFAULT_COMMAND_TIMEOUT_MS);
       this.pendingByRequestId.set(requestId, { reject, resolve, timeout });
       try {
