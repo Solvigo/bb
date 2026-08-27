@@ -5,6 +5,7 @@ import type {
   DesktopAutomationSnapshotResult,
 } from "@bb/server-contract";
 import {
+  BROWSER_VERB,
   desktopAutomationResponseMessageSchema,
 } from "@bb/server-contract";
 

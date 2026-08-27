@@ -27,6 +27,7 @@ import {
   DesktopAutomationChannelCoordinator,
   DesktopAutomationChannelUnavailableError,
   DesktopAutomationCommandError,
+  DesktopAutomationCommandTimeoutError,
 } from "./desktop-automation-channel.js";
 
 interface BrowserAutomationLifecycleDeps {
@@ -433,6 +434,11 @@ export function mapDesktopAutomationChannelError(error: unknown): ApiError {
   }
   if (error instanceof DesktopAutomationCommandError) {
     return new ApiError(502, error.code, error.message, { retryable: false });
+  }
+  if (error instanceof DesktopAutomationCommandTimeoutError) {
+    return new ApiError(504, "desktop_automation_timeout", error.message, {
+      retryable: true,
+    });
   }
   throw error;
 }

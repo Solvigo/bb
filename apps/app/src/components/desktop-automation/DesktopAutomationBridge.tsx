@@ -16,8 +16,22 @@ interface RegisteredThreadHandlers extends DesktopAutomationThreadHandlers {
 const targetsById = new Map<string, { tabId: string; threadId: string }>();
 const handlersByThreadId = new Map<string, DesktopAutomationThreadHandlers>();
 const automationTargetListeners = new Set<() => void>();
+let automationTargetSnapshotVersion = 0;
+let cachedAutomationTabIds = new Set<string>();
+let cachedAutomationTabIdsVersion = -1;
+
+function automationControlledTabIdsSnapshot(): ReadonlySet<string> {
+  if (cachedAutomationTabIdsVersion !== automationTargetSnapshotVersion) {
+    cachedAutomationTabIds = new Set(
+      [...targetsById.values()].map((entry) => entry.tabId),
+    );
+    cachedAutomationTabIdsVersion = automationTargetSnapshotVersion;
+  }
+  return cachedAutomationTabIds;
+}
 
 function notifyAutomationTargets(): void {
+  automationTargetSnapshotVersion += 1;
   for (const listener of automationTargetListeners) {
     listener();
   }
@@ -43,7 +57,7 @@ export function useAutomationControlledTabIds(): ReadonlySet<string> {
         automationTargetListeners.delete(listener);
       };
     },
-    () => new Set([...targetsById.values()].map((entry) => entry.tabId)),
+    () => automationControlledTabIdsSnapshot(),
     () => new Set<string>(),
   );
 }
