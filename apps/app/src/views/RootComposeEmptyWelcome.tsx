@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { AIRWAYS_BRAND_ASSETS } from "@/lib/brand-assets";
 
 interface RootComposeEmptyWelcomeProps {
   /** Reveal the composer, optionally prefilled with a starter prompt. */
@@ -20,19 +20,6 @@ interface WelcomeActionProps {
   description: string;
   onClick: () => void;
   disabled?: boolean;
-}
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return reduced;
 }
 
 function WelcomeAction({
@@ -64,95 +51,23 @@ function WelcomeAction({
 
 /**
  * Centered branded landing shown on the root compose page when the user has no
- * projects yet. Mirrors a logo-over-actions welcome layout: a dimensional bb
- * mark sits above the primary "get started" actions.
+ * projects yet. Mirrors a logo-over-actions welcome layout: the approved
+ * Airways mark sits above the primary "get started" actions.
  */
 export function RootComposeEmptyWelcome({
   onCompose,
   onAddProject,
   addProjectDisabled,
 }: RootComposeEmptyWelcomeProps) {
-  const reducedMotion = usePrefersReducedMotion();
   return (
     <div className="flex flex-col items-center gap-12 duration-500 animate-in fade-in-0 slide-in-from-bottom-2">
-      {/* Real specular highlight: a blurred copy of the mark's alpha is the bump
-          map, and feSpecularLighting lit by a moving point light produces a
-          glint that follows the surface curvature (and travels) the way light
-          actually reflects — far less "stuck-on" than a flat sweeping band. The
-          highlight is clipped just inside the glyph and added over it so the
-          light does not brighten antialiased outer-edge pixels. */}
-      <svg aria-hidden className="absolute h-0 w-0" focusable="false">
-        <defs>
-          <filter
-            id="bb-gloss"
-            x="-40%"
-            y="-40%"
-            width="180%"
-            height="180%"
-            colorInterpolationFilters="sRGB"
-          >
-            <feGaussianBlur in="SourceAlpha" stdDeviation="5" result="bump" />
-            <feSpecularLighting
-              in="bump"
-              surfaceScale="5"
-              specularConstant="0.85"
-              specularExponent="18"
-              lightingColor="#ffffff"
-              result="spec"
-            >
-              <fePointLight x="40" y="10" z="80">
-                {reducedMotion ? null : (
-                  // Ping-pong the light out and back between points far off the
-                  // glyph (so each pass fades fully to matte). Returning to the
-                  // exact start means no position jump on repeat — it eases to a
-                  // stop at each end and reverses, so the loop never snaps.
-                  <animate
-                    attributeName="x"
-                    dur="5s"
-                    repeatCount="indefinite"
-                    calcMode="spline"
-                    keyTimes="0;0.5;1"
-                    values="-170;270;-170"
-                    keySplines="0.42 0 0.58 1;0.42 0 0.58 1"
-                  />
-                )}
-              </fePointLight>
-            </feSpecularLighting>
-            <feMorphology
-              in="SourceAlpha"
-              operator="erode"
-              radius="0.75"
-              result="innerAlpha"
-            />
-            <feComposite
-              in="spec"
-              in2="innerAlpha"
-              operator="in"
-              result="specClip"
-            />
-            <feComposite
-              in="SourceGraphic"
-              in2="specClip"
-              operator="arithmetic"
-              k1="0"
-              k2="1"
-              k3="1"
-              k4="0"
-            />
-          </filter>
-        </defs>
-      </svg>
-      {/* Filter on the parent so its SourceAlpha is the glyph below. The lockup
-          sheet sanctions the plateless orange jet for product surfaces (the
-          plate is for icons), and the gloss still rides its alpha. */}
       <div
         role="img"
         aria-label="Solvigo Airways"
         className="size-24 select-none"
-        style={{ filter: "url(#bb-gloss)" }}
       >
         <img
-          src="/solvigo-airways-glyph.svg"
+          src={AIRWAYS_BRAND_ASSETS.largeMark}
           alt=""
           className="size-full select-none object-contain"
           draggable={false}

@@ -19,26 +19,26 @@
     />
     <meta name="apple-mobile-web-app-title" content="Solvigo Airways" />
     <title>Solvigo Airways</title>
-    <!-- The Solvigo Airways mark. Declared first and as SVG so browsers that
-         support vector icons prefer it; the PNGs below remain the fallback. -->
+    <!-- The approved embossed Airways jet. The generated 32px and 16px links
+         below use the same source and remain the dynamic tint/badge targets. -->
     <link
       rel="icon"
-      type="image/svg+xml"
-      href="/brand/app-icon-flat-mono.svg"
-      id="favicon-svg"
+      type="image/png"
+      href="/brand/png/jet-embossed-mono-1024.png?v=airways-embossed-20260827"
+      id="favicon-source"
     />
     <link
       rel="icon"
       type="image/png"
       sizes="32x32"
-      href="/favicon-32x32.png"
+      href="/favicon-32x32.png?v=airways-embossed-20260827"
       id="favicon-32"
     />
     <link
       rel="icon"
       type="image/png"
       sizes="16x16"
-      href="/favicon-16x16.png"
+      href="/favicon-16x16.png?v=airways-embossed-20260827"
       id="favicon-16"
     />
     <link
@@ -59,9 +59,13 @@
         function setFavicon(dark) {
           var s = dev ? "-dev" : dark ? "-dark" : "";
           document.getElementById("favicon-32").href =
-            "/favicon-32x32" + s + ".png";
+            "/favicon-32x32" +
+            s +
+            ".png?v=airways-embossed-20260827";
           document.getElementById("favicon-16").href =
-            "/favicon-16x16" + s + ".png";
+            "/favicon-16x16" +
+            s +
+            ".png?v=airways-embossed-20260827";
         }
         var mq = window.matchMedia("(prefers-color-scheme: dark)");
         setFavicon(mq.matches);
