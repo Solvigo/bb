@@ -27,35 +27,35 @@ necessary and nowhere near sufficient.
 
 Every one of these should land on itself unless the Expected column says
 otherwise. The redirects listed are deliberate — legacy paths kept routable so
-old links resolve — and a redirect that is *not* in this list is a finding.
+old links resolve — and a redirect that is _not_ in this list is a finding.
 
-| Route | Expected |
-| --- | --- |
-| `/` | home |
-| `/threads/:threadId` | thread view, timeline populated |
-| `/settings` | settings index |
-| `/settings/appearance` | self |
-| `/settings/machines` | self |
-| `/settings/providers` | self |
-| `/settings/keyboard` | self |
-| `/settings/updates` | self |
-| `/settings/experiments` | self |
-| `/settings/usage` | self |
-| `/settings/files` | self |
-| `/settings/connections` | self |
-| `/settings/defaults` | self |
-| `/settings/community` | self |
-| `/settings/archived` | self |
-| `/tools/skills` | self — **the one that broke** |
-| `/tools/skills/registry` | self |
-| `/tools/plugins` | self |
-| `/projects/:projectId/settings` | self |
-| `/skills` | → `/tools/skills` (legacy) |
-| `/tools` | → `/tools/plugins` (landing) |
-| `/tools/plugins/browse` | → `/tools/plugins` (legacy) |
-| `/archived` | → `/settings/archived` (legacy) |
-| `/projects/:projectId/archived` | → `/settings/archived` (legacy) |
-| `/settings/plugins` | → `/tools/plugins` (moved) |
+| Route                                | Expected                                      |
+| ------------------------------------ | --------------------------------------------- |
+| `/`                                  | home                                          |
+| `/threads/:threadId`                 | thread view, timeline populated               |
+| `/settings`                          | settings index                                |
+| `/settings/appearance`               | self                                          |
+| `/settings/machines`                 | self                                          |
+| `/settings/providers`                | self                                          |
+| `/settings/keyboard`                 | self                                          |
+| `/settings/updates`                  | self                                          |
+| `/settings/experiments`              | self                                          |
+| `/settings/usage`                    | self                                          |
+| `/settings/files`                    | self                                          |
+| `/settings/connections`              | self                                          |
+| `/settings/defaults`                 | self                                          |
+| `/settings/community`                | self                                          |
+| `/settings/archived`                 | self                                          |
+| `/tools/skills`                      | self — **the one that broke**                 |
+| `/tools/skills/registry`             | self                                          |
+| `/tools/plugins`                     | self                                          |
+| `/projects/:projectId/settings`      | self                                          |
+| `/skills`                            | → `/tools/skills` (legacy)                    |
+| `/tools`                             | → `/tools/plugins` (landing)                  |
+| `/tools/plugins/browse`              | → `/tools/plugins` (legacy)                   |
+| `/archived`                          | → `/settings/archived` (legacy)               |
+| `/projects/:projectId/archived`      | → `/settings/archived` (legacy)               |
+| `/settings/plugins`                  | → `/tools/plugins` (moved)                    |
 | `/automations`, `/tools/automations` | → `/plugins/automations/automations` (legacy) |
 
 ### The experiment gates
@@ -74,6 +74,50 @@ curl -s -X PUT <server>/api/v1/settings/experiments -H 'Content-Type: applicatio
 
 The rail advertises Skills whether or not the gate will honour it, so a rig with
 the flag off shows a link that goes nowhere.
+
+## Never actuate a control that leaves the browser
+
+**A probe does not click anything that reaches the host machine.** Native folder
+and file pickers, OS dialogs, anything the host daemon opens — these appear on
+the operator's own screen, not in your headless window, and a click from a probe
+puts a modal in front of a person who did not ask for one. It happened: two
+Finder choosers were opened on the operator's desktop while verifying a new
+button, one of them sitting there for **203 seconds**.
+
+Before driving a surface, inventory its controls and mark the ones that escape.
+On this sidebar, "New project from a folder" is one: the host daemon supports a
+native picker, so the button calls `host.pick_folder` rather than opening
+anything in the page.
+
+Verify those two ways only:
+
+- **read the call path** — follow the handler to whatever it invokes, which is
+  what tells you it escapes in the first place; or
+- **click it with the operator watching**, having said what will appear.
+
+## The page can tell you the opposite of the truth
+
+The same button produced the inverse of a real result. A DOM probe reported no
+dialog, which read exactly like a dead control — the truth was that it had
+opened a native chooser the headless browser cannot see. **Absence of evidence
+in the DOM is not evidence of absence**, and a verdict of "this does nothing"
+needs the call path behind it, never a selector that found nothing.
+
+## A primary control wired to state nothing renders
+
+Promoting a control changes what its bugs cost. The sidebar built its own copy
+of the create-project machinery while the layout rendered the dialog against a
+different copy, so opening from the sidebar set state nothing was watching.
+
+That was inert for as long as the button sat inside a drawer nobody opened. As
+the primary way to make a project it would have been a **control that looks
+alive and does nothing** — the dead Skills link again, wearing different
+clothes.
+
+So: when a control is promoted out of a corner, re-verify it end to end rather
+than trusting that it worked where it used to live. Check in particular that a
+component calling a state hook is the same one rendering what that state drives;
+two calls to the same hook are two separate copies.
 
 ## The rail
 
@@ -95,7 +139,7 @@ differently:
 - a thread with no messages
 - a thread with a running turn
 - a thread with a queued message
-- **a thread with a pending interaction** — the card must *replace* the
+- **a thread with a pending interaction** — the card must _replace_ the
   composer. A plugin-owned card that renders nothing while the composer stays
   is the failure this checklist exists to catch twice: the operator types, the
   server refuses the message, and the screen explains nothing.
