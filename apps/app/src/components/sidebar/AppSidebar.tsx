@@ -17,12 +17,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
-import {
-  CrewSidebarSection,
-  NewCrewButton,
-  SIDEBAR_SECTION_LABEL_CLASS,
-} from "./crew/CrewSidebarSection";
-import { BrandLockup } from "./crew/BrandLockup";
+import { CrewSidebarSection, NewCrewButton } from "./crew/CrewSidebarSection";
+import { AirwaysMark } from "./crew/BrandLockup";
 import { PlatformSection } from "./crew/PlatformSection";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
@@ -33,6 +29,7 @@ import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_WINDOW_DRAG_CLASS,
+  MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
@@ -251,69 +248,70 @@ export function AppSidebar({
       }}
     />
   );
+  const sidebarSearchControl = (
+    <ProjectListActionButtons
+      showNewThread={false}
+      splitEnabled={threadSplitsEnabled}
+      newThreadSplit={newThreadSplit}
+      onNewChat={handleNewChat}
+      threadSearch={{
+        activeDescendantId: threadSearch.activeDescendantId,
+        inputRef: threadSearch.inputRef,
+        isActive: threadSearch.isActive,
+        onActivate: threadSearch.onActivate,
+        onClose: threadSearch.onClose,
+        onQueryChange: threadSearch.onQueryChange,
+        query: threadSearch.query,
+      }}
+    />
+  );
+  const sidebarIdentityControls = threadSearch.isActive ? (
+    <div
+      className={cn(
+        "min-w-0 flex-1",
+        usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+      )}
+    >
+      {sidebarSearchControl}
+    </div>
+  ) : (
+    <>
+      <div className="flex min-w-0 flex-1 items-center">
+        <AirwaysMark size={22} />
+      </div>
+      <div className={cn(usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS)}>
+        {sidebarSearchControl}
+      </div>
+    </>
+  );
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
       <Sidebar ref={sidebarRef} onKeyDown={threadSearch.onKeyDown}>
         {showTopReserve ? (
-          /* Top reserve that keeps the sidebar's content anchored below the
-             title-bar chrome, mirroring the page-header height on the content
-             side. The sidebar toggle is pinned at the app's top-left for every
-             chrome (see AppLayout's SidebarTriggerOverlay), so this row hosts no
-             trigger of its own — it stays mounted in every sidebar state,
-             including while the panel collapses off-canvas, so the content holds
-             its vertical position instead of riding up under the pinned toggle
-             during the animation. On desktop it doubles as the window-drag
-             strip. */
+          /* The identity and search controls share the title-bar reserve rather
+             than sitting below an empty chrome row. This keeps the rail compact
+             while the row still supplies the desktop window-drag strip. */
           <div
             data-testid="app-sidebar-top-reserve-row"
             className={cn(
               CHROME_ROW_CLASS,
-              "shrink-0 justify-end px-2",
+              "shrink-0 gap-2 px-3 group-data-[collapsible=icon]:hidden",
               usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             )}
-          />
-        ) : null}
-        {/* The mark is the first thing in the rail, then the one action the
-            rail is built around. */}
-        <div
-          className={cn(
-            "shrink-0 pb-2 group-data-[collapsible=icon]:hidden",
-            // Browser chrome has no controls in the sidebar titlebar, so let
-            // the lockup occupy that otherwise-empty top row. Native macOS
-            // keeps the reserve for traffic lights and the drag surface.
-            usesDesktopChrome ? "-mt-3" : "-mt-12",
-          )}
-        >
-          <BrandLockup />
-        </div>
-        <div className="shrink-0 px-2 pb-1 group-data-[collapsible=icon]:hidden">
+          >
+            {sidebarIdentityControls}
+          </div>
+        ) : (
+          <div className="flex min-h-11 shrink-0 items-center gap-2 px-3 pb-1 pt-2 group-data-[collapsible=icon]:hidden">
+            {sidebarIdentityControls}
+          </div>
+        )}
+        <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
           <NewCrewButton />
         </div>
-        <PlatformSection
-          labelClassName={SIDEBAR_SECTION_LABEL_CLASS}
-          onNavigate={closeOnMobile}
-        />
-        <CrewSidebarSection
-          onNavigate={closeOnMobile}
-          headerTrailing={
-            <ProjectListActionButtons
-              showNewThread={false}
-              splitEnabled={threadSplitsEnabled}
-              newThreadSplit={newThreadSplit}
-              onNewChat={handleNewChat}
-              threadSearch={{
-                activeDescendantId: threadSearch.activeDescendantId,
-                inputRef: threadSearch.inputRef,
-                isActive: threadSearch.isActive,
-                onActivate: threadSearch.onActivate,
-                onClose: threadSearch.onClose,
-                onQueryChange: threadSearch.onQueryChange,
-                query: threadSearch.query,
-              }}
-            />
-          }
-        />
+        <PlatformSection onNavigate={closeOnMobile} />
+        <CrewSidebarSection onNavigate={closeOnMobile} />
         {/* Crews are THE object. Raw threads live behind ONE collapsed
             disclosure at the very bottom — the escape hatch to anything the
             crew view has not surfaced. */}

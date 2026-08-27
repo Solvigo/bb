@@ -7,7 +7,6 @@ interface PlatformRow {
   key: string;
   icon: IconName;
   label: string;
-  hint: string;
   to: string;
 }
 
@@ -31,35 +30,29 @@ const PLATFORM_ROWS: PlatformRow[] = [
     key: "Skills",
     icon: "Zap",
     label: "Skills",
-    hint: "browse & install",
     to: getSkillsRoutePath(),
   },
   {
     key: "Connections",
     icon: "ElectricPlugs",
     label: "Connections",
-    hint: "soon",
     to: getSettingsRoutePath("connections"),
   },
   {
     key: "Defaults",
     icon: "SlidersHorizontal",
     label: "Defaults",
-    hint: "new agents",
     to: getSettingsRoutePath("defaults"),
   },
 ];
 
 export function PlatformSection({
-  labelClassName,
   onNavigate,
 }: {
-  labelClassName: string;
   onNavigate?: () => void;
 }) {
   return (
-    <div className="flex flex-col px-2 group-data-[collapsible=icon]:hidden">
-      <div className={cn(labelClassName, "mb-1 mt-3")}>Platform</div>
+    <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
       {PLATFORM_ROWS.map((row) => (
         <NavLink
           key={row.key}
@@ -76,11 +69,8 @@ export function PlatformSection({
             name={row.icon}
             className="size-4 shrink-0 text-subtle-foreground"
           />
-          <span className="min-w-0 flex-1 truncate text-sm text-sidebar-foreground">
+          <span className="min-w-0 truncate text-sm text-sidebar-foreground">
             {row.label}
-          </span>
-          <span className="shrink-0 text-xs text-subtle-foreground">
-            {row.hint}
           </span>
         </NavLink>
       ))}

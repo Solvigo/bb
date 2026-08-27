@@ -45,13 +45,13 @@ export function NewCrewButton({
         data-testid="new-crew-button"
         className={cn(
           "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors",
-          "text-sidebar-foreground hover:bg-sidebar-accent disabled:opacity-60",
+          "text-sidebar-foreground hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent disabled:opacity-60",
           className,
         )}
       >
         <Icon
           name="MessageSquarePlus"
-          className="size-4 shrink-0 text-muted-foreground"
+          className="size-4 shrink-0 text-sidebar-foreground"
           aria-hidden
         />
         <span className="min-w-0 flex-1 truncate">

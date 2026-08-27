@@ -673,7 +673,7 @@ export function ThreadSecondaryPanel({
         renderAsDrawer && "h-full min-w-0 flex-1",
         // Tower: a floating card inset from the surface, not a full-bleed column.
         // The inset (not h-full) defines the box, so it floats with a gap.
-        !renderAsDrawer && "rounded-xl border border-tower-input-border",
+        !renderAsDrawer && "rounded-xl border border-tower-border",
         !renderAsDrawer && [
           "absolute inset-y-2 left-2",
           isSecondaryPanelResizing ? "right-2" : "",

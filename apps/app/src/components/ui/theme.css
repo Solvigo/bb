@@ -579,13 +579,15 @@
 
 .dark {
   color-scheme: dark;
-  /* #181818. Keep the exact app canvas as an anchor so custom palettes can
-   * still replace it and every neutral below continues to follow coherently. */
-  --canvas: oklch(0.209036 0 0);
+  /* Near-black workspace ground. The Grok-style shell gets its separation
+   * from a restrained ink-over-canvas ramp, not from large gray blocks. */
+  /* #121211 */
+  --canvas: oklch(0.181787 0.002007 106.597);
   /* Softened from a brighter near-white so dark-mode foreground text reads a
    * touch less intense; the whole achromatic ramp is anchored here, so chrome
    * follows by an imperceptible amount. */
-  --ink: oklch(0.81 0 0);
+  /* #e7e7e7 */
+  --ink: oklch(0.927971 0 89.876);
   --background: var(--canvas);
   --foreground: var(--ink);
   /* Card and popover stay flush with the canvas here too — elevation comes from
@@ -624,7 +626,7 @@
   --resource-source-shelf-card-hover-shadow:
     -1px 2px 0 0 color-mix(in oklab, var(--canvas) 22%, transparent),
     -4px 6px 10px -5px color-mix(in oklab, var(--canvas) 45%, transparent);
-  --state-active: color-mix(in oklab, var(--ink) 12%, transparent);
+  --state-active: color-mix(in oklab, var(--ink) 11.03%, transparent);
   --destructive: oklch(0.56 0.19 22.1703);
   --destructive-foreground: oklch(1 0 0);
   /* Lighter/less-saturated than the fill so error TEXT clears AA (~4.8:1) on the
@@ -640,13 +642,13 @@
   --pr-merged: oklch(0.68 0.18 295);
   /* #2b2b2b against the default anchors. All shell/card rules use the same
    * restrained 1px Codex seam instead of the previous brighter edge ladder. */
-  --border: color-mix(in oklch, var(--ink) 13.32%, var(--canvas));
-  --border-hairline: color-mix(in oklch, var(--ink) 13.32%, var(--canvas));
+  --border: color-mix(in oklch, var(--ink) 11.32%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 11.32%, var(--canvas));
   /* One app-shell seam for top nav, sidebar, split, and panel boundaries. */
-  --border-seam: color-mix(in oklch, var(--ink) 13.32%, var(--canvas));
+  --border-seam: color-mix(in oklch, var(--ink) 11.32%, var(--canvas));
   /* Compatibility alias for plugin CSS authored before shell seams unified. */
   --border-seam-vertical: var(--border-seam);
-  --input: color-mix(in oklch, var(--ink) 13.32%, var(--canvas));
+  --input: color-mix(in oklch, var(--ink) 15.1%, var(--canvas));
   --ring: var(--primary);
   /* Same model as light; ink is light here, so these lift the dark canvas. */
   --surface-recessed: color-mix(in oklab, var(--ink) 6%, transparent);
@@ -702,12 +704,13 @@
     var(--ink) 25.2%,
     var(--canvas)
   );
-  /* #222222 base with a #242424 active/hover layer. */
-  --sidebar: color-mix(in oklch, var(--ink) 7.14%, var(--canvas));
+  /* Quiet near-black rail with a clearly lifted selected row. */
+  /* Resolves to the requested #191716 rail against the default anchors. */
+  --sidebar: color-mix(in oklch, var(--ink) 3.32%, var(--canvas));
   --sidebar-foreground: var(--ink);
-  --sidebar-accent: color-mix(in oklch, var(--ink) 8.53%, var(--canvas));
+  --sidebar-accent: color-mix(in oklch, var(--ink) 11.03%, var(--canvas));
   --sidebar-accent-foreground: var(--ink);
-  --sidebar-border: color-mix(in oklch, var(--ink) 13.32%, var(--canvas));
+  --sidebar-border: color-mix(in oklch, var(--ink) 11.32%, var(--canvas));
   /* Search-match highlight: see the light block (oklab mix, same hue caveat).
      Mixed with the (dark) canvas so the manilla reads as a muted tan. */
   --sidebar-search-match: color-mix(
