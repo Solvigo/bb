@@ -22,7 +22,6 @@ import {
   NewCrewButton,
   SIDEBAR_SECTION_LABEL_CLASS,
 } from "./crew/CrewSidebarSection";
-import { BrandLockup } from "./crew/BrandLockup";
 import { PlatformSection } from "./crew/PlatformSection";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
@@ -274,20 +273,9 @@ export function AppSidebar({
             )}
           />
         ) : null}
-        {/* The mark is the first thing in the rail, then the one action the
-            rail is built around. */}
-        <div
-          className={cn(
-            "shrink-0 pb-2 group-data-[collapsible=icon]:hidden",
-            // Browser chrome has no controls in the sidebar titlebar, so let
-            // the lockup occupy that otherwise-empty top row. Native macOS
-            // keeps the reserve for traffic lights and the drag surface.
-            usesDesktopChrome ? "-mt-3" : "-mt-12",
-          )}
-        >
-          <BrandLockup />
-        </div>
-        <div className="shrink-0 px-2 pb-1 group-data-[collapsible=icon]:hidden">
+        {/* Navigation starts immediately below the window chrome. Branding
+            belongs to product surfaces, not in the rail's primary menu. */}
+        <div className="shrink-0 px-2 pb-1 pt-2 group-data-[collapsible=icon]:hidden">
           <NewCrewButton />
         </div>
         <PlatformSection

@@ -7,7 +7,6 @@ interface PlatformRow {
   key: string;
   icon: IconName;
   label: string;
-  hint: string;
   to: string;
 }
 
@@ -31,21 +30,18 @@ const PLATFORM_ROWS: PlatformRow[] = [
     key: "Skills",
     icon: "Zap",
     label: "Skills",
-    hint: "browse & install",
     to: getSkillsRoutePath(),
   },
   {
     key: "Connections",
     icon: "ElectricPlugs",
     label: "Connections",
-    hint: "soon",
     to: getSettingsRoutePath("connections"),
   },
   {
     key: "Defaults",
     icon: "SlidersHorizontal",
     label: "Defaults",
-    hint: "new agents",
     to: getSettingsRoutePath("defaults"),
   },
 ];
@@ -76,11 +72,8 @@ export function PlatformSection({
             name={row.icon}
             className="size-4 shrink-0 text-subtle-foreground"
           />
-          <span className="min-w-0 flex-1 truncate text-sm text-sidebar-foreground">
+          <span className="min-w-0 truncate text-sm text-sidebar-foreground">
             {row.label}
-          </span>
-          <span className="shrink-0 text-xs text-subtle-foreground">
-            {row.hint}
           </span>
         </NavLink>
       ))}
