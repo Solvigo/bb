@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BROWSER_VERB, type DesktopAutomationCommandMessage } from "@bb/server-contract";
 import type { BbDesktopAutomationApi, BbDesktopInfo } from "@bb/desktop-contract";
