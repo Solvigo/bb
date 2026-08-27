@@ -311,4 +311,67 @@ export function CrewSidebarSection({
   );
 }
 
+/**
+ * Chats — the threads nobody has crewed, below the projects.
+ *
+ * Deliberately flat and quiet: a chat has no tree, and the section exists so a
+ * conversation is never something you have to go digging in a drawer for.
+ */
+export function ChatsSidebarSection({
+  onNavigate,
+}: {
+  onNavigate?: () => void;
+}) {
+  const { chats, loaded } = useCrews();
+
+  return (
+    <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
+      <div className="mb-1 mt-3 flex items-center justify-between gap-2">
+        <span className={SIDEBAR_SECTION_LABEL_CLASS}>Chats</span>
+      </div>
+      {!loaded ? (
+        // Silent while unknown: an empty Chats list and a Chats list that has
+        // not arrived look identical, and only one of them is true.
+        <p className="px-2 py-1 text-xs italic text-muted-foreground">
+          Reading your chats…
+        </p>
+      ) : chats.length === 0 ? (
+        <p className="px-2 py-1 text-xs italic text-muted-foreground">
+          No chats yet.
+        </p>
+      ) : (
+        <ul className="flex flex-col">
+          {chats.map((chat) => (
+            <li key={chat.threadId}>
+              <NavLink
+                to={getThreadRoutePath({
+                  projectId: chat.projectId,
+                  threadId: chat.threadId,
+                })}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  cn(
+                    "flex h-7 min-w-0 items-center gap-2 rounded-md px-2 transition-colors",
+                    isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+                  )
+                }
+              >
+                <Icon
+                  name="MessageSquare"
+                  className="size-3.5 shrink-0 text-subtle-foreground"
+                  aria-hidden
+                />
+                <span className="truncate text-[13px] text-foreground">
+                  {chat.name}
+                </span>
+                <LivenessDot liveness={chat.liveness} />
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default CrewSidebarSection;

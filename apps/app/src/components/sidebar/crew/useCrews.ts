@@ -38,6 +38,18 @@ export interface Crew {
   liveness: AgentLiveness | null;
 }
 
+/**
+ * A thread nobody has crewed: no agents under it and no crew handle. Defined by
+ * ABSENCE, exactly as the model intends — there is no second kind of thread,
+ * and any of these can be chartered later without moving.
+ */
+export interface LooseChat {
+  threadId: string;
+  name: string;
+  projectId: string;
+  liveness: AgentLiveness | null;
+}
+
 interface ThreadRow {
   id: string;
   title?: string | null;
@@ -151,11 +163,11 @@ async function crewRpc<T>(
  * tolerant of either plugin view being absent: called once with the thread list
  * alone so crews paint immediately, then again once the plugin answers.
  */
-function assembleCrews(
+function assembleFleet(
   threads: ThreadRow[],
   fleet: { rows: FleetRow[] } | null,
   board: { rows: BoardRow[] } | null,
-): Crew[] {
+): { crews: Crew[]; chats: LooseChat[] } {
   const live = new Set(threads.map((t) => t.id));
   const handleOf = new Map<string, string>();
   const rankOf = new Map<string, string>();
@@ -205,25 +217,45 @@ function assembleCrews(
         };
       });
 
-  return threads
-    .filter((t) => !t.parentThreadId && live.has(t.id))
-    .map((commander) => {
-      const leads: CrewLead[] = agentsUnder(commander.id);
-      const working = leads.filter((l) => l.working).length;
-      return {
-        commanderThreadId: commander.id,
-        name: titleOf(commander),
-        projectId: commander.projectId ?? "",
-        liveness: livenessOf.get(commander.id) ?? null,
-        leads,
-        status:
-          leads.length === 0
-            ? "no leads yet"
-            : working > 0
-              ? `${working} of ${leads.length} working`
-              : `${leads.length} lead${leads.length === 1 ? "" : "s"} standing by`,
-      };
-    });
+  const roots = threads.filter((t) => !t.parentThreadId && live.has(t.id));
+
+  // Crewed or not, decided by ABSENCE: a root with agents under it is a crew,
+  // and so is one carrying a crew handle — chartered but not yet staffed. Both
+  // tests read data already in hand, so a root is never parked in limbo waiting
+  // on the fleet call; a chartered-but-empty crew simply moves up out of Chats
+  // when the handle arrives, the same way ranks settle.
+  const isCrewed = (t: ThreadRow) =>
+    (byParent.get(t.id) ?? []).some((child) => live.has(child.id)) ||
+    handleOf.has(t.id);
+
+  const chats: LooseChat[] = roots
+    .filter((t) => !isCrewed(t))
+    .map((t) => ({
+      threadId: t.id,
+      name: titleOf(t),
+      projectId: t.projectId ?? "",
+      liveness: livenessOf.get(t.id) ?? null,
+    }));
+
+  const crews = roots.filter(isCrewed).map((commander) => {
+    const leads: CrewLead[] = agentsUnder(commander.id);
+    const working = leads.filter((l) => l.working).length;
+    return {
+      commanderThreadId: commander.id,
+      name: titleOf(commander),
+      projectId: commander.projectId ?? "",
+      liveness: livenessOf.get(commander.id) ?? null,
+      leads,
+      status:
+        leads.length === 0
+          ? "no leads yet"
+          : working > 0
+            ? `${working} of ${leads.length} working`
+            : `${leads.length} lead${leads.length === 1 ? "" : "s"} standing by`,
+    };
+  });
+
+  return { crews, chats };
 }
 
 /**
@@ -236,6 +268,8 @@ function assembleCrews(
  */
 export interface CrewsState {
   crews: Crew[];
+  /** Root threads nobody has crewed. Rendered as Chats, below the projects. */
+  chats: LooseChat[];
   /** false only until the first attempt resolves — never a permanent state */
   loaded: boolean;
   /** the last attempt could not read the fleet; `crews` is the last known set */
@@ -257,6 +291,7 @@ export interface CrewsState {
  */
 let state: CrewsSnapshot = {
   crews: [],
+  chats: [],
   loaded: false,
   failed: false,
   timedOut: false,
@@ -267,6 +302,7 @@ let disposeSources: (() => void) | null = null;
 
 interface CrewsSnapshot {
   crews: Crew[];
+  chats: LooseChat[];
   loaded: boolean;
   failed: boolean;
   /** Set when the last attempt ran out of patience rather than being refused. */
@@ -348,7 +384,7 @@ async function loadOnce(timeoutMs: number = READ_TIMEOUT_MS): Promise<void> {
   // Ranks and working states settle in a second pass — until they do, a lead
   // reads as standing by rather than being guessed at.
   publish({
-    crews: assembleCrews(threads, null, null),
+    ...assembleFleet(threads, null, null),
     loaded: true,
     failed: false,
     timedOut: false,
@@ -362,7 +398,7 @@ async function loadOnce(timeoutMs: number = READ_TIMEOUT_MS): Promise<void> {
     crewRpc<{ rows: BoardRow[] }>("crew_board", timeoutMs),
   ]);
   publish({
-    crews: assembleCrews(threads, fleet, board),
+    ...assembleFleet(threads, fleet, board),
     loaded: true,
     failed: false,
     timedOut: false,
