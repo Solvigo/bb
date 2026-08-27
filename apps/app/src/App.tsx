@@ -52,7 +52,6 @@ import {
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { OnboardingHost } from "@/components/onboarding/OnboardingHost";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
-import { ToolsExperimentGate } from "./components/tools/ToolsExperimentGate";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 
 const SettingsView = lazy(() =>
@@ -204,42 +203,37 @@ function AppRoutes() {
             path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
             element={<LegacyAutomationDetailRedirect />}
           />
-          <Route element={<ToolsExperimentGate />}>
-            <Route
-              path={TOOLS_ROUTE_PATH}
-              element={<ExtensionsLandingRedirect />}
-            />
-            <Route path={SKILLS_ROUTE_PATH} element={<ToolsView />} />
-            <Route
-              path={TOOLS_SKILL_DETAIL_ROUTE_PATH}
-              element={<ToolsView />}
-            />
-            <Route
-              path={LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH}
-              element={<LegacySkillDetailRedirect />}
-            />
-            <Route
-              path={TOOLS_REGISTRY_SKILLS_ROUTE_PATH}
-              element={<ToolsView />}
-            />
-            <Route
-              path={TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH}
-              element={<ToolsView />}
-            />
-            <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
-            <Route
-              path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-              element={<LegacyPluginBrowseRedirect />}
-            />
-            <Route
-              path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
-              element={<ToolsView />}
-            />
-            <Route
-              path={LEGACY_SKILLS_ROUTE_PATH}
-              element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
-            />
-          </Route>
+          <Route
+            path={TOOLS_ROUTE_PATH}
+            element={<ExtensionsLandingRedirect />}
+          />
+          <Route path={SKILLS_ROUTE_PATH} element={<ToolsView />} />
+          <Route path={TOOLS_SKILL_DETAIL_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH}
+            element={<LegacySkillDetailRedirect />}
+          />
+          <Route
+            path={TOOLS_REGISTRY_SKILLS_ROUTE_PATH}
+            element={<ToolsView />}
+          />
+          <Route
+            path={TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH}
+            element={<ToolsView />}
+          />
+          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
+          <Route
+            path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
+            element={<LegacyPluginBrowseRedirect />}
+          />
+          <Route
+            path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
+            element={<ToolsView />}
+          />
+          <Route
+            path={LEGACY_SKILLS_ROUTE_PATH}
+            element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
+          />
           <Route path="*" element={<SplitWorkspaceRoute />} />
         </Routes>
       </Suspense>

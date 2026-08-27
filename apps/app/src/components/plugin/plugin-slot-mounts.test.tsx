@@ -25,7 +25,6 @@ import {
   PLUGIN_PANEL_ROUTE_PATH,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
 } from "@/lib/route-paths";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   PluginPanelHeaderActions,
@@ -1263,11 +1262,9 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       registerAutomationsPanel();
 
       render(
-        <ToolsHubExperimentProvider enabled={enabled}>
-          <MemoryRouter>
-            <PluginNavSidebarItems />
-          </MemoryRouter>
-        </ToolsHubExperimentProvider>,
+        <MemoryRouter>
+          <PluginNavSidebarItems />
+        </MemoryRouter>,
       );
 
       expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
