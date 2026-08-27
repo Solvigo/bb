@@ -2338,19 +2338,6 @@ export function RootComposeView() {
       commandSuggestions.trigger,
     ],
   );
-  useEffect(() => {
-    if (!isSecondaryPanelOpen) {
-      return;
-    }
-    if (
-      activeFixedSecondaryTab !== null &&
-      activeFixedSecondaryTab.kind !== "thread-info" &&
-      activeFixedSecondaryTab.kind !== "git-diff"
-    ) {
-      return;
-    }
-    openTab({ kind: "new-tab" });
-  }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab]);
   const openBrowserTab = useCallback(
     (url?: string) => {
       const browserUrl = url ?? "";
@@ -3557,7 +3544,6 @@ export function RootComposeView() {
             isOpen: isSecondaryPanelOpen,
             showConversationCollapseControl: false,
             showGitDiffTab: false,
-            showInfoTab: false,
             showNewTabButton: false,
             inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
             onClose: closeSecondaryPanel,
