@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<defs><linearGradient id="og" gradientUnits="userSpaceOnUse" x1="32" y1="4" x2="32" y2="52"><stop offset="0" stop-color="#FFFFFF"></stop><stop offset="0.55" stop-color="#C9C7C0"></stop><stop offset="1" stop-color="#82807A"></stop></linearGradient><filter id="osh" x="-25%" y="-25%" width="160%" height="160%"><feDropShadow dx="0.5" dy="0.7" stdDeviation="0.6" flood-color="#000000" flood-opacity="0.45"></feDropShadow></filter></defs>
+
+<g transform="translate(5.2 5.2) scale(3.84)"><g transform="translate(7.25 -0.3) rotate(30 32 28)">
+<path d="M32.00,3.18 L57.87,49.39 L38.39,45.06 L32.00,53.58 L25.61,45.06 L6.13,49.39 Z M9.81,46.63 L26.39,42.94 L32.00,50.42 L37.61,42.94 L54.19,46.63 L32.00,4.85 Z M32.18,4.94 L27.00,43.72 L25.12,43.44 L31.55,4.84 Z M32.45,4.84 L38.88,43.44 L37.00,43.72 L31.82,4.94 Z" fill="url(#og)" fill-rule="nonzero" filter="url(#osh)"></path>
+</g></g>
+</svg>

@@ -307,7 +307,7 @@ async function applyFaviconState(state: FaviconRenderState): Promise<void> {
   const suffix = getFaviconVariantSuffix();
   const links = await Promise.all(
     FAVICON_SIZES.map(async (size): Promise<RenderedFaviconLink> => {
-      const baseHref = `/favicon-${size}x${size}${suffix}.png?v=airways-embossed-20260827`;
+      const baseHref = `/favicon-${size}x${size}${suffix}.png?v=airways-brand-v3-20260827`;
       const href = await createFaviconHref({
         badge: state.badge,
         baseHref,
