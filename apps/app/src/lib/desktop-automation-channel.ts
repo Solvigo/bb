@@ -51,7 +51,7 @@ function sendResponse(
   );
 }
 
-async function handleAutomationCommand(
+export async function handleAutomationCommand(
   command: DesktopAutomationCommandMessage,
   handlers: DesktopAutomationCommandHandlers,
   socket: ReconnectingWebSocket,
@@ -86,12 +86,9 @@ async function handleAutomationCommand(
           tabId: opened.tabId,
           threadId: command.threadId,
         });
-        if (payload.url.length > 0) {
-          await automation.navigate({
-            targetId: payload.targetId,
-            url: payload.url,
-          });
-        }
+        // handlers.onOpenTab already loads payload.url on the tab's native
+        // view; do not also navigate here, or the CDP navigate races the
+        // native view's own in-flight load to the same URL.
         sendResponse(socket, command.requestId, true, {
           result: { tabId: opened.tabId },
         });
