@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -225,12 +226,18 @@ function groupByProject(
       crews: [crew],
     });
   }
-  // Named projects first and alphabetical; anything still unnamed sinks to the
-  // bottom rather than jumping around as names land.
+  // Real projects first and alphabetical. Personal sinks below them — an agent
+  // tree belongs in Projects wherever it lives, but the projectless bucket is
+  // not a folder anyone chose, so it does not compete for the top. Anything
+  // still unnamed sits last rather than jumping around as names land.
+  const weightOf = (group: ProjectGroup): number => {
+    if (group.name === null) return 2;
+    return group.projectId === PERSONAL_PROJECT_ID ? 1 : 0;
+  };
   return [...groups.values()].sort((a, b) => {
-    if (a.name === null) return b.name === null ? 0 : 1;
-    if (b.name === null) return -1;
-    return a.name.localeCompare(b.name);
+    const byWeight = weightOf(a) - weightOf(b);
+    if (byWeight !== 0) return byWeight;
+    return (a.name ?? "").localeCompare(b.name ?? "");
   });
 }
 
@@ -319,8 +326,11 @@ export function CrewSidebarSection({
  */
 export function ChatsSidebarSection({
   onNavigate,
+  onNewChat,
 }: {
   onNavigate?: () => void;
+  /** Starts a plain conversation. Absent when the surface cannot start one. */
+  onNewChat?: () => void;
 }) {
   const { chats, loaded } = useCrews();
 
@@ -328,6 +338,16 @@ export function ChatsSidebarSection({
     <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
       <div className="mb-1 mt-3 flex items-center justify-between gap-2">
         <span className={SIDEBAR_SECTION_LABEL_CLASS}>Chats</span>
+        {onNewChat ? (
+          <button
+            type="button"
+            aria-label="New chat"
+            onClick={onNewChat}
+            className="grid size-5 shrink-0 place-items-center rounded text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <Icon name="Plus" className="size-3.5" aria-hidden />
+          </button>
+        ) : null}
       </div>
       {!loaded ? (
         // Silent while unknown: an empty Chats list and a Chats list that has

@@ -28,7 +28,7 @@ import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+import type { QuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -69,6 +69,13 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
 );
 
 interface AppSidebarProps {
+  /**
+   * The create-project controller from the layout that RENDERS its dialog.
+   * The sidebar must not call the hook itself: its dialog state would be a
+   * second, separate copy, and opening it would set state on a dialog nothing
+   * renders — a button that looks alive and does nothing.
+   */
+  quickCreateProject: QuickCreateProjectController;
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
   showTopReserve: boolean;
@@ -79,13 +86,13 @@ interface AppSidebarProps {
 const SIDEBAR_ACCOUNT_LABEL = PRODUCT_NAME.split(" ")[0] ?? PRODUCT_NAME;
 
 export function AppSidebar({
+  quickCreateProject,
   onResizeMouseDown,
   isResizing,
   showTopReserve,
   settingsRoutePath,
   toolsRoutePath,
 }: AppSidebarProps) {
-  const quickCreateProject = useQuickCreateProjectController();
   // A plugin may replace the sidebar's scrolling thread list. It never
   // replaces the chrome around it: the New-thread button, the search field,
   // the plugin nav rows, and the footer stay host-rendered in every sidebar.
@@ -335,8 +342,30 @@ export function AppSidebar({
             )
           ) : (
             <>
-              <CrewSidebarSection onNavigate={closeOnMobile} />
-              <ChatsSidebarSection onNavigate={closeOnMobile} />
+              <CrewSidebarSection
+                onNavigate={closeOnMobile}
+                headerTrailing={
+                  quickCreateProject.isAvailable ? (
+                    <button
+                      type="button"
+                      aria-label="New project from a folder"
+                      onClick={quickCreateProject.openCreateDialog}
+                      disabled={quickCreateProject.isCreating}
+                      className="grid size-5 shrink-0 place-items-center rounded text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
+                    >
+                      <Icon
+                        name="FolderPlus"
+                        className="size-3.5"
+                        aria-hidden
+                      />
+                    </button>
+                  ) : null
+                }
+              />
+              <ChatsSidebarSection
+                onNavigate={closeOnMobile}
+                onNewChat={handleNewChat}
+              />
             </>
           )}
         </SidebarContent>
