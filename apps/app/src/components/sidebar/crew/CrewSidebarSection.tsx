@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { useCrews, type Crew } from "./useCrews";
+import { useCrews, type Crew, type CrewLead } from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
 
 export const SIDEBAR_SECTION_LABEL_CLASS =
@@ -35,7 +35,10 @@ function CrewEntry({
           onClick={() => setOpen((v) => !v)}
           className="grid size-6 shrink-0 place-items-center rounded text-subtle-foreground hover:bg-sidebar-accent"
         >
-          <Icon name={open ? "ChevronDown" : "ChevronRight"} className="size-3.5" />
+          <Icon
+            name={open ? "ChevronDown" : "ChevronRight"}
+            className="size-3.5"
+          />
         </button>
         <NavLink
           to={threadPath(crew.commanderThreadId)}
@@ -68,33 +71,67 @@ function CrewEntry({
       {open && crew.leads.length > 0 ? (
         <ul className="ml-6 mt-0.5 flex flex-col">
           {crew.leads.map((lead) => (
-            <li key={lead.threadId}>
-              <NavLink
-                to={threadPath(lead.threadId)}
-                onClick={onNavigate}
-                title={lead.status ?? undefined}
-                className={({ isActive }) =>
-                  cn(
-                    "flex h-7 min-w-0 items-center gap-2 rounded-md px-2 transition-colors",
-                    isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
-                  )
-                }
-              >
-                <Icon
-                  name="UserRound"
-                  className={cn(
-                    "size-3.5 shrink-0",
-                    lead.working
-                      ? "text-muted-foreground"
-                      : "text-subtle-foreground",
-                  )}
-                  aria-hidden
-                />
-                <span className="truncate text-[13px] text-foreground">
-                  {lead.name}
-                </span>
-              </NavLink>
-            </li>
+            <AgentRow
+              key={lead.threadId}
+              agent={lead}
+              threadPath={threadPath}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * One agent and whatever reports to it. Renders itself the same way at every
+ * tier — a lead and a sortie are the same kind of thing at different places in
+ * the tree, so the row does not learn its own rank to draw itself.
+ */
+function AgentRow({
+  agent,
+  threadPath,
+  onNavigate,
+}: {
+  agent: CrewLead;
+  threadPath: (threadId: string) => string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <li>
+      <NavLink
+        to={threadPath(agent.threadId)}
+        onClick={onNavigate}
+        title={agent.status ?? undefined}
+        className={({ isActive }) =>
+          cn(
+            "flex h-7 min-w-0 items-center gap-2 rounded-md px-2 transition-colors",
+            isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+          )
+        }
+      >
+        <Icon
+          name="UserRound"
+          className={cn(
+            "size-3.5 shrink-0",
+            agent.working ? "text-muted-foreground" : "text-subtle-foreground",
+          )}
+          aria-hidden
+        />
+        <span className="truncate text-[13px] text-foreground">
+          {agent.name}
+        </span>
+      </NavLink>
+      {agent.sorties.length > 0 ? (
+        <ul className="ml-4 flex flex-col border-l border-tower-border pl-1">
+          {agent.sorties.map((sortie) => (
+            <AgentRow
+              key={sortie.threadId}
+              agent={sortie}
+              threadPath={threadPath}
+              onNavigate={onNavigate}
+            />
           ))}
         </ul>
       ) : null}

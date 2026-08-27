@@ -8,6 +8,13 @@ export interface CrewLead {
   /** the lead's own last report, when the crew plugin has one */
   status: string | null;
   working: boolean;
+  /**
+   * The agents reporting to this one. Sorties under a lead, and — because the
+   * thread tree has no depth limit — whatever reports to a sortie, nested
+   * rather than dropped. An agent that exists and is not shown is the one
+   * outcome an agent tree may not have.
+   */
+  sorties: CrewLead[];
 }
 
 export interface Crew {
@@ -89,10 +96,17 @@ async function readJson<T>(
   }
 }
 
-async function crewRpc<T>(method: string, timeoutMs?: number): Promise<T | null> {
+async function crewRpc<T>(
+  method: string,
+  timeoutMs?: number,
+): Promise<T | null> {
   const outcome = await readJson<{ ok?: boolean; result?: T }>(
     `/api/v1/plugins/crew/rpc/${method}`,
-    { method: "POST", headers: { "content-type": "application/json" }, body: "null" },
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+    },
     timeoutMs,
   );
   return outcome.ok ? (outcome.value.result ?? null) : null;
@@ -128,20 +142,31 @@ function assembleCrews(
   const titleOf = (t: ThreadRow) =>
     agentName((t.title ?? t.titleFallback ?? t.id).trim());
 
+  // Walk down from an agent rather than one level: the ranks the product names
+  // stop at sortie, but the thread tree does not, and a fixed two-level read
+  // would silently hide anything deeper.
+  const agentsUnder = (
+    parentId: string,
+    seen = new Set<string>(),
+  ): CrewLead[] =>
+    (byParent.get(parentId) ?? [])
+      .filter((t) => live.has(t.id) && !seen.has(t.id))
+      .map((t) => {
+        seen.add(t.id);
+        const report = reportOf.get(t.id) ?? null;
+        return {
+          threadId: t.id,
+          name: agentName(handleOf.get(t.id) ?? titleOf(t)),
+          status: report?.note ?? null,
+          working: report?.state === "working",
+          sorties: agentsUnder(t.id, seen),
+        };
+      });
+
   return threads
     .filter((t) => !t.parentThreadId && live.has(t.id))
     .map((commander) => {
-      const leads: CrewLead[] = (byParent.get(commander.id) ?? [])
-        .filter((t) => live.has(t.id))
-        .map((t) => {
-          const report = reportOf.get(t.id) ?? null;
-          return {
-            threadId: t.id,
-            name: agentName(handleOf.get(t.id) ?? titleOf(t)),
-            status: report?.note ?? null,
-            working: report?.state === "working",
-          };
-        });
+      const leads: CrewLead[] = agentsUnder(commander.id);
       const working = leads.filter((l) => l.working).length;
       return {
         commanderThreadId: commander.id,
@@ -299,6 +324,10 @@ export function reloadCrews(): void {
 }
 
 export function useCrews(): CrewsState {
-  const snapshot = useSyncExternalStore(subscribe, () => state, () => state);
+  const snapshot = useSyncExternalStore(
+    subscribe,
+    () => state,
+    () => state,
+  );
   return { ...snapshot, reload: reloadCrews };
 }
