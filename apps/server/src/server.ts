@@ -52,6 +52,11 @@ import {
   onClientSocketOpen,
 } from "./ws/client-protocol.js";
 import {
+  onDesktopAutomationSocketClose,
+  onDesktopAutomationSocketMessage,
+  onDesktopAutomationSocketOpen,
+} from "./ws/desktop-automation-protocol.js";
+import {
   onDaemonSocketClose,
   onDaemonSocketMessage,
   onDaemonSocketOpen,
@@ -470,6 +475,33 @@ export function createApp(
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
   app.route("/internal", internalApi);
+
+  app.get(
+    "/ws/desktop-automation",
+    upgradeWebSocket((context) => {
+      const problem = browserRequestProblem(context, deps);
+      if (problem !== null) {
+        throw new ApiError(
+          problem.status,
+          "forbidden_origin",
+          problem.error,
+          false,
+        );
+      }
+      return {
+        onOpen: (_event, socket) =>
+          onDesktopAutomationSocketOpen(deps.desktopAutomationChannel, socket),
+        onMessage: (event, socket) =>
+          onDesktopAutomationSocketMessage(
+            deps.desktopAutomationChannel,
+            socket,
+            event.data,
+          ),
+        onClose: (_event, socket) =>
+          onDesktopAutomationSocketClose(deps.desktopAutomationChannel, socket),
+      };
+    }),
+  );
 
   app.get(
     "/ws",

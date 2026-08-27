@@ -1,5 +1,6 @@
 import type {
   BbDesktopApi,
+  BbDesktopAutomationApi,
   BbDesktopBrowserApi,
   BbDesktopWindowState,
 } from "@bb/desktop-contract";
@@ -110,6 +111,10 @@ export function shouldReserveMacosTrafficLights({
  */
 export function getDesktopBrowserApi(): BbDesktopBrowserApi | null {
   return getBbDesktopInfo()?.browser ?? null;
+}
+
+export function getDesktopAutomationApi(): BbDesktopAutomationApi | null {
+  return getBbDesktopInfo()?.automation ?? null;
 }
 
 export function isDesktopBrowserAvailable(): boolean {

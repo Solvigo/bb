@@ -154,6 +154,10 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   stop(args: TabCommandCall): void {
     this.stopCalls.push(args);
   }
+
+  getTabWebContents(): null {
+    return null;
+  }
 }
 
 let nextWebContentsId = 1;

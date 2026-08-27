@@ -9,6 +9,7 @@ import {
   createBrowserViewVisibilityCoordinator,
   destroyPersistedBrowserView,
 } from "./browserViewVisibilityCoordinator";
+import { notifyAutomationTabClosedByUser } from "@/components/desktop-automation/DesktopAutomationBridge";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 
 export interface BrowserTabDeckProps {
@@ -103,6 +104,7 @@ export function BrowserTabDeck({
     ) {
       for (const tabId of previous.tabIds) {
         if (!tabIds.has(tabId)) {
+          notifyAutomationTabClosedByUser(tabId);
           destroyPersistedBrowserView({ desktopBrowser, tabId });
         }
       }

@@ -188,6 +188,8 @@ export interface DesktopBrowserViewManager {
    * already torn down by the time `closed` fires.
    */
   releaseWindow(hostWebContentsId: number): void;
+  /** Automation-only: resolve a tab's `webContents` when registered as a target. */
+  getTabWebContents(args: HostScopedTabArgs): import("electron").WebContents | null;
   destroyAll(): void;
 }
 
@@ -803,6 +805,13 @@ export function createDesktopBrowserViewManager(
           entry.view.webContents.close();
         }
       }
+    },
+    getTabWebContents({ hostWindow, tabId }) {
+      const entry = entries.get(browserViewKey(hostWindow, tabId));
+      if (!entry || entry.view.webContents.isDestroyed()) {
+        return null;
+      }
+      return entry.view.webContents;
     },
     destroyAll() {
       resizingHostIds.clear();

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
+import type { BbDesktopAutomationApi } from "./automation.js";
 import type { AppCommandId } from "@bb/domain";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
@@ -58,6 +59,11 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * construction.
    */
   browser: BbDesktopBrowserApi;
+  /**
+   * Automation-owned browser targets and CDP commands. Optional for version
+   * skew with desktop shells that predate browser automation.
+   */
+  automation?: BbDesktopAutomationApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   /**

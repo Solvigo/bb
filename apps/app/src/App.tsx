@@ -15,6 +15,7 @@ import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { DesktopAutomationBridge } from "./components/desktop-automation/DesktopAutomationBridge";
 import {
   AUTH_CALLBACK_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
@@ -262,6 +263,7 @@ export function App() {
 
   return (
     <QuickCreateProjectProvider>
+      <DesktopAutomationBridge />
       <AppCommandProvider>
         <RouteNavigationProvider>
           <Routes>
