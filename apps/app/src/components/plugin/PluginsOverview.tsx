@@ -93,15 +93,21 @@ export function PluginsOverview() {
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
 
+  // `plugins` is empty before the list arrives as well as when nothing is
+  // installed, so the count waits for the query rather than reporting zero
+  // for a machine that has plugins.
+  const installedCountKnown = listQuery.data !== undefined;
   const modes: readonly ResourceCollectionMode<PluginsCollectionMode>[] = [
     { id: "browse" as const, label: "Browse" },
     {
       id: "installed",
       label: "Installed",
-      count: plugins.length,
-      accessibleLabel: `Installed, ${plugins.length} ${
-        plugins.length === 1 ? "plugin" : "plugins"
-      }`,
+      count: installedCountKnown ? plugins.length : undefined,
+      accessibleLabel: installedCountKnown
+        ? `Installed, ${plugins.length} ${
+            plugins.length === 1 ? "plugin" : "plugins"
+          }`
+        : "Installed",
     },
   ];
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();

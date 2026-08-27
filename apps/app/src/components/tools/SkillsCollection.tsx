@@ -469,7 +469,11 @@ export function SkillsOverview({
         {
           id: "library",
           label: TOOLS_OWNED_COLLECTION_LABEL.skills,
-          count: skills.length,
+          // No number until there is one to tell the truth with. Until the
+          // first load lands, `skills` is empty because nothing has arrived —
+          // not because the library is empty — and a tab reading "Library 0"
+          // over a library of 75 is a worse answer than no number at all.
+          count: isLoading || hasError ? undefined : skills.length,
         },
         { id: "browse", label: "Browse" },
       ]}
