@@ -120,5 +120,5 @@ export const AIRWAYS_BRAND_ASSETS = {
   favicon: getAirwaysBrandPngUrl("jet-embossed-mono-1024.png"),
   largeMark: getAirwaysBrandPngUrl("jet-embossed-mono-1024.png"),
   smallMark: getAirwaysBrandPngUrl("jet-flat-mono-256.png"),
-  sidebarLockup: getAirwaysBrandPngUrl("lockup-mono-on-light.png"),
+  sidebarLockup: getAirwaysBrandPngUrl("lockup-mono-on-dark.png"),
 } as const;
