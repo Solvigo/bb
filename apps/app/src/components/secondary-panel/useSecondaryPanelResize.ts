@@ -17,11 +17,13 @@ type SecondaryPanelResizeHandler = (size: number) => void;
 
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
+  managesPanelVisibility?: boolean;
   onPanelWidthChange: SecondaryPanelWidthChangeHandler;
 }
 
 export function useSecondaryPanelResize({
   isSecondaryPanelOpen,
+  managesPanelVisibility = true,
   onPanelWidthChange,
 }: UseSecondaryPanelResizeArgs) {
   const [isSecondaryPanelDragging, setIsSecondaryPanelDragging] =
@@ -36,6 +38,11 @@ export function useSecondaryPanelResize({
 
   const prevOpenRef = useRef(isSecondaryPanelOpen);
   useEffect(() => {
+    if (!managesPanelVisibility) {
+      prevOpenRef.current = isSecondaryPanelOpen;
+      return;
+    }
+
     // Skip initial mount — Panel's defaultSize handles it.
     if (prevOpenRef.current === isSecondaryPanelOpen) {
       return;
@@ -55,7 +62,7 @@ export function useSecondaryPanelResize({
     } else {
       panel.collapse();
     }
-  }, [isSecondaryPanelOpen, onPanelWidthChange]);
+  }, [isSecondaryPanelOpen, managesPanelVisibility, onPanelWidthChange]);
 
   useResizeObserver({
     ref: secondaryPanelRef,

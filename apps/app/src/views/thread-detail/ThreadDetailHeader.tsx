@@ -160,7 +160,7 @@ export function ThreadDetailHeader({
       >
         <p
           className={cn(
-            "relative flex min-w-0 items-center gap-2 truncate text-base font-normal transition-colors",
+            "relative flex min-w-0 items-center gap-2 truncate text-base font-semibold transition-colors",
             isSplitPaneHeader && !isFocused && CONTEXT_INACTIVE_TEXT_CLASS,
             beginPaneDrag &&
               cn(

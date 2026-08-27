@@ -392,6 +392,7 @@ export function ThreadSecondaryPanel({
     handleSecondaryPanelResizeStart,
     handleSecondaryPanelWidthChange,
   } = useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: isOpen });
+  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const {
     handleSecondaryPanelDragging: handleResizeDragging,
     handleSecondaryPanelResize,
@@ -400,6 +401,10 @@ export function ThreadSecondaryPanel({
     secondaryResizablePanelRef: resizablePanelRef,
   } = useSecondaryPanelResize({
     isSecondaryPanelOpen: isOpen,
+    // The split-workspace host owns its shared PanelGroup layout. Imperatively
+    // expanding a freshly swapped pane panel races that panel's registration
+    // and can address panel index -1 inside react-resizable-panels.
+    managesPanelVisibility: hostLayout === null,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
   });
   const handleSecondaryPanelDragging: SecondaryPanelDraggingHandler =
@@ -428,7 +433,6 @@ export function ThreadSecondaryPanel({
     },
     [handleSecondaryPanelResize, onPanelResize],
   );
-  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
     if (hostLayout?.isSuppressed) {
       return;
