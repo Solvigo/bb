@@ -13,7 +13,6 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginSidebarFooterActions } from "./PluginSidebarFooterActions";
 
 function registrationSet(
@@ -38,12 +37,10 @@ function LocationProbe() {
 function renderWithProviders(ui: ReactNode, toolsHubEnabled = false) {
   return render(
     <MemoryRouter>
-      <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
-        <SidebarProvider>
-          {ui}
-          <LocationProbe />
-        </SidebarProvider>
-      </ToolsHubExperimentProvider>
+      <SidebarProvider>
+        {ui}
+        <LocationProbe />
+      </SidebarProvider>
     </MemoryRouter>,
   );
 }
