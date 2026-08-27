@@ -119,6 +119,21 @@ than trusting that it worked where it used to live. Check in particular that a
 component calling a state hook is the same one rendering what that state drives;
 two calls to the same hook are two separate copies.
 
+## Cut a bookkeeping PR from the shared base, never from live
+
+When work lands on a long-lived integration branch first, a PR for one piece of
+it must be cut from **the branch it will merge into**, with that piece's commits
+cherry-picked. Pointing a new branch at the live tip gives you everything on
+live at that moment — including other people's unlanded work — under a title
+that describes one change.
+
+It happened here: a PR titled as a one-file documentation change carried six
+commits and nine files, and would have landed an entire sidebar restructure.
+Nothing about the PR looked wrong; only the diff said so.
+
+So: **read the diff against the base before landing, not the title.** If the two
+disagree, the title is the one that is lying.
+
 ## The rail
 
 Platform is a curated allowlist and reads exactly **Skills, Connections,
