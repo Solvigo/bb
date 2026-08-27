@@ -1,4 +1,5 @@
 const AIRWAYS_BRAND_PNG_BASE_URL = "/brand/png";
+const AIRWAYS_BRAND_SVG_BASE_URL = "/brand/svg";
 
 /**
  * The complete approved raster brand package. Keeping the filenames typed and
@@ -72,10 +73,52 @@ export function getAirwaysBrandPngUrl(
   return `${AIRWAYS_BRAND_PNG_BASE_URL}/${fileName}`;
 }
 
+/**
+ * The complete approved vector brand package. SVG variants live separately
+ * from the raster exports so callers can deliberately choose the right format
+ * for their surface and size.
+ */
+export const AIRWAYS_BRAND_SVG_FILES = [
+  "app-icon-ember.svg",
+  "app-icon-flat-ember.svg",
+  "app-icon-flat-graphite.svg",
+  "app-icon-flat-mono.svg",
+  "app-icon-graphite.svg",
+  "app-icon-mono.svg",
+  "app-icon-outline-ember.svg",
+  "app-icon-outline-mono.svg",
+  "jet-embossed-ember.svg",
+  "jet-embossed-graphite.svg",
+  "jet-embossed-mono.svg",
+  "jet-flat-ember.svg",
+  "jet-flat-graphite.svg",
+  "jet-flat-mono.svg",
+  "jet-outline-ember.svg",
+  "jet-outline-graphite.svg",
+  "jet-outline-mono.svg",
+  "lockup-ember-on-dark.svg",
+  "lockup-ember-on-light.svg",
+  "lockup-mono-on-dark.svg",
+  "lockup-mono-on-light.svg",
+  "mark-black.svg",
+  "mark-ember.svg",
+  "mark-white.svg",
+] as const;
+
+export type AirwaysBrandSvgFile = (typeof AIRWAYS_BRAND_SVG_FILES)[number];
+export type AirwaysBrandSvgUrl =
+  `${typeof AIRWAYS_BRAND_SVG_BASE_URL}/${AirwaysBrandSvgFile}`;
+
+export function getAirwaysBrandSvgUrl(
+  fileName: AirwaysBrandSvgFile,
+): AirwaysBrandSvgUrl {
+  return `${AIRWAYS_BRAND_SVG_BASE_URL}/${fileName}`;
+}
+
 /** Semantic defaults currently used by the app shell. */
 export const AIRWAYS_BRAND_ASSETS = {
   favicon: getAirwaysBrandPngUrl("jet-embossed-mono-1024.png"),
   largeMark: getAirwaysBrandPngUrl("jet-embossed-mono-1024.png"),
   smallMark: getAirwaysBrandPngUrl("jet-flat-mono-256.png"),
-  sidebarLockup: getAirwaysBrandPngUrl("lockup-mono-on-light.png"),
+  sidebarLockup: getAirwaysBrandPngUrl("lockup-mono-on-dark.png"),
 } as const;
