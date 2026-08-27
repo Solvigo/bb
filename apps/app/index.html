@@ -55,24 +55,7 @@
     />
     <script>
       (function () {
-        var dev = "%MODE%" === "development";
-        function setFavicon(dark) {
-          var s = dev ? "-dev" : dark ? "-dark" : "";
-          document.getElementById("favicon-32").href =
-            "/favicon-32x32" +
-            s +
-            ".png?v=airways-embossed-20260827";
-          document.getElementById("favicon-16").href =
-            "/favicon-16x16" +
-            s +
-            ".png?v=airways-embossed-20260827";
-        }
         var mq = window.matchMedia("(prefers-color-scheme: dark)");
-        setFavicon(mq.matches);
-        if (!dev)
-          mq.addEventListener("change", function (e) {
-            setFavicon(e.matches);
-          });
         function getFaviconColorSuffix() {
           try {
             var color = localStorage.getItem("bb.faviconColor");

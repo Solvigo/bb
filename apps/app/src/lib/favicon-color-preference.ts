@@ -327,9 +327,11 @@ let initialized = false;
 
 /**
  * Applies the favicon state on startup and re-applies it whenever the color
- * preference, unread badge, or system color scheme changes. The scheme listener runs
- * after the index.html bootstrap listener (registered first), so a tinted
- * or badged favicon survives that script resetting the hrefs on theme changes.
+ * preference, unread badge, or system color scheme changes.
+ *
+ * This is the only writer of the tab icon. A second one in the index.html
+ * bootstrap used to reset the hrefs to plain file paths on every theme change,
+ * discarding whatever tint or unread badge was rendered here.
  */
 export function initializeFavicon(): void {
   if (initialized || typeof window === "undefined") return;
