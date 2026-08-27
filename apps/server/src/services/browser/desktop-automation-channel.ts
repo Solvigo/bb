@@ -78,16 +78,22 @@ interface PendingCommand {
 const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
 
 export class DesktopAutomationChannelCoordinator {
-  private readonly clients = new Set<DesktopAutomationChannelSocket>();
+  // Ordered most-recently-registered first. A desktop app relaunch (rebuild,
+  // crash recovery, manual restart) opens a new socket without necessarily
+  // closing the old one promptly server-side (an abrupt process kill can
+  // leave the previous connection looking open until a TCP-level timeout).
+  // Dispatching to the newest registration means a relaunch self-heals
+  // instead of every command routing to a dead leftover connection forever.
+  private clients: DesktopAutomationChannelSocket[] = [];
   private readonly pendingByRequestId = new Map<string, PendingCommand>();
 
   registerClient(socket: DesktopAutomationChannelSocket): void {
-    this.clients.add(socket);
+    this.clients = [socket, ...this.clients.filter((s) => s !== socket)];
   }
 
   unregisterClient(socket: DesktopAutomationChannelSocket): void {
-    this.clients.delete(socket);
-    if (this.clients.size === 0) {
+    this.clients = this.clients.filter((s) => s !== socket);
+    if (this.clients.length === 0) {
       for (const [requestId, pending] of this.pendingByRequestId) {
         clearTimeout(pending.timeout);
         pending.reject(new DesktopAutomationChannelUnavailableError());
@@ -97,7 +103,7 @@ export class DesktopAutomationChannelCoordinator {
   }
 
   hasConnectedChannel(): boolean {
-    return this.clients.size > 0;
+    return this.clients.length > 0;
   }
 
   handleClientMessage(raw: unknown): void {
@@ -149,7 +155,7 @@ export class DesktopAutomationChannelCoordinator {
   }
 
   cancelRequest(requestId: string): void {
-    const socket = this.firstClient();
+    const socket = this.preferredClient();
     if (socket === undefined) {
       return;
     }
@@ -157,11 +163,9 @@ export class DesktopAutomationChannelCoordinator {
     this.rejectPending(requestId, new DesktopAutomationCommandCancelledError());
   }
 
-  private firstClient(): DesktopAutomationChannelSocket | undefined {
-    for (const socket of this.clients) {
-      return socket;
-    }
-    return undefined;
+  /** The most-recently-registered connected client, or undefined if none. */
+  private preferredClient(): DesktopAutomationChannelSocket | undefined {
+    return this.clients[0];
   }
 
   private dispatch(args: {
@@ -170,7 +174,7 @@ export class DesktopAutomationChannelCoordinator {
     threadId: string;
     verb: BrowserVerb;
   }): Promise<unknown> {
-    const socket = this.firstClient();
+    const socket = this.preferredClient();
     if (socket === undefined) {
       return Promise.reject(new DesktopAutomationChannelUnavailableError());
     }
