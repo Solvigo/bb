@@ -31,6 +31,7 @@ describe("bb browser command output", () => {
 
   it("documents the verb set in help", async () => {
     const help = await getHelpOutput(["browser"], register);
+    const openHelp = await getHelpOutput(["browser", "open"], register);
 
     expect(help).toContain("open [options] <url>");
     expect(help).toContain("list");
@@ -40,7 +41,7 @@ describe("bb browser command output", () => {
     expect(help).toContain("type [options] <target-id>");
     expect(help).toContain("eval [options] <target-id>");
     expect(help).toContain("close [options] <target-id>");
-    expect(help).toContain("--thread <id>");
+    expect(openHelp).toContain("--thread <id>");
   });
 
   it("opens a URL with explicit thread scope", async () => {
