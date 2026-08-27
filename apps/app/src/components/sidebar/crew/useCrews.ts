@@ -278,6 +278,40 @@ function publish(next: CrewsSnapshot): void {
   for (const notify of subscribers) notify();
 }
 
+/**
+ * One fleet read at a time, and one more queued behind it at most.
+ *
+ * The sidebar reloads on every thread-changed message and every crew signal,
+ * which was free when the fleet call was cheap. Carrying liveness made that
+ * call cost seconds, so a busy fleet had slow reads piling on top of each
+ * other — each one redoing work the one before it had not finished.
+ *
+ * A signal that arrives mid-read does not start a second read; it asks the
+ * running one to go round again when it lands. Nothing is missed, because the
+ * follow-up read sees whatever changed while the first was in flight, and the
+ * worst case is bounded at two reads rather than one per message.
+ */
+let loadInFlight: Promise<void> | null = null;
+let queuedTimeoutMs: number | null = null;
+
+function requestLoad(timeoutMs: number = READ_TIMEOUT_MS): void {
+  if (loadInFlight) {
+    // The follow-up keeps the most generous budget asked for while it waited.
+    // A manual retry queued behind a routine refresh must not be demoted to the
+    // routine deadline — the person pressing it has already seen this fail.
+    queuedTimeoutMs = Math.max(queuedTimeoutMs ?? 0, timeoutMs);
+    return;
+  }
+  loadInFlight = loadOnce(timeoutMs).finally(() => {
+    loadInFlight = null;
+    if (queuedTimeoutMs !== null) {
+      const next = queuedTimeoutMs;
+      queuedTimeoutMs = null;
+      requestLoad(next);
+    }
+  });
+}
+
 async function loadOnce(timeoutMs: number = READ_TIMEOUT_MS): Promise<void> {
   const outcome = await readJson<unknown>(
     "/api/v1/threads?archived=false",
@@ -338,12 +372,12 @@ async function loadOnce(timeoutMs: number = READ_TIMEOUT_MS): Promise<void> {
 function startSources(): void {
   if (started) return;
   started = true;
-  void loadOnce();
+  requestLoad();
   const offSignal = wsManager.onPluginSignal((s) => {
-    if (s.pluginId === "crew") void loadOnce();
+    if (s.pluginId === "crew") requestLoad();
   });
   const offChanged = wsManager.onChanged((m) => {
-    if (m.entity === "thread") void loadOnce();
+    if (m.entity === "thread") requestLoad();
   });
   disposeSources = () => {
     offSignal();
@@ -366,7 +400,7 @@ function subscribe(notify: () => void): () => void {
 }
 
 export function reloadCrews(): void {
-  void loadOnce(RETRY_TIMEOUT_MS);
+  requestLoad(RETRY_TIMEOUT_MS);
 }
 
 export function useCrews(): CrewsState {
