@@ -29,6 +29,7 @@ import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_WINDOW_DRAG_CLASS,
+  MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
@@ -264,41 +265,48 @@ export function AppSidebar({
       }}
     />
   );
+  const sidebarIdentityControls = threadSearch.isActive ? (
+    <div
+      className={cn(
+        "min-w-0 flex-1",
+        usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+      )}
+    >
+      {sidebarSearchControl}
+    </div>
+  ) : (
+    <>
+      <div className="flex min-w-0 flex-1 items-center">
+        <AirwaysMark size={22} />
+      </div>
+      <div className={cn(usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS)}>
+        {sidebarSearchControl}
+      </div>
+    </>
+  );
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
       <Sidebar ref={sidebarRef} onKeyDown={threadSearch.onKeyDown}>
         {showTopReserve ? (
-          /* Top reserve that keeps the sidebar's content anchored below the
-             title-bar chrome, mirroring the page-header height on the content
-             side. The sidebar toggle is pinned at the app's top-left for every
-             chrome (see AppLayout's SidebarTriggerOverlay), so this row hosts no
-             trigger of its own — it stays mounted in every sidebar state,
-             including while the panel collapses off-canvas, so the content holds
-             its vertical position instead of riding up under the pinned toggle
-             during the animation. On desktop it doubles as the window-drag
-             strip. */
+          /* The identity and search controls share the title-bar reserve rather
+             than sitting below an empty chrome row. This keeps the rail compact
+             while the row still supplies the desktop window-drag strip. */
           <div
             data-testid="app-sidebar-top-reserve-row"
             className={cn(
               CHROME_ROW_CLASS,
-              "shrink-0 justify-end px-2",
+              "shrink-0 gap-2 px-3 group-data-[collapsible=icon]:hidden",
               usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             )}
-          />
-        ) : null}
-        <div className="flex min-h-11 shrink-0 items-center gap-2 px-3 pb-1 pt-2 group-data-[collapsible=icon]:hidden">
-          {threadSearch.isActive ? (
-            <div className="min-w-0 flex-1">{sidebarSearchControl}</div>
-          ) : (
-            <>
-              <div className="flex min-w-0 flex-1 items-center">
-                <AirwaysMark size={18} />
-              </div>
-              {sidebarSearchControl}
-            </>
-          )}
-        </div>
+          >
+            {sidebarIdentityControls}
+          </div>
+        ) : (
+          <div className="flex min-h-11 shrink-0 items-center gap-2 px-3 pb-1 pt-2 group-data-[collapsible=icon]:hidden">
+            {sidebarIdentityControls}
+          </div>
+        )}
         <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
           <NewCrewButton />
         </div>
