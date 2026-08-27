@@ -1,9 +1,6 @@
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Icon } from "@bb/shared-ui/icon";
+import { AIRWAYS_BRAND_ASSETS } from "@/lib/brand-assets";
 import { PRODUCT_NAME } from "@/lib/product";
-
-const DEPTH_MARK_SRC = "/brand/jet-depth-mono.svg";
-const SMALL_MARK_SRC = "/brand/mark-white.svg";
 
 export function AirwaysMark({
   size = 22,
@@ -14,7 +11,11 @@ export function AirwaysMark({
 }) {
   return (
     <img
-      src={size < 18 ? SMALL_MARK_SRC : DEPTH_MARK_SRC}
+      src={
+        size < 18
+          ? AIRWAYS_BRAND_ASSETS.smallMark
+          : AIRWAYS_BRAND_ASSETS.largeMark
+      }
       alt=""
       width={size}
       height={size}
@@ -43,13 +44,12 @@ export function AirwaysWordmark({ className }: { className?: string }) {
 
 export function BrandLockup() {
   return (
-    <div className="flex h-8 items-center gap-2 px-4 text-sidebar-foreground">
-      <AirwaysMark size={20} />
-      <AirwaysWordmark className="min-w-0 truncate text-sm" />
-      <Icon
-        name="ChevronDown"
-        className="size-3 shrink-0 text-subtle-foreground"
-        aria-hidden
+    <div className="flex h-[68px] items-center justify-center px-4">
+      <img
+        src={AIRWAYS_BRAND_ASSETS.sidebarWordmark}
+        alt={PRODUCT_NAME}
+        className="block h-auto w-full max-w-[184px] select-none object-contain"
+        draggable={false}
       />
     </div>
   );

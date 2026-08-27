@@ -276,7 +276,7 @@ export function AppSidebar({
         ) : null}
         {/* The mark is the first thing in the rail, then the one action the
             rail is built around. */}
-        <div className="-mt-2 shrink-0 pb-2 group-data-[collapsible=icon]:hidden">
+        <div className="-mt-3 shrink-0 pb-1 group-data-[collapsible=icon]:hidden">
           <BrandLockup />
         </div>
         <div className="shrink-0 px-2 pb-1 group-data-[collapsible=icon]:hidden">
