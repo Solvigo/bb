@@ -26,13 +26,19 @@ describe("resolveToolsBreadcrumbs", () => {
   });
 
   it("includes the selected collection tab", () => {
+    // Skills lands on the library, so the bare path is the library and it is
+    // browsing that has to say so.
     expect(resolveToolsBreadcrumbs("/tools/skills")).toEqual([
       { label: "Skills", to: "/tools/skills" },
-      { label: "Browse" },
+      { label: "Library" },
     ]);
     expect(resolveToolsBreadcrumbs("/tools/skills", "?view=library")).toEqual([
       { label: "Skills", to: "/tools/skills" },
       { label: "Library" },
+    ]);
+    expect(resolveToolsBreadcrumbs("/tools/skills", "?view=browse")).toEqual([
+      { label: "Skills", to: "/tools/skills" },
+      { label: "Browse" },
     ]);
     expect(resolveToolsBreadcrumbs("/tools/plugins")).toEqual([
       { label: "Plugins", to: "/tools/plugins" },
