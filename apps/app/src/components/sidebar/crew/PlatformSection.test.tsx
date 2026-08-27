@@ -32,7 +32,7 @@ function registerNavPanels(
 function renderSection() {
   return render(
     <MemoryRouter>
-      <PlatformSection labelClassName="label" />
+      <PlatformSection />
     </MemoryRouter>,
   );
 }

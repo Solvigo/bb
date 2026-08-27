@@ -47,15 +47,12 @@ const PLATFORM_ROWS: PlatformRow[] = [
 ];
 
 export function PlatformSection({
-  labelClassName,
   onNavigate,
 }: {
-  labelClassName: string;
   onNavigate?: () => void;
 }) {
   return (
-    <div className="flex flex-col px-2 group-data-[collapsible=icon]:hidden">
-      <div className={cn(labelClassName, "mb-1 mt-3")}>Platform</div>
+    <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
       {PLATFORM_ROWS.map((row) => (
         <NavLink
           key={row.key}

@@ -5,30 +5,53 @@
 @import "@/components/ui/theme.css";
 
 /*
- * Tower surface scale. The shell uses the same cool neutral hierarchy as the
- * Codex desktop app while the Tower name remains the component-facing API.
- * Exposed as Tailwind color utilities: bg-tower-*, text-tower-*, border-tower-*.
+ * Product surface scale. These roles intentionally derive from the shared
+ * canvas/ink anchors instead of carrying a second hard-coded gray palette.
+ * That keeps the three-pane harness coherent with custom themes while still
+ * giving the sidebar, composer, renderer, and cards distinct depth.
+ *
+ * The `tower-*` names remain the component-facing API until the old surface
+ * package is renamed; they no longer imply a separate visual system.
  */
 @theme {
-  --color-tower-bg: #181818; /* commander chat / main canvas */
-  --color-tower-render: #1f1f1f; /* rendering-area surround */
-  --color-tower-surface: #1f1f1f; /* rendering content */
-  --color-tower-panel: #242424; /* panels / cards */
-  --color-tower-raised: #2a2a2a; /* chat bubble / raised card fill */
-  --color-tower-user-message: #252525; /* user-sent chat bubble */
-  --color-tower-bright: #2a2a2a;
-  --color-tower-header: #1f1f1f; /* rendering-area header */
-  --color-tower-header-border: #2b2b2b; /* 1px header seam */
-  --color-tower-tab: #aaa9a5; /* header tab-button icon color */
-  --color-tower-border: #2b2b2b;
-  --color-tower-border-strong: #2b2b2b;
-  --color-tower-input: #2b2b2b; /* chat input surface */
-  --color-tower-input-border: #2b2b2b; /* 1px input/card edge */
-  --color-tower-fg: #f5f4ef; /* brightest text */
-  --color-tower-fg-body: #c7c5ba; /* primary body text */
-  --color-tower-fg-muted: #a3a199; /* secondary */
-  --color-tower-fg-dim: #8f8d84; /* labels */
-  --color-tower-fg-faint: #6b6960; /* faintest / stale */
+  --color-tower-bg: var(--canvas); /* commander chat / main canvas */
+  --color-tower-render: var(--canvas);
+  --color-tower-surface: var(--canvas);
+  /* #252524 — selected/visited rendering tab and raised panel surface. */
+  --color-tower-panel: color-mix(in oklch, var(--ink) 11.03%, var(--canvas));
+  --color-tower-raised: color-mix(in oklch, var(--ink) 11.03%, var(--canvas));
+  --color-tower-user-message: color-mix(
+    in oklch,
+    var(--ink) 9.5%,
+    var(--canvas)
+  );
+  --color-tower-bright: color-mix(in oklch, var(--ink) 11.03%, var(--canvas));
+  --color-tower-header: var(--canvas);
+  /* #20201f — the rendering-area edge remains quieter than chat chrome. */
+  --color-tower-header-border: color-mix(
+    in oklch,
+    var(--ink) 8.22%,
+    var(--canvas)
+  );
+  --color-tower-tab: color-mix(in oklch, var(--ink) 72%, var(--canvas));
+  --color-tower-border: color-mix(in oklch, var(--ink) 8.22%, var(--canvas));
+  --color-tower-border-strong: color-mix(
+    in oklch,
+    var(--ink) 15.1%,
+    var(--canvas)
+  );
+  /* #211f1d composer on a #2e2c2a one-pixel edge. */
+  --color-tower-input: color-mix(in oklch, var(--ink) 7.9%, var(--canvas));
+  --color-tower-input-border: color-mix(
+    in oklch,
+    var(--ink) 15.1%,
+    var(--canvas)
+  );
+  --color-tower-fg: var(--ink); /* brightest text */
+  --color-tower-fg-body: color-mix(in oklch, var(--ink) 84%, var(--canvas));
+  --color-tower-fg-muted: color-mix(in oklch, var(--ink) 68%, var(--canvas));
+  --color-tower-fg-dim: color-mix(in oklch, var(--ink) 56%, var(--canvas));
+  --color-tower-fg-faint: color-mix(in oklch, var(--ink) 38%, var(--canvas));
   --color-tower-accent: #f54e00; /* warm accent — attention only */
   --color-tower-accent-hover: #ff6a2a;
   --color-tower-accent-tint: #33231a; /* attention surface behind accent text */
@@ -37,8 +60,8 @@
   --color-tower-flight-strong: #d9825e; /* in-flight emphasis */
   --color-tower-hold: #d4a84b; /* in the hold / waiting */
   --color-tower-silent: #33211d; /* silent / lost-contact flight card tint */
-  --color-tower-transcript: #181818; /* the lane transcript stream ground */
-  --color-tower-inset: #1f1f1f; /* lead-card inset blocks (focus / next) */
+  --color-tower-transcript: var(--canvas); /* the lane transcript stream ground */
+  --color-tower-inset: color-mix(in oklch, var(--ink) 3.32%, var(--canvas));
   /* Blueprint fonts */
   --font-tower-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-tower-sans: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

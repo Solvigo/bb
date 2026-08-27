@@ -17,12 +17,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
-import {
-  CrewSidebarSection,
-  NewCrewButton,
-  SIDEBAR_SECTION_LABEL_CLASS,
-} from "./crew/CrewSidebarSection";
-import { AirwaysMark, AirwaysWordmark } from "./crew/BrandLockup";
+import { CrewSidebarSection, NewCrewButton } from "./crew/CrewSidebarSection";
+import { AirwaysMark } from "./crew/BrandLockup";
 import { PlatformSection } from "./crew/PlatformSection";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
@@ -291,26 +287,22 @@ export function AppSidebar({
             )}
           />
         ) : null}
-        <div className="flex min-h-10 shrink-0 items-center gap-2 px-3 pt-1 group-data-[collapsible=icon]:hidden">
+        <div className="flex min-h-11 shrink-0 items-center gap-2 px-3 pb-1 pt-2 group-data-[collapsible=icon]:hidden">
           {threadSearch.isActive ? (
             <div className="min-w-0 flex-1">{sidebarSearchControl}</div>
           ) : (
             <>
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <AirwaysMark size={16} />
-                <AirwaysWordmark className="truncate text-sm text-sidebar-foreground" />
+              <div className="flex min-w-0 flex-1 items-center">
+                <AirwaysMark size={18} />
               </div>
               {sidebarSearchControl}
             </>
           )}
         </div>
-        <div className="shrink-0 px-2 pb-1 group-data-[collapsible=icon]:hidden">
+        <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
           <NewCrewButton />
         </div>
-        <PlatformSection
-          labelClassName={SIDEBAR_SECTION_LABEL_CLASS}
-          onNavigate={closeOnMobile}
-        />
+        <PlatformSection onNavigate={closeOnMobile} />
         <CrewSidebarSection onNavigate={closeOnMobile} />
         {/* Crews are THE object. Raw threads live behind ONE collapsed
             disclosure at the very bottom — the escape hatch to anything the
