@@ -44,7 +44,7 @@ export function AirwaysWordmark({ className }: { className?: string }) {
 
 export function BrandLockup() {
   return (
-    <div className="flex h-[60px] items-center justify-center overflow-hidden px-2">
+    <div className="flex h-[76px] items-center justify-center overflow-hidden px-2 pb-2 pt-3">
       <img
         src={AIRWAYS_BRAND_ASSETS.sidebarLockup}
         alt={PRODUCT_NAME}
