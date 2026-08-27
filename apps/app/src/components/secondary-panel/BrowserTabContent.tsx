@@ -47,7 +47,6 @@ import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
   resolveAutomationTargetIdForTab,
-  stopAutomationTarget,
   useAutomationControlledTabIds,
 } from "@/components/desktop-automation/DesktopAutomationBridge";
 import { AutomationControlBanner } from "@/components/desktop-automation/AutomationControlBanner";
@@ -797,22 +796,19 @@ export function BrowserTabContent({
     getBbDesktopInfo()?.openExternalUrl(currentUrl);
   }, [currentUrl]);
 
+  const automationControlledTabIds = useAutomationControlledTabIds();
+  const automationTargetId = automationControlledTabIds.has(tabId)
+    ? resolveAutomationTargetIdForTab(tabId)
+    : null;
+
   if (desktopBrowser === null) {
     return <BrowserUnavailable />;
   }
 
-  const automationControlledTabIds = useAutomationControlledTabIds();
-  const isAutomationControlled = automationControlledTabIds.has(tabId);
-  const automationTargetId = isAutomationControlled
-    ? resolveAutomationTargetIdForTab(tabId)
-    : null;
-
   return (
     <div data-app-browser className="flex h-full min-h-0 flex-col">
-      {isAutomationControlled ? (
-        <AutomationControlBanner
-          targetId={resolveAutomationTargetIdForTab(tabId) ?? tabId}
-        />
+      {automationTargetId !== null ? (
+        <AutomationControlBanner targetId={automationTargetId} />
       ) : null}
       <BrowserChrome
         addressDraft={addressDraft}
