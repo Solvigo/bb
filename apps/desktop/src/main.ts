@@ -144,6 +144,10 @@ import {
 } from "./desktop-browser-view.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
+import {
+  createDesktopBrowserAutomationManager,
+  registerDesktopBrowserAutomationIpc,
+} from "./desktop-browser-automation-manager.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
@@ -2167,6 +2171,9 @@ async function runDesktopApp(): Promise<void> {
     },
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
+  registerDesktopBrowserAutomationIpc(
+    createDesktopBrowserAutomationManager(desktopBrowserViewManager),
+  );
   desktopUpdateService.start();
   desktopAutoUpdateService.start();
 

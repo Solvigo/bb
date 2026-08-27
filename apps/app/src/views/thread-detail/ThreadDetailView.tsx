@@ -140,7 +140,7 @@ import {
   ThreadStorageFilePreviewTabContent,
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
-import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+import { registerDesktopAutomationThreadHandlers } from "@/components/desktop-automation/DesktopAutomationBridge";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import {
   SIDE_CHAT_PLUGIN_ID,
@@ -634,6 +634,17 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     environmentId: thread?.environmentId,
     openTab,
   });
+  useEffect(() => {
+    if (threadId === undefined) {
+      return;
+    }
+    return registerDesktopAutomationThreadHandlers({
+      threadId,
+      onActivateTab: activateTab,
+      onCloseTab: closeTab,
+      onOpenTab: (request) => openTab(request)?.id ?? null,
+    });
+  }, [activateTab, closeTab, openTab, threadId]);
   const browserDeckThreadId = thread?.id ?? null;
   const browserDeckEnvironmentId = thread?.environmentId ?? null;
   const handleBrowserAddressFocusRequestConsumed = useCallback(

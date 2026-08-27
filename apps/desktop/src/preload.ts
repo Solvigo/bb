@@ -9,6 +9,7 @@ import {
   bbDesktopWindowStateSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
+  type BbDesktopAutomationApi,
   type BbDesktopBrowserApi,
   type BbDesktopBrowserOpenTabHandler,
   type BbDesktopBrowserScopedOpenTabHandler,
@@ -47,6 +48,17 @@ import {
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "./desktop-browser-ipc.js";
+import {
+  BB_DESKTOP_AUTOMATION_CLICK_CHANNEL,
+  BB_DESKTOP_AUTOMATION_CLOSE_CHANNEL,
+  BB_DESKTOP_AUTOMATION_EVAL_CHANNEL,
+  BB_DESKTOP_AUTOMATION_NAVIGATE_CHANNEL,
+  BB_DESKTOP_AUTOMATION_REGISTER_TARGET_CHANNEL,
+  BB_DESKTOP_AUTOMATION_SNAPSHOT_CHANNEL,
+  BB_DESKTOP_AUTOMATION_STOP_CHANNEL,
+  BB_DESKTOP_AUTOMATION_TYPE_CHANNEL,
+  BB_DESKTOP_AUTOMATION_UNREGISTER_TARGET_CHANNEL,
+} from "./desktop-browser-automation-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
@@ -242,8 +254,49 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
 };
 
+const bbAutomationApi: BbDesktopAutomationApi = {
+  registerTarget(request) {
+    return ipcRenderer.invoke(
+      BB_DESKTOP_AUTOMATION_REGISTER_TARGET_CHANNEL,
+      request,
+    );
+  },
+  unregisterTarget(request) {
+    return ipcRenderer.invoke(
+      BB_DESKTOP_AUTOMATION_UNREGISTER_TARGET_CHANNEL,
+      request,
+    );
+  },
+  navigate(request) {
+    return ipcRenderer.invoke(BB_DESKTOP_AUTOMATION_NAVIGATE_CHANNEL, request);
+  },
+  snapshot(targetId) {
+    return ipcRenderer.invoke(BB_DESKTOP_AUTOMATION_SNAPSHOT_CHANNEL, {
+      targetId,
+    });
+  },
+  click(request) {
+    return ipcRenderer.invoke(BB_DESKTOP_AUTOMATION_CLICK_CHANNEL, request);
+  },
+  type(request) {
+    return ipcRenderer.invoke(BB_DESKTOP_AUTOMATION_TYPE_CHANNEL, request);
+  },
+  eval(request) {
+    return ipcRenderer.invoke(BB_DESKTOP_AUTOMATION_EVAL_CHANNEL, request);
+  },
+  close(targetId) {
+    return ipcRenderer.invoke(BB_DESKTOP_AUTOMATION_CLOSE_CHANNEL, {
+      targetId,
+    });
+  },
+  stop(targetId) {
+    return ipcRenderer.invoke(BB_DESKTOP_AUTOMATION_STOP_CHANNEL, { targetId });
+  },
+};
+
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
+  automation: bbAutomationApi,
   get lastCheckedAt() {
     return currentInfo.lastCheckedAt;
   },

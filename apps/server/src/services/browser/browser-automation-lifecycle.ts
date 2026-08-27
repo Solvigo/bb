@@ -26,6 +26,7 @@ import { recordBrowserAutomationAudit } from "./browser-automation-audit.js";
 import {
   DesktopAutomationChannelCoordinator,
   DesktopAutomationChannelUnavailableError,
+  DesktopAutomationCommandError,
 } from "./desktop-automation-channel.js";
 
 interface BrowserAutomationLifecycleDeps {
@@ -306,11 +307,6 @@ export class BrowserAutomationLifecycle {
     threadId: string;
     verb: typeof BROWSER_VERB.open;
   }): Promise<BrowserTarget> {
-    await this.deps.channel.forwardCommand({
-      verb: args.verb,
-      threadId: args.threadId,
-      payload: args.payload,
-    });
     const now = new Date().toISOString();
     const target: BrowserTarget = {
       targetId: `tgt_${randomUUID()}`,
@@ -320,6 +316,15 @@ export class BrowserAutomationLifecycle {
       createdAt: now,
       lastUsedAt: now,
     };
+    await this.deps.channel.forwardCommand({
+      verb: args.verb,
+      threadId: args.threadId,
+      targetId: target.targetId,
+      payload: {
+        ...args.payload,
+        targetId: target.targetId,
+      },
+    });
     this.targetsById.set(target.targetId, target);
     return target;
   }
@@ -425,6 +430,9 @@ export function mapDesktopAutomationChannelError(error: unknown): ApiError {
       error.message,
       { retryable: true, details: error.details },
     );
+  }
+  if (error instanceof DesktopAutomationCommandError) {
+    return new ApiError(502, error.code, error.message, { retryable: false });
   }
   throw error;
 }

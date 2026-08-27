@@ -1,6 +1,7 @@
 export * from "./api/shared.js";
 export * from "./api/browser.js";
 export * from "./api/browser-grammar.js";
+export * from "./api/desktop-automation-channel.js";
 export * from "./api/projects.js";
 export * from "./api/skills.js";
 export * from "./api/environments.js";
