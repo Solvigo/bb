@@ -174,7 +174,10 @@ interface UnreadBadgeDot {
  * interchangeable; dev builds use the dev glyph to match the actual favicon.
  */
 export function getFaviconGlyphHref(): string {
-  return import.meta.env.DEV ? "/favicon-32x32-dev.png" : "/favicon-32x32.png";
+  const fileName = import.meta.env.DEV
+    ? "/favicon-32x32-dev.png"
+    : "/favicon-32x32.png";
+  return `${fileName}?v=airways-embossed-20260827`;
 }
 
 /**
@@ -304,7 +307,7 @@ async function applyFaviconState(state: FaviconRenderState): Promise<void> {
   const suffix = getFaviconVariantSuffix();
   const links = await Promise.all(
     FAVICON_SIZES.map(async (size): Promise<RenderedFaviconLink> => {
-      const baseHref = `/favicon-${size}x${size}${suffix}.png`;
+      const baseHref = `/favicon-${size}x${size}${suffix}.png?v=airways-embossed-20260827`;
       const href = await createFaviconHref({
         badge: state.badge,
         baseHref,
