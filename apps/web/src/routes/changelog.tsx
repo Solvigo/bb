@@ -5,7 +5,7 @@ import { Fragment, useEffect } from "react";
 import type { ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
-import bbIcon from "../assets/bb-icon.png";
+import airwaysIcon from "../assets/airways-icon.png";
 import { initAnalytics } from "../landing/analytics";
 import type { Release, ReleaseBlock } from "../landing/changelog";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
@@ -85,7 +85,9 @@ function ByMachineSidebar() {
             </li>
             <li>
               <div className="trow">
-                <span className="trow-title">Desloppify High-Priority Worker</span>
+                <span className="trow-title">
+                  Desloppify High-Priority Worker
+                </span>
               </div>
               <ul className="threads thread-kids">
                 <li>
@@ -184,7 +186,7 @@ function ChangelogPage() {
     <div className="wrap">
       <nav className="nav">
         <a className="logo" href="/">
-          <img src={bbIcon} alt="bb" width={36} height={36} />
+          <img src={airwaysIcon} alt="Solvigo Airways" width={36} height={36} />
         </a>
         <div className="nav-links">
           <a className="nav-current" href="/changelog">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom, useSetAtom } from "jotai";
 import {
@@ -430,7 +430,6 @@ export function resolveHostFilePreviewLinkRootPath({
   return null;
 }
 
-
 function RoutedThreadDetailView() {
   const { projectId, threadId } = useRouteState();
 
@@ -726,6 +725,20 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const openNewTab = useCallback(() => {
     openTab({ kind: "new-tab" });
   }, [openTab]);
+  const hasRedirectedLegacyInfoTabRef = useRef(false);
+  useEffect(() => {
+    const shouldReplaceLegacyInfoTab =
+      !hasRedirectedLegacyInfoTabRef.current &&
+      activeFixedSecondaryTab?.kind === "thread-info";
+    hasRedirectedLegacyInfoTabRef.current = true;
+    if (
+      shouldReplaceLegacyInfoTab ||
+      (fixedPanelTabsState.secondary.activeTabId === null &&
+        fixedPanelTabsState.secondary.tabs.length === 0)
+    ) {
+      openNewTab();
+    }
+  }, [activeFixedSecondaryTab, fixedPanelTabsState.secondary, openNewTab]);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   // The in-app browser surface only exists on desktop; on web this stays false
   // and handled web links keep their external-open behavior.
@@ -2208,7 +2221,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             : undefined
         }
         projectId={projectId}
-        reason={error && !isNotFoundReadError(error) ? "load-failed" : "missing"}
+        reason={
+          error && !isNotFoundReadError(error) ? "load-failed" : "missing"
+        }
       />
     );
   }
@@ -2269,7 +2284,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
-  const threadTitle = getThreadDisplayTitle(thread);
   const responsiveWorkspaceActions: ThreadActionsMenuResponsiveAction[] =
     workspaceOpenPath && preferredDirectoryTarget
       ? [
@@ -2309,6 +2323,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ...responsiveWorkspaceActions,
     ...responsiveGitActions,
   ];
+  const threadTitle = getThreadDisplayTitle(thread);
   // Tower: the pilot chat header does not offer "open workspace in an editor".
   const workspaceOpenButton = undefined;
   const timelineHeader = (
@@ -2433,6 +2448,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       focusRequest={newTabFocusRequest}
       onSelect={handleSelectFileSearchResult}
       onOpenBrowser={handleOpenBrowser}
+      onOpenReview={canUseGitUi ? openSecondaryPanelDiffPanel : undefined}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
       pluginActions={pluginPanelActions}
     />

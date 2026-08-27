@@ -91,7 +91,7 @@ export function TowerRenderSurface({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
+    <div className="flex h-full min-h-0 flex-col bg-tower-surface font-tower-sans">
       <div
         className="flex h-[38px] shrink-0 items-center gap-1 border-b border-tower-header-border bg-tower-header px-2 text-tower-tab"
         role="toolbar"

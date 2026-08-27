@@ -30,7 +30,7 @@ import {
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionSurface } from "@/components/thread/pending-interactions/ThreadPendingInteractionSurface";
 import {
   QueuedMessagesList,
   type QueuedMessageInlineEditor,
@@ -290,7 +290,7 @@ function EmbeddedThreadChatHostedFooter({
         scrollAnchorThreadId={threadId}
         shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
         contentClassName="gap-2 pt-4"
-        footerClassName="chat-prompt-box"
+        footerClassName="chat-prompt-box px-4 pb-4"
         footer={footer}
         scrollOverlay={scrollOverlay}
       >
@@ -1297,13 +1297,10 @@ function EmbeddedThreadChatWithComposer({
   const surfaceClassName =
     surfaceTone === "sidebar" ? "bg-sidebar" : "bg-background";
   // An approval or question blocks the turn until it is answered, so this
-  // surface swaps the composer for it exactly like the main thread view. A
-  // plugin-owned interaction renders in its own composer instead, so the
-  // banner ignores it and the draft stays.
+  // surface swaps the composer for it exactly like the main thread view.
   const pendingInteractionBanner =
-    activePendingInteraction === null ||
-    activePendingInteraction.payload.kind === "plugin" ? null : (
-      <ThreadPendingInteractionBanner
+    activePendingInteraction === null ? null : (
+      <ThreadPendingInteractionSurface
         interaction={activePendingInteraction}
         threadId={threadId ?? ""}
       />

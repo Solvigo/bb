@@ -12,7 +12,6 @@ import {
 import { useAtomValue } from "jotai";
 import type { DiffFileEntry } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
 import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -43,6 +42,7 @@ import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
+import { SecondaryPanelEmptyState } from "./SecondaryPanelEmptyState";
 import type {
   SecondaryPanelFileTab,
   SecondaryPanelTabReorderHandler,
@@ -83,7 +83,10 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
-import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
+import {
+  SidebarTrigger,
+  useOptionalIsSidebarShowing,
+} from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -251,6 +254,8 @@ export interface ThreadSecondaryPanelProps {
   showGitDiffTab?: boolean;
   showInfoTab?: boolean;
   showNewTabButton?: boolean;
+  /** Renders the global sidebar toggle with the panel's trailing controls. */
+  showSidebarToggle?: boolean;
   /**
    * How the panel's own inline hide control (top chrome, trailing edge) renders
    * on the wide layout:
@@ -344,8 +349,9 @@ export function ThreadSecondaryPanel({
   isOpen,
   showConversationCollapseControl = true,
   showGitDiffTab = true,
-  showInfoTab = true,
+  showInfoTab = false,
   showNewTabButton = true,
+  showSidebarToggle = false,
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
@@ -386,6 +392,7 @@ export function ThreadSecondaryPanel({
     handleSecondaryPanelResizeStart,
     handleSecondaryPanelWidthChange,
   } = useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: isOpen });
+  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const {
     handleSecondaryPanelDragging: handleResizeDragging,
     handleSecondaryPanelResize,
@@ -394,6 +401,10 @@ export function ThreadSecondaryPanel({
     secondaryResizablePanelRef: resizablePanelRef,
   } = useSecondaryPanelResize({
     isSecondaryPanelOpen: isOpen,
+    // The split-workspace host owns its shared PanelGroup layout. Imperatively
+    // expanding a freshly swapped pane panel races that panel's registration
+    // and can address panel index -1 inside react-resizable-panels.
+    managesPanelVisibility: hostLayout === null,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
   });
   const handleSecondaryPanelDragging: SecondaryPanelDraggingHandler =
@@ -422,7 +433,6 @@ export function ThreadSecondaryPanel({
     },
     [handleSecondaryPanelResize, onPanelResize],
   );
-  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
     if (hostLayout?.isSuppressed) {
       return;
@@ -488,7 +498,7 @@ export function ThreadSecondaryPanel({
     ],
     [pluginSurfaceTabs],
   );
-  const [towerView, setTowerView] = useState<string | null>("crew");
+  const [towerView, setTowerView] = useState<string | null>(null);
   // Same contract the per-agent surface gives a tab: a disposer narrowed to
   // this agent, so a tab never tears down its context because a different
   // agent's surface closed.
@@ -664,13 +674,7 @@ export function ThreadSecondaryPanel({
         renderAsDrawer && "h-full min-w-0 flex-1",
         // Tower: a floating card inset from the surface, not a full-bleed column.
         // The inset (not h-full) defines the box, so it floats with a gap.
-        !renderAsDrawer &&
-          // A soft drop, deliberately with NO horizontal bleed: the panel's own
-          // wrapper must keep `overflow-clip` (that clip IS the open/close reveal
-          // animation), so a shadow that spread sideways would be sliced off
-          // against the conversation column. The negative spread pulls the blur
-          // back in so the shadow falls below the card rather than beside it.
-          "rounded-xl border border-tower-input-border shadow-[0_6px_18px_-10px_rgba(0,0,0,0.55)]",
+        !renderAsDrawer && "rounded-xl border border-tower-input-border",
         !renderAsDrawer && [
           "absolute inset-y-2 left-2",
           isSecondaryPanelResizing ? "right-2" : "",
@@ -729,7 +733,10 @@ export function ThreadSecondaryPanel({
                 isActive={activeTowerTab?.id === tab.id}
                 label={tab.label}
                 leadingVisual={<Icon name={tab.icon} />}
-                onClick={() => setTowerView(tab.id)}
+                onClick={() => {
+                  onPanelChange("thread-info");
+                  setTowerView(tab.id);
+                }}
                 title={tab.title}
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"
@@ -818,6 +825,7 @@ export function ThreadSecondaryPanel({
                 </TooltipContent>
               </Tooltip>
             ) : null}
+            {showSidebarToggle ? <SidebarTrigger /> : null}
             {renderAsDrawer || inlinePanelToggle === "button" ? (
               <Button
                 type="button"
@@ -906,9 +914,11 @@ export function ThreadSecondaryPanel({
           >
             {shouldRenderFileTabContent
               ? (fileTabContent ?? (
-                  <EmptyStatePanel className="mx-4 rounded-lg">
-                    No file preview content provided.
-                  </EmptyStatePanel>
+                  <SecondaryPanelEmptyState
+                    icon="FileText"
+                    title="No preview available"
+                    description="This file tab does not have any preview content to show."
+                  />
                 ))
               : null}
           </div>

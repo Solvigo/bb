@@ -2786,7 +2786,7 @@ export function PromptBoxInternal({
         emitAttachmentFiles(Array.from(event.dataTransfer.files));
       }}
       className={cn(
-        "group/promptbox relative w-full rounded-xl border border-tower-input-border bg-tower-input shadow-lift",
+        "group/promptbox relative w-full rounded-[22px] border border-tower-input-border bg-tower-input",
         "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
         showVoiceActionGroup && "rounded-3xl",
         showCompactLayout && "overflow-hidden",
@@ -2820,14 +2820,12 @@ export function PromptBoxInternal({
           )}
         >
           {header && !showCompactLayout ? (
-            // Left padding matches the editor's so the header content aligns
-            // with the placeholder column in both normal and zen modes (editor
-            // shifts from px-4 to px-6 when entering zen). Right padding leaves
-            // room for the zen-mode toggle button in the top-right corner. Zen
-            // mode also gets more top room since the card fills the viewport.
+            // Left padding matches the editor's Codex-style inset. Right
+            // padding leaves room for the zen-mode toggle button in the
+            // top-right corner.
             <div
               data-promptbox-expanded-only=""
-              className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}
+              className={cn("pl-3.5 pr-14 pt-3", compact && "pr-14")}
             >
               {header}
             </div>
@@ -2894,7 +2892,7 @@ export function PromptBoxInternal({
               data-promptbox-editor-scroll=""
               aria-busy={composerInputLocked || undefined}
               className={cn(
-                "w-full overflow-y-auto bg-transparent px-4 pb-1 pr-14 pt-3 outline-none",
+                "w-full overflow-y-auto bg-transparent px-3.5 pb-1 pr-14 pt-4 outline-none",
                 COARSE_POINTER_TEXT_BASE_CLASS,
                 // Keep line-height after the text-size class. tailwind-merge treats
                 // text size utilities as owning line-height and would otherwise
@@ -3120,7 +3118,10 @@ export function PromptBoxInternal({
                       className={cn(
                         showCompactLayout
                           ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                          : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
+                          : [
+                              COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                              "ml-1 size-7 rounded-full p-0",
+                            ],
                         "transition-colors",
                       )}
                     >
@@ -3151,7 +3152,7 @@ export function PromptBoxInternal({
                       ) : isZenMode ? (
                         <Icon name="ArrowUp" className="size-4" />
                       ) : (
-                        <Icon name="CornerDownLeft" className="size-4" />
+                        <Icon name="ArrowUp" className="size-4" />
                       )}
                     </Button>
                   )}

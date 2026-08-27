@@ -471,7 +471,7 @@ function UserConversationMessage({
             />
           </div>
         ) : null}
-        <div className="rounded-[18px] border border-tower-border bg-tower-raised px-4 py-2.5 text-sm leading-relaxed text-foreground">
+        <div className="rounded-[18px] border border-tower-border bg-tower-user-message px-4 py-2.5 text-sm leading-relaxed text-foreground">
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}

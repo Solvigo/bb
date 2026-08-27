@@ -24,7 +24,7 @@
     <link
       rel="icon"
       type="image/svg+xml"
-      href="/solvigo-airways-mark.svg"
+      href="/brand/app-icon-flat-mono.svg"
       id="favicon-svg"
     />
     <link
@@ -89,11 +89,11 @@
         // Pre-paint browser-chrome color so PWA/status-bar chrome doesn't
         // flash the wrong shade before the app boots; useTheme.ts owns the
         // meta tag afterwards. Mirrors the bb.theme preference resolution and
-        // the --canvas values in theme.css (#151515 = oklch(0.195 0 0)).
+        // the --canvas values in theme.css (#181818 = oklch(0.209036 0 0)).
         var theme = localStorage.getItem("bb.theme");
         var darkTheme = theme === "dark" || (theme !== "light" && mq.matches);
         document.getElementById("theme-color").content = darkTheme
-          ? "#151515"
+          ? "#181818"
           : "#ffffff";
       })();
     </script>

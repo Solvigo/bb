@@ -60,6 +60,8 @@ interface AppPageHeaderProps {
    * desktop window. Split panes below the workspace's top edge disable this.
    */
   isWindowDragRegion?: boolean;
+  /** Whether this header should render the global left-sidebar control. */
+  showSidebarToggle?: boolean;
   /**
    * Whether this header owns the window's top-left chrome footprint. A split
    * may have several top-row drag regions, but only its structural top-left
@@ -88,6 +90,7 @@ export function AppPageHeader({
   headerRef,
   isWindowDragRegion = true,
   ownsWindowTopLeft = true,
+  showSidebarToggle = true,
 }: AppPageHeaderProps) {
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
@@ -100,7 +103,7 @@ export function AppPageHeader({
   // pinned top-left overlay, so nothing needs reserving on the left. It stays
   // visible whether the sidebar is open or closed, as the overlay did — the
   // affordance should never disappear out from under the operator.
-  const showSidebarTrigger = ownsWindowTopLeft;
+  const showSidebarTrigger = ownsWindowTopLeft && showSidebarToggle;
   return (
     <header
       ref={headerRef}

@@ -88,7 +88,8 @@ const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 460;
-const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_DEFAULT_WIDTH = 260;
+const LEGACY_SIDEBAR_DEFAULT_WIDTH = 320;
 
 function clampSidebarWidth(value: number) {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value));
@@ -102,6 +103,11 @@ const sidebarWidthStorage = createLocalStorageSyncStorage<number>({
     const parsedValue = Number(storedValue);
     if (!Number.isFinite(parsedValue)) {
       return initialValue;
+    }
+    // Move the old untouched default to the new Codex-density width while
+    // preserving every explicitly resized sidebar value.
+    if (parsedValue === LEGACY_SIDEBAR_DEFAULT_WIDTH) {
+      return SIDEBAR_DEFAULT_WIDTH;
     }
     return clampSidebarWidth(parsedValue);
   },

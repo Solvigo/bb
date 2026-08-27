@@ -24,7 +24,7 @@ const icons = [
   { file: "icon-512.png", mode: "tile" },
   { file: "icon-192-maskable.png", mode: "tile" },
   { file: "icon-512-maskable.png", mode: "tile" },
-  { file: "apple-touch-icon.png", mode: "glyph" },
+  { file: "apple-touch-icon.png", mode: "tile" },
 ];
 
 const mismatches = [];

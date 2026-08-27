@@ -57,6 +57,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+import { PRODUCT_NAME } from "@/lib/product";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -75,7 +76,9 @@ interface AppSidebarProps {
 }
 
 const SIDEBAR_THREADS_LABEL_CLASS =
-  "cursor-pointer select-none px-4 py-1 font-tower-mono text-[9px] font-bold uppercase tracking-[0.14em] text-tower-fg-dim hover:text-tower-fg-body group-data-[collapsible=icon]:hidden";
+  "cursor-pointer select-none px-4 py-1 text-xs font-medium text-muted-foreground hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden";
+
+const SIDEBAR_ACCOUNT_LABEL = PRODUCT_NAME.split(" ")[0] ?? PRODUCT_NAME;
 
 export function AppSidebar({
   onResizeMouseDown,
@@ -273,10 +276,10 @@ export function AppSidebar({
         ) : null}
         {/* The mark is the first thing in the rail, then the one action the
             rail is built around. */}
-        <div className="shrink-0 pt-1 group-data-[collapsible=icon]:hidden">
+        <div className="-mt-2 shrink-0 pb-2 group-data-[collapsible=icon]:hidden">
           <BrandLockup />
         </div>
-        <div className="shrink-0 pb-1">
+        <div className="shrink-0 px-2 pb-1 group-data-[collapsible=icon]:hidden">
           <NewCrewButton />
         </div>
         <PlatformSection
@@ -312,30 +315,23 @@ export function AppSidebar({
               All threads
             </summary>
             {threadListProvider ? (
-            <PluginThreadList
-              slot={threadListProvider}
-              builtInFallback={builtInThreadList}
-              searchQuery={threadSearch.query}
-              onNavigate={threadSearch.onExternalThreadOpen}
-            />
+              <PluginThreadList
+                slot={threadListProvider}
+                builtInFallback={builtInThreadList}
+                searchQuery={threadSearch.query}
+                onNavigate={threadSearch.onExternalThreadOpen}
+              />
             ) : (
               builtInThreadList
             )}
           </details>
         </SidebarContent>
-        <SidebarFooter className="relative">
+        <SidebarFooter className="relative px-3 py-2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-20 before:h-px before:bg-tower-border">
           <OverflowFade placement="above" tone="sidebar" size="sm" />
-          {/* The footer holds a variable number of plugin action buttons, so a
-           * narrowed sidebar plus several plugins can no longer fit the action
-           * row and the update chips on one line. `flex-wrap-reverse` plus the
-           * flexible spacer below handles both layouts without measuring:
-           * while everything fits, the spacer stretches and pushes the chips to
-           * the right of a single row; once it doesn't, the chips wrap onto
-           * their own line, which wrap-reverse renders above the actions, and
-           * they sit flush left because the spacer stays behind on the action
-           * line. */}
-          <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
-            <SidebarMenuItem className="min-w-0">
+          {/* Codex-style account/action strip: identity anchors the left edge,
+           * plugin actions sit beside it, and help/updates finish the row. */}
+          <SidebarMenu className="flex-row items-center gap-1">
+            <SidebarMenuItem className="min-w-0 flex-1">
               <SidebarMenuButton
                 asChild
                 aria-label={
@@ -351,11 +347,18 @@ export function AppSidebar({
                   hidden: false,
                   side: "top",
                 }}
-                className={SIDEBAR_FOOTER_ACTION_CLASS}
+                className={cn(
+                  SIDEBAR_FOOTER_ACTION_CLASS,
+                  "h-8 w-full justify-start gap-2 px-1.5",
+                )}
               >
                 <Link to={settingsRoutePath} onClick={closeOnMobile}>
-                  <Icon name="Settings" />
-                  <span className="sr-only">Settings</span>
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-sidebar-accent text-xs font-medium text-sidebar-foreground">
+                    {SIDEBAR_ACCOUNT_LABEL.charAt(0)}
+                  </span>
+                  <span className="min-w-0 truncate text-xs">
+                    {SIDEBAR_ACCOUNT_LABEL}
+                  </span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -374,11 +377,10 @@ export function AppSidebar({
                   openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
                 }}
               >
-                <Icon name="Bug" />
+                <Icon name="CircleQuestion" />
                 <span className="sr-only">Report a bug</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <li aria-hidden="true" className="min-w-0 flex-1" />
             <SidebarUpdatesBadge onNavigate={closeOnMobile} />
           </SidebarMenu>
         </SidebarFooter>

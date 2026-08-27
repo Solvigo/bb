@@ -6,8 +6,8 @@
  * that never flies), a lead owns a FORMATION, and a sortie is a single jet in
  * level flight. The family is held together by colour and facet, not by shape.
  *
- * Two states, and the sheet is emphatic that colour alone is not enough:
- *   working — full-weight orange PLUS one moving element. Motion says live.
+ * Two states, and colour alone is not enough:
+ *   working — brighter neutral PLUS one moving element. Motion says live.
  *   waiting — no motion at all; solid but greyed. Present but idle, never broken.
  *
  * Detail drops with size: at 16px the shield sheds a wing bar each side and the
@@ -17,30 +17,41 @@
 export type Rank = "commander" | "lead" | "sortie";
 export type RankState = "working" | "waiting";
 
-const WORKING = { primary: "#F54E00", secondary: "#C23E00", shield: "#F54E00", bar: "#C23E00" };
-const WAITING = { primary: "#6E6C66", secondary: "#4E4C48", shield: "#5C5A55", bar: "#565450" };
+const WORKING = {
+  primary: "var(--color-tower-fg-body)",
+  secondary: "var(--color-tower-fg-dim)",
+  shield: "var(--color-tower-fg-body)",
+  bar: "var(--color-tower-fg-dim)",
+};
+const WAITING = {
+  primary: "var(--color-tower-fg-dim)",
+  secondary: "var(--color-tower-fg-faint)",
+  shield: "var(--color-tower-fg-dim)",
+  bar: "var(--color-tower-fg-faint)",
+};
 
 /** One jet, nose right — level flight. */
-function Jet({
-  t,
-  transform,
-}: {
-  t: typeof WORKING;
-  transform?: string;
-}) {
+function Jet({ t, transform }: { t: typeof WORKING; transform?: string }) {
   const rot = "rotate(90 32 32)";
   const full = transform ? `${transform} ${rot}` : rot;
   return (
     <>
-      <polygon points="32,4 8,48 26,44 32,52" fill={t.primary} transform={full} />
-      <polygon points="32,4 32,52 38,44 56,48" fill={t.secondary} transform={full} />
+      <polygon
+        points="32,4 8,48 26,44 32,52"
+        fill={t.primary}
+        transform={full}
+      />
+      <polygon
+        points="32,4 32,52 38,44 56,48"
+        fill={t.secondary}
+        transform={full}
+      />
     </>
   );
 }
 
 /**
- * The plate the brand sheet specifies, so a rank chip and the app mark read as
- * one family: radius 4.5, a #333230 to #232221 gradient, a 1px #474540 border.
+ * The plate follows the same neutral surface and edge as the rest of the app.
  *
  * What sits ON the plate is deliberately NOT the brand mark. The sheet's plated
  * lockup is a fixed identity in white; this is a rank-and-state device, and it
@@ -57,13 +68,14 @@ export function PlatedInsignia({
   return (
     <span
       className={
-        "inline-grid shrink-0 place-items-center rounded-[4.5px] " + (className ?? "")
+        "inline-grid shrink-0 place-items-center rounded-[4.5px] " +
+        (className ?? "")
       }
       style={{
         width: plate,
         height: plate,
-        background: "linear-gradient(160deg, #333230 0%, #232221 100%)",
-        boxShadow: "inset 0 0 0 1px #474540",
+        background: "var(--color-tower-input)",
+        boxShadow: "inset 0 0 0 1px var(--color-tower-border)",
       }}
     >
       <RankInsignia {...props} size={props.size ?? Math.round(plate * 0.65)} />
@@ -143,8 +155,17 @@ export function RankInsignia({
       >
         <g className={live ? "tower-ins-climb" : undefined}>
           <Jet t={t} transform="translate(24 13) scale(0.6)" />
-          <Jet t={t} transform={small ? "translate(2 19) scale(0.32)" : "translate(2 8.5) scale(0.3)"} />
-          {small ? null : <Jet t={t} transform="translate(2 38.5) scale(0.3)" />}
+          <Jet
+            t={t}
+            transform={
+              small
+                ? "translate(2 19) scale(0.32)"
+                : "translate(2 8.5) scale(0.3)"
+            }
+          />
+          {small ? null : (
+            <Jet t={t} transform="translate(2 38.5) scale(0.3)" />
+          )}
         </g>
       </svg>
     );

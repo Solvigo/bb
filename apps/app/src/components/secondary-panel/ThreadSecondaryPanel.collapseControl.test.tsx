@@ -24,22 +24,22 @@ function renderPanel(args: {
           showing from the URL rather than being told. */}
       <MemoryRouter>
         <TooltipProvider>
-        <PanelGroup direction="horizontal">
-          <ThreadSecondaryPanel
-            activeTab={createThreadInfoFixedPanelTab()}
-            canUseGitUi={false}
-            isOpen
-            metadataContent={null}
-            onClose={noop}
-            onCollapse={noop}
-            onFileTabReorder={noop}
-            onOpenNewTab={noop}
-            onPanelChange={noop}
-            onPanelFocus={noop}
-            renderAsDrawer={false}
-            {...args}
-          />
-        </PanelGroup>
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={createThreadInfoFixedPanelTab()}
+              canUseGitUi={false}
+              isOpen
+              metadataContent={null}
+              onClose={noop}
+              onCollapse={noop}
+              onFileTabReorder={noop}
+              onOpenNewTab={noop}
+              onPanelChange={noop}
+              onPanelFocus={noop}
+              renderAsDrawer={false}
+              {...args}
+            />
+          </PanelGroup>
         </TooltipProvider>
       </MemoryRouter>
     </Wrapper>,

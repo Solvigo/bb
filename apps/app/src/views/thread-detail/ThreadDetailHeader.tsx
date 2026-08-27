@@ -27,7 +27,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
-import { PlatedInsignia } from "@/components/secondary-panel/tower/RankInsignia";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
@@ -173,17 +172,7 @@ export function ThreadDetailHeader({
           )}
           onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
         >
-          {/* A root thread IS the commander — the emblem that never flies.
-              Anything below it leads with its crew trail instead, so a deep
-              link says whose conversation this is before it says its name. */}
-          {crewContext ?? (
-            <PlatedInsignia
-              rank="commander"
-              state="working"
-              plate={26}
-              title="Commander"
-            />
-          )}
+          {crewContext}
           <ThreadTitleMentions title={threadTitle} />
         </p>
       </div>
@@ -317,6 +306,7 @@ export function ThreadDetailHeader({
       actions={actions}
       isWindowDragRegion={isTopRow}
       ownsWindowTopLeft={ownsWindowTopLeft}
+      showSidebarToggle={false}
       className={beginPaneDrag ? "z-[21]" : undefined}
     />
   );

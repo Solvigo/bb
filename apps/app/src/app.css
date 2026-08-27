@@ -5,25 +5,25 @@
 @import "@/components/ui/theme.css";
 
 /*
- * Tower grey scale — warm greys measured from the Tower blueprint
- * (Tower-airline.dc.html). A deliberate named design palette, distinct from the
- * app's neutral --canvas/--ink ramp; used to dress the carved Tower surfaces.
+ * Tower surface scale. The shell uses the same cool neutral hierarchy as the
+ * Codex desktop app while the Tower name remains the component-facing API.
  * Exposed as Tailwind color utilities: bg-tower-*, text-tower-*, border-tower-*.
  */
 @theme {
-  --color-tower-bg: #1b1a19; /* darkest — commander chat */
-  --color-tower-render: #191918; /* rendering-area main bg */
-  --color-tower-surface: #1f1e1d; /* the rendering surface */
-  --color-tower-panel: #262624; /* panels / cards */
-  --color-tower-raised: #2b2927; /* chat bubble / raised card fill */
-  --color-tower-bright: #302f2c;
-  --color-tower-header: #2a2927; /* rendering-area header */
-  --color-tower-header-border: #3f3e3c; /* header top/bottom border */
+  --color-tower-bg: #181818; /* commander chat / main canvas */
+  --color-tower-render: #1f1f1f; /* rendering-area surround */
+  --color-tower-surface: #1f1f1f; /* rendering content */
+  --color-tower-panel: #242424; /* panels / cards */
+  --color-tower-raised: #2a2a2a; /* chat bubble / raised card fill */
+  --color-tower-user-message: #252525; /* user-sent chat bubble */
+  --color-tower-bright: #2a2a2a;
+  --color-tower-header: #1f1f1f; /* rendering-area header */
+  --color-tower-header-border: #2b2b2b; /* 1px header seam */
   --color-tower-tab: #aaa9a5; /* header tab-button icon color */
-  --color-tower-border: #3a3936;
-  --color-tower-border-strong: #46443f; /* hover / stronger edge */
-  --color-tower-input: #2a2927; /* chat input surface */
-  --color-tower-input-border: #434240; /* chat input border */
+  --color-tower-border: #2b2b2b;
+  --color-tower-border-strong: #2b2b2b;
+  --color-tower-input: #2b2b2b; /* chat input surface */
+  --color-tower-input-border: #2b2b2b; /* 1px input/card edge */
   --color-tower-fg: #f5f4ef; /* brightest text */
   --color-tower-fg-body: #c7c5ba; /* primary body text */
   --color-tower-fg-muted: #a3a199; /* secondary */
@@ -37,8 +37,8 @@
   --color-tower-flight-strong: #d9825e; /* in-flight emphasis */
   --color-tower-hold: #d4a84b; /* in the hold / waiting */
   --color-tower-silent: #33211d; /* silent / lost-contact flight card tint */
-  --color-tower-transcript: #201e1d; /* the lane transcript stream ground */
-  --color-tower-inset: #232322; /* lead-card inset blocks (focus / next) */
+  --color-tower-transcript: #181818; /* the lane transcript stream ground */
+  --color-tower-inset: #1f1f1f; /* lead-card inset blocks (focus / next) */
   /* Blueprint fonts */
   --font-tower-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-tower-sans: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

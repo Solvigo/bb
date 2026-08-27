@@ -7,6 +7,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { formatRelativeTime } from "@/lib/relative-time";
 import type { BrowserHistoryEntry } from "@/lib/browser-history";
+import { SecondaryPanelEmptyState } from "./SecondaryPanelEmptyState";
 import {
   LAUNCHER_ROW_BASE_CLASS,
   LAUNCHER_ROW_ICON_CLASS,
@@ -75,7 +76,13 @@ export function BrowserNewTabScreen({
   const now = Date.now();
 
   if (recent.length === 0) {
-    return null;
+    return (
+      <SecondaryPanelEmptyState
+        icon="Globe"
+        title="Start browsing"
+        description="Enter a URL in the address bar to open a page."
+      />
+    );
   }
 
   return (

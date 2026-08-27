@@ -38,6 +38,7 @@ vi.mock("@/lib/bb-desktop", () => ({
 }));
 
 vi.mock("@/components/ui/sidebar.js", () => ({
+  SidebarTrigger: () => <button type="button">Toggle sidebar</button>,
   useOptionalIsSidebarShowing: () => true,
 }));
 
@@ -139,12 +140,18 @@ vi.mock(
       inlinePanelToggle,
       isOpen,
       renderAsDrawer,
+      showConversationCollapseControl,
+      showSidebarToggle,
     }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
       React.createElement(
         "section",
         {
           "data-open": String(isOpen),
           "data-inline-panel-toggle": inlinePanelToggle,
+          "data-conversation-collapse-control": String(
+            showConversationCollapseControl,
+          ),
+          "data-sidebar-toggle": String(showSidebarToggle),
           "data-testid": renderAsDrawer
             ? "drawer-secondary-panel"
             : "inline-secondary-panel",
@@ -465,10 +472,9 @@ beforeEach(() => {
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {
-  // The Tower panel is a floating card with no collapse controls of its own
-  // (see "Tower: secondary panel as a floating card"); the panel is shown and
-  // hidden from the thread header instead, so it publishes no inline toggle.
-  it("gives the standalone panel no inline hide control of its own", () => {
+  // Tower collects the layout controls in the floating renderer header so the
+  // conversation header can remain visually empty.
+  it("gives the standalone renderer its layout controls", () => {
     renderThreadDetail({
       isCompactViewport: false,
       isSecondaryPanelOpen: true,
@@ -476,14 +482,15 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       threadId: "thread-1",
     });
 
-    expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
-    ).toBe("hidden");
+    const panel = screen.getByTestId("inline-secondary-panel");
+    expect(panel.getAttribute("data-inline-panel-toggle")).toBe("button");
+    expect(panel.getAttribute("data-conversation-collapse-control")).toBe(
+      "true",
+    );
+    expect(panel.getAttribute("data-sidebar-toggle")).toBe("true");
   });
 
-  it("gives the hosted panel no inline hide control of its own", () => {
+  it("gives the hosted renderer the same inline controls", () => {
     renderThreadDetail({
       isCompactViewport: false,
       isFocusedHosted: true,
@@ -496,11 +503,12 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       throw new Error("Expected the focused pane to publish its panel model");
     }
     render(<>{publishedHostedPanel.panel}</>);
-    expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
-    ).toBe("hidden");
+    const panel = screen.getByTestId("inline-secondary-panel");
+    expect(panel.getAttribute("data-inline-panel-toggle")).toBe("button");
+    expect(panel.getAttribute("data-conversation-collapse-control")).toBe(
+      "true",
+    );
+    expect(panel.getAttribute("data-sidebar-toggle")).toBe("true");
   });
 
   it("keeps the thread header inside the timeline column beside the side panel", () => {

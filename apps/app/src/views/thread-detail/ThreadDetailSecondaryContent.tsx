@@ -15,16 +15,14 @@ import {
 } from "react-resizable-panels";
 import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { SecondaryPanelEmptyState } from "@/components/secondary-panel/SecondaryPanelEmptyState";
 import {
   secondaryPanelWidthPercentAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
-  ThreadMetadataCard,
   ThreadMetadataContent,
   hasAnyThreadMetadata,
   type ThreadMetadataContentProps,
@@ -270,11 +268,19 @@ function ThreadDetailSecondaryContentBody({
           <ThreadMetadataContent {...stableMetadata} />
         </div>
       ) : isMetadataLoading ? (
-        <ThreadMetadataLoadingSkeleton />
+        <SecondaryPanelEmptyState
+          icon="Spinner"
+          iconClassName="animate-spin"
+          title="Loading thread details"
+          description="Checking this thread's environment and workspace…"
+          aria-busy="true"
+        />
       ) : (
-        <div className="px-4 pt-1 text-sm text-muted-foreground">
-          No thread details available.
-        </div>
+        <SecondaryPanelEmptyState
+          icon="Info"
+          title="No thread details"
+          description="Details will appear here when this thread has environment or workspace activity."
+        />
       ),
     [hasForks, isMetadataLoading, stableMetadata],
   );
@@ -287,10 +293,11 @@ function ThreadDetailSecondaryContentBody({
           renderAsDrawer={false}
           isConversationCollapsed={isConversationCollapsedActive}
           onToggleConversationCollapse={onToggleConversationCollapse}
-          // Tower: the panel is a permanent floating card in the chat frame, so
-          // it carries no hide or conversation-collapse control.
-          inlinePanelToggle="hidden"
-          showConversationCollapseControl={false}
+          // Tower keeps all layout controls together in the renderer chrome,
+          // matching the compact trailing control group in Codex.
+          inlinePanelToggle="button"
+          showConversationCollapseControl
+          showSidebarToggle
           // In the split-workspace host, panes' panels share one PanelGroup, so
           // each pane's Panel needs its own layout identity (see the prop doc).
           resizablePanelId={
@@ -458,26 +465,6 @@ function ThreadDetailSecondaryContentBody({
           </div>
         </ResponsiveDrawerShell>
       ) : null}
-    </div>
-  );
-}
-
-const METADATA_SKELETON_ROW_VALUE_WIDTHS = ["w-40", "w-28", "w-36", "w-24"];
-
-function ThreadMetadataLoadingSkeleton() {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <ThreadMetadataCard>
-        {METADATA_SKELETON_ROW_VALUE_WIDTHS.map((valueWidth, index) => (
-          <div
-            key={index}
-            className={cn(DETAIL_GRID_CLASS, "items-center py-0.5")}
-          >
-            <Skeleton className="h-3 w-14 rounded-sm" />
-            <Skeleton className={`h-3 ${valueWidth} max-w-full rounded-sm`} />
-          </div>
-        ))}
-      </ThreadMetadataCard>
     </div>
   );
 }

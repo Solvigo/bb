@@ -1,24 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="plate" x1="0" y1="0" x2="0.35" y2="1">
-      <stop offset="0" stop-color="#333230"/><stop offset="1" stop-color="#232221"/>
-    </linearGradient>
-    <linearGradient id="gloss" x1="0" y1="0" x2="0.3" y2="1">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.081"/>
-      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="cast" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#000000" stop-opacity="0.30"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.09"/>
-    </linearGradient>
-    <clipPath id="clip"><rect width="64" height="64" rx="4.5"/></clipPath>
-  </defs>
-  <rect width="64" height="64" rx="4.5" fill="url(#plate)"/>
-  <g clip-path="url(#clip)">
-    <polygon points="8,48 8,130 56,130 56,48 38,44 32,52 26,44" fill="url(#cast)" transform="translate(2.85 -2.85) rotate(45 32 32)"/>
-    <polygon points="32,4 32,52 38,44 56,48" fill="#D7D5D3" transform="translate(2.85 -2.85) rotate(45 32 32)"/>
-    <polygon points="32,4 8,48 26,44 32,52" fill="#FFFFFF" transform="translate(2.85 -2.85) rotate(45 32 32)"/>
-    <rect width="64" height="64" rx="4.5" fill="url(#gloss)"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="58" fill="#201F1E"></rect>
+  <g transform="translate(5.2 5.2) scale(3.84)">
+    <g transform="translate(7.25 -0.3) rotate(30 32 28)">
+      <polygon points="32,4 8,48 26,44 32,52" fill="#FFFFFF"></polygon>
+      <polygon points="32,4 32,52 38,44 56,48" fill="#A9A79F"></polygon>
+    </g>
   </g>
-  <rect x="0.5" y="0.5" width="63" height="63" rx="4.5" fill="none" stroke="#474540" stroke-width="1"/>
 </svg>

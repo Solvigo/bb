@@ -31,7 +31,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { initAnalytics, trackLandingEvent } from "../landing/analytics";
-import bbIcon from "../assets/bb-icon.png";
+import airwaysIcon from "../assets/airways-icon.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
@@ -1280,7 +1280,7 @@ function AgentChat() {
           <div className="tg-msg tg-in" style={{ animationDelay: "2.4s" }}>
             <div className="tg-thread">
               <div className="tg-thread-top">
-                <img src={bbIcon} alt="" className="tg-thread-mark" />
+                <img src={airwaysIcon} alt="" className="tg-thread-mark" />
                 <span className="tg-thread-eyebrow">Worker thread</span>
                 <span className="tg-stat" aria-hidden>
                   <span
@@ -1608,7 +1608,7 @@ function SpawnSidebar() {
       aria-label="bb spawns and manages a worker thread for each provider"
     >
       <div className="sb-head">
-        <img src={bbIcon} alt="" className="sb-mark" />
+        <img src={airwaysIcon} alt="" className="sb-mark" />
         <span className="sb-title">Threads</span>
         <span className="sb-active">5 active</span>
       </div>
@@ -1671,7 +1671,7 @@ function LandingPage() {
     <div className="wrap">
       <nav className="nav">
         <a className="logo" href="/">
-          <img src={bbIcon} alt="bb" width={36} height={36} />
+          <img src={airwaysIcon} alt="Solvigo Airways" width={36} height={36} />
         </a>
         <div className="nav-links">
           <a href="/changelog">Changelog</a>

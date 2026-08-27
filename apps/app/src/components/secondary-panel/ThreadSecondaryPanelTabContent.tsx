@@ -2,8 +2,7 @@ import { useCallback, useEffect, type ReactNode } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { SecondaryPanelEmptyState } from "./SecondaryPanelEmptyState";
 import {
   useEnvironmentDiffFiles,
   useEnvironmentFilePreview,
@@ -22,7 +21,6 @@ import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { DiffFilesPanel } from "./git-diff/DiffFilesPanel";
 import { clearDiffFileCardStates } from "./git-diff/diffFilesStore";
 import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
@@ -32,14 +30,6 @@ import {
   SecondaryPanelFilePreview,
   ThreadStorageFilePreview,
 } from "./ThreadStorageFilePreview";
-
-const GIT_DIFF_SKELETON_FILE_COUNT = 3;
-const PANEL_SCROLL_SLOT_CLASS =
-  "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
-
-interface ThreadDiffSkeletonProps {
-  count?: number;
-}
 
 export interface GitDiffTabContentProps {
   environmentId?: string;
@@ -99,37 +89,6 @@ export interface ThreadStorageFilePreviewTabContentProps {
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
-}
-
-function ThreadDiffSkeleton({
-  count = GIT_DIFF_SKELETON_FILE_COUNT,
-}: ThreadDiffSkeletonProps) {
-  return (
-    <div className="space-y-2 pt-2">
-      {Array.from({ length: count }).map((_, index) => (
-        <div
-          key={`git-diff-skeleton-${index}`}
-          className="rounded-lg border border-border bg-surface-raised"
-        >
-          <div className="border-b border-border bg-surface-recessed px-3 py-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                <Skeleton className="size-4 shrink-0 rounded-sm" />
-                <Skeleton className="h-3 w-48 max-w-full rounded-sm" />
-              </div>
-              <Skeleton className="h-3 w-14 shrink-0 rounded-sm" />
-            </div>
-          </div>
-          <div className="space-y-1.5 px-2.5 py-2">
-            <Skeleton className="h-3 w-full rounded-sm" />
-            <Skeleton className="h-3 w-[94%] rounded-sm" />
-            <Skeleton className="h-3 w-[90%] rounded-sm" />
-            <Skeleton className="h-3 w-[86%] rounded-sm" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 /**
@@ -203,64 +162,69 @@ export function GitDiffTabContent({
 
   if (isPreparing) {
     return (
-      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
-        <ThreadDiffSkeleton />
-      </div>
+      <SecondaryPanelEmptyState
+        icon="Spinner"
+        iconClassName="animate-spin"
+        title="Loading diff"
+        description="Checking this workspace for changes…"
+        aria-busy="true"
+      />
     );
   }
 
   if (diffFilesError) {
     return (
-      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
-        <div className="rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive">
-          <p>
-            {diffFilesError instanceof Error
-              ? diffFilesError.message
-              : "Failed to load git diff"}
-          </p>
-        </div>
-      </div>
+      <SecondaryPanelEmptyState
+        icon="AlertTriangle"
+        title="Couldn't load the diff"
+        description={
+          diffFilesError instanceof Error
+            ? diffFilesError.message
+            : "The workspace diff could not be loaded."
+        }
+        role="alert"
+      />
     );
   }
 
   if (diffFilesResponse === undefined) {
     return (
-      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
-        <EmptyStatePanel className="rounded-lg">
-          No diff to display.
-        </EmptyStatePanel>
-      </div>
+      <SecondaryPanelEmptyState
+        icon="FileDiff"
+        title="No diff to display"
+        description="Changes will appear here when this workspace has a diff."
+      />
     );
   }
 
   if (diffFilesResponse.outcome === "unavailable") {
     return (
-      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
-        <div className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">Workspace unavailable</p>
-          <p className="mt-1 leading-5">{diffFilesResponse.failure.message}</p>
-        </div>
-      </div>
+      <SecondaryPanelEmptyState
+        icon="AlertTriangle"
+        title="Workspace unavailable"
+        description={diffFilesResponse.failure.message}
+        role="alert"
+      />
     );
   }
 
   if (diffFilesResponse.outcome === "not_applicable") {
     return (
-      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
-        <div className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
-          <p className="mt-1 leading-5">{diffFilesResponse.message}</p>
-        </div>
-      </div>
+      <SecondaryPanelEmptyState
+        icon="FileDiff"
+        title="No diff to display"
+        description={diffFilesResponse.message}
+      />
     );
   }
 
   if (diffFilesResponse.files.length === 0) {
     return (
-      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
-        <EmptyStatePanel className="rounded-lg">
-          No diff to display.
-        </EmptyStatePanel>
-      </div>
+      <SecondaryPanelEmptyState
+        icon="FileDiff"
+        title="No diff to display"
+        description="Changes will appear here when this workspace has a diff."
+      />
     );
   }
 
@@ -268,11 +232,11 @@ export function GitDiffTabContent({
   // above already guarantees both once an `available` outcome resolved.
   if (!environmentId || target === undefined) {
     return (
-      <div className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
-        <EmptyStatePanel className="rounded-lg">
-          No diff to display.
-        </EmptyStatePanel>
-      </div>
+      <SecondaryPanelEmptyState
+        icon="FileDiff"
+        title="No diff to display"
+        description="Changes will appear here when this workspace has a diff."
+      />
     );
   }
 

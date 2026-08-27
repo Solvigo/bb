@@ -15,24 +15,25 @@ import { SpFocusView } from "./SpFocusView";
 import { ageSince } from "@/lib/relative-time";
 import { towerNavAtom } from "./towerNav";
 import { useRouteState } from "@/hooks/useRouteState";
-import { PlatedInsignia, RankInsignia } from "./RankInsignia";
 import { stripRankPrefix } from "@/lib/agent-title";
+import { SecondaryPanelEmptyState } from "@/components/secondary-panel/SecondaryPanelEmptyState";
+import { Icon } from "@bb/shared-ui/icon";
 
 // The 7 chain columns (states); verbs are the transitions between them.
 const COLUMNS: { key: string; label: string; accent?: boolean }[] = [
   { key: "drafted", label: "Draft" },
   { key: "confirmed", label: "Confirmed" },
   { key: "queued", label: "Queued" },
-  { key: "in_flight", label: "In flight", accent: true },
+  { key: "in_flight", label: "Working", accent: true },
   { key: "in_review", label: "Review" },
-  { key: "pilot_look", label: "Look" },
-  { key: "clearance", label: "Clearance", accent: true },
+  { key: "pilot_look", label: "Approval" },
+  { key: "clearance", label: "Ready", accent: true },
 ];
 const COL_KEYS = new Set(COLUMNS.map((c) => c.key));
 const TERMINAL_LABEL: Record<string, string> = {
-  accepted: "cleared — awaiting land",
-  landed: "landed",
-  done: "landed (pre-chain)",
+  accepted: "approved",
+  landed: "completed",
+  done: "completed",
 };
 
 interface FleetRow {
@@ -137,7 +138,11 @@ const HELD_COLS = new Set(["in_review", "pilot_look", "clearance"]); // held at 
  * tells the operator nothing and it is what the drill-down header printed for a
  * lead the plugin had no handle for.
  */
-function agentLabel(handle: string | null, title: string | undefined, threadId: string): string {
+function agentLabel(
+  handle: string | null,
+  title: string | undefined,
+  threadId: string,
+): string {
   const raw = handle ?? (title && title.length > 0 ? title : threadId);
   return leadName(raw);
 }
@@ -146,16 +151,16 @@ function leadName(handle: string): string {
   return stripRankPrefix(handle);
 }
 
-/** A task's flight designator — a stable 3-digit SV number from its id. */
-function svNumber(taskId: string): string {
+/** A compact, stable task number derived from its id. */
+function taskNumber(taskId: string): string {
   let h = 0;
   for (let i = 0; i < taskId.length; i++)
     h = (Math.imul(h, 31) + taskId.charCodeAt(i)) >>> 0;
-  return `SV ${100 + (h % 900)}`;
+  return `TASK-${100 + (h % 900)}`;
 }
 
 /** Compact "time since" (v2: "40s", "4m", "2h 20m", "1d 03h"). */
-/** A flight has lost contact when the crew plugin says its attempt is gone —
+/** A task has lost contact when the crew plugin says its attempt is gone —
  *  its own verdict, never a guess from how long the card has been sitting. */
 function hasLostContact(item: PlacedItem): boolean {
   return (
@@ -164,23 +169,23 @@ function hasLostContact(item: PlacedItem): boolean {
   );
 }
 
-/** The flight's status chip — its condition in airline terms, from real state. */
-function statusChip(item: PlacedItem): { label: string; silent: boolean } | null {
+/** The task's operator-facing status, derived from its real queue state. */
+function statusChip(
+  item: PlacedItem,
+): { label: string; silent: boolean } | null {
   if (item.col === "in_flight") {
-    if (hasLostContact(item)) return { label: "lost contact", silent: true };
-    return { label: "airborne", silent: false };
+    if (hasLostContact(item)) return { label: "disconnected", silent: true };
+    return { label: "working", silent: false };
   }
-  if (item.col === "queued") return { label: "in the hold", silent: false };
+  if (item.col === "queued") return { label: "queued", silent: false };
   if (item.col === "drafted" || item.col === "confirmed")
     return { label: "planned", silent: false };
   if (HELD_COLS.has(item.col))
-    return { label: "on final approach", silent: false };
+    return { label: "awaiting review", silent: false };
   return null;
 }
 
-/** A flight: plane glyph + SV number + time aloft, body, status chip.
- *  Time aloft shows only for a dispatched flight — an undispatched item has
- *  never left the ground, so there is nothing to count. */
+/** A task card with its worker, activity, status and on-demand history. */
 function ItemTrail({ taskId }: { taskId: string }) {
   const { transitions, truncated, loaded } = useItemTrail(taskId);
   if (!loaded) {
@@ -207,7 +212,10 @@ function ItemTrail({ taskId }: { taskId: string }) {
         </li>
       ) : null}
       {transitions.map((hop, i) => (
-        <li key={`${hop.at}-${i}`} className="flex min-w-0 items-baseline gap-1.5">
+        <li
+          key={`${hop.at}-${i}`}
+          className="flex min-w-0 items-baseline gap-1.5"
+        >
           <span className="shrink-0 font-tower-mono text-[8px] text-tower-fg-faint">
             {hop.at.slice(11, 16)}
           </span>
@@ -228,84 +236,59 @@ function ItemTrail({ taskId }: { taskId: string }) {
 }
 
 function Card({ item }: { item: PlacedItem }) {
-  const aloft = ageSince(item.attemptAt);
+  const attemptAge = ageSince(item.attemptAt);
   const [trailOpen, setTrailOpen] = useState(false);
   const chip = statusChip(item);
   const silent = chip?.silent ?? false;
-  const stageIndex = STAGES.findIndex((st) => st.key === STAGE_OF[item.col]);
   // What this sortie is actually doing, straight from its own transcript.
   const activity = useSortieActivity(item.attemptThreadId);
   return (
     <div
       className={
-        "mb-1.5 rounded-[8px] border px-2 py-1.5 " +
+        "mb-2 rounded-lg border px-3 py-2.5 " +
         (silent
-          ? "border-tower-border bg-tower-silent"
+          ? "border-tower-border bg-tower-panel"
           : "border-tower-border bg-tower-raised")
       }
       title={item.taskId}
     >
-      <div className="flex items-center justify-between gap-1">
-        <span className="min-w-0 truncate font-tower-mono text-[10px] text-tower-fg-body">
-          {svNumber(item.taskId)}
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-xs text-tower-fg-muted">
+          {taskNumber(item.taskId)}
           {/* the SORTIE flying this item — a lead never flies one itself */}
           {item.sortie ? (
-            <span className="text-tower-fg-muted"> · {leadName(item.sortie)}</span>
+            <span className="text-tower-fg-muted">
+              {" "}
+              · {leadName(item.sortie)}
+            </span>
           ) : null}
         </span>
-        {aloft ? (
-          <span className="shrink-0 font-tower-mono text-[8.5px] text-tower-fg-faint">
-            {aloft}
+        {attemptAge ? (
+          <span className="shrink-0 text-xs text-tower-fg-faint">
+            {attemptAge}
           </span>
         ) : null}
       </div>
       <div
         className={
-          "mt-1 line-clamp-2 text-[11px] leading-snug " +
-          (silent ? "text-tower-flight" : "text-tower-fg-body")
+          "mt-1.5 line-clamp-2 text-sm font-medium leading-snug " +
+          (silent ? "text-tower-fg-muted" : "text-tower-fg-body")
         }
       >
         {item.title}
       </div>
-      {/* The card's own runway: four stage positions, and the aircraft sits at
-          the one it has reached — so how far it has flown is legible before any
-          label is read. */}
-      {stageIndex >= 0 ? (
-        // The aircraft flies ABOVE its runway, not on it: the glyph is 16px tall
-        // from the top, so the line sits at 22px to leave real air beneath it.
-        <div className="relative mt-2 mb-1 h-[24px]">
-          <div className="absolute inset-x-0 top-[22px] h-px bg-tower-bright" />
-          <div
-            className="absolute inset-x-0 top-[22px] h-px bg-tower-flight/50"
-            style={{ width: `${((stageIndex + 0.5) / STAGES.length) * 100}%` }}
-          />
-          <span
-            className="absolute top-0 -translate-x-1/2"
-            style={{ left: `${((stageIndex + 0.5) / STAGES.length) * 100}%` }}
-          >
-            <RankInsignia
-              rank="sortie"
-              state={item.col === "in_flight" && !silent ? "working" : "waiting"}
-              size={16}
-              title={`${svNumber(item.taskId)} — ${chip?.label ?? "planned"}`}
-            />
-          </span>
-        </div>
-      ) : null}
       {/* the sortie's last line of activity — its own transcript, live */}
       {activity ? (
-        <div className="mt-1.5 flex items-start gap-1.5 rounded-[8px] bg-tower-surface px-2 py-1.5">
+        <div className="mt-2 flex items-start gap-2 rounded-lg border border-tower-border bg-tower-surface px-2.5 py-2">
           <span
             className={
-              "mt-px shrink-0 font-tower-mono text-[8px] uppercase tracking-[0.6px] " +
-              (activity.working
-                ? "text-tower-flight-strong"
-                : "text-tower-fg-faint")
+              "mt-px shrink-0 text-xs font-medium " +
+              (activity.working ? "text-tower-fg-body" : "text-tower-fg-faint")
             }
           >
             {activity.working ? "live" : "last"}
           </span>
-          <span className="line-clamp-2 min-w-0 flex-1 font-tower-mono text-[9.5px] leading-snug text-tower-fg-body">
+          <span className="line-clamp-2 min-w-0 flex-1 text-xs leading-relaxed text-tower-fg-muted">
             {activity.line}
           </span>
         </div>
@@ -319,21 +302,21 @@ function Card({ item }: { item: PlacedItem }) {
           aria-expanded={trailOpen}
           className="font-tower-mono text-[8px] uppercase tracking-[0.72px] text-tower-fg-faint transition-colors hover:text-tower-fg-body"
         >
-          {trailOpen ? "▾ trail" : "▸ trail"}
+          {trailOpen ? "▾ history" : "▸ history"}
         </button>
         {trailOpen ? <ItemTrail taskId={item.taskId} /> : null}
       </div>
       {!item.sortie && STAGE_OF[item.col] === "in_flight" ? (
         <div className="mt-1.5 font-tower-mono text-[8.5px] italic text-tower-fg-faint">
-          no sortie dispatched
+          no worker assigned
         </div>
       ) : null}
       {chip ? (
         <div className="mt-1.5 flex items-center justify-between gap-1.5">
           <span
             className={
-              "truncate font-tower-mono text-[8px] uppercase tracking-[0.72px] " +
-              (silent ? "text-tower-flight" : "text-tower-fg-faint")
+              "truncate text-xs " +
+              (silent ? "text-tower-fg-muted" : "text-tower-fg-faint")
             }
           >
             {chip.label}
@@ -368,10 +351,14 @@ const STAGE_RANK: Record<string, number> = {
 // step something is at, nor whose eye it sits under in review — the authority
 // difference lives on the chip, not in a column.
 const STAGES: { key: string; label: string; states: string[] }[] = [
-  { key: "prep", label: "Prep", states: ["drafted", "confirmed", "queued"] },
-  { key: "in_flight", label: "In flight", states: ["in_flight"] },
+  {
+    key: "prep",
+    label: "Backlog",
+    states: ["drafted", "confirmed", "queued"],
+  },
+  { key: "in_flight", label: "Working", states: ["in_flight"] },
   { key: "review", label: "Review", states: ["in_review", "pilot_look"] },
-  { key: "clearance", label: "Clearance", states: ["clearance"] },
+  { key: "clearance", label: "Ready", states: ["clearance"] },
 ];
 const STAGE_OF: Record<string, string> = Object.fromEntries(
   STAGES.flatMap((st) => st.states.map((state) => [state, st.key])),
@@ -386,8 +373,8 @@ const SUB_STATE: Record<string, string> = {
   pilot_look: "pilot look",
 };
 
-/** The runway: four ticks, lit where this lane actually has flights. */
-function StageRunway({ items }: { items: PlacedItem[] }) {
+/** Compact progress stages for the tasks assigned to one coding agent. */
+function TaskStageProgress({ items }: { items: PlacedItem[] }) {
   return (
     <div className="mb-2 flex items-center">
       {STAGES.map((st) => {
@@ -398,10 +385,10 @@ function StageRunway({ items }: { items: PlacedItem[] }) {
             className={
               // No truncate and no tracking: a ratified stage name must read in
               // full at two-up width, so it is sized to fit rather than clipped.
-              "min-w-0 flex-1 whitespace-nowrap border-b pb-1.5 text-center font-tower-mono text-[8.5px] uppercase " +
+              "min-w-0 flex-1 whitespace-nowrap border-b pb-2 text-center text-xs " +
               (live
-                ? "border-tower-flight text-tower-flight"
-                : "border-tower-bright text-tower-fg-faint")
+                ? "border-tower-fg-dim text-tower-fg-body"
+                : "border-tower-border text-tower-fg-faint")
             }
           >
             {st.label}
@@ -412,11 +399,8 @@ function StageRunway({ items }: { items: PlacedItem[] }) {
   );
 }
 
-// ─── the lane row: DOMAIN rail | STATUS story | IN FLIGHT cards ────────────────
-/** The lane's live flight deck — bb's own chat on the agent's thread, so the
- *  rail gets the real thing (streaming, thinking, tool calls) and a composer
- *  that steers, instead of a hand-rolled retelling of it. */
-function LaneFlightDeck({
+/** The real agent thread: streaming, thinking, tools, and a steering composer. */
+function AgentThreadSurface({
   threadId,
   projectId,
   providerId,
@@ -430,29 +414,29 @@ function LaneFlightDeck({
       {/* a definite height, so the chat scrolls its own history and keeps its
           composer in view instead of overflowing the band */}
       <div className="flex h-full min-h-0 flex-col [&>*]:min-h-0 [&>*]:flex-1">
-      <EmbeddedThreadChat
-        variant="compact"
-        surfaceTone="background"
-        threadId={threadId}
-        surfaceFallbackKey={`tower-lane-${threadId}`}
-        projectId={projectId}
-        providerId={providerId}
-        promptContextEnvironmentId={null}
-        resolveMentionLink={() => null}
-        composer={{
-          draftScope: { kind: "thread", projectId, threadId },
-          executionDefaultsThreadId: threadId,
-          executionResetKey: threadId,
-          permissionPolicy: "snapshot",
-          environmentSummary: null,
-        }}
-      />
+        <EmbeddedThreadChat
+          variant="compact"
+          surfaceTone="background"
+          threadId={threadId}
+          surfaceFallbackKey={`tower-lane-${threadId}`}
+          projectId={projectId}
+          providerId={providerId}
+          promptContextEnvironmentId={null}
+          resolveMentionLink={() => null}
+          composer={{
+            draftScope: { kind: "thread", projectId, threadId },
+            executionDefaultsThreadId: threadId,
+            executionResetKey: threadId,
+            permissionPolicy: "snapshot",
+            environmentSummary: null,
+          }}
+        />
       </div>
     </ChatBoundary>
   );
 }
 
-/** A lane's chat needs backend queries; keep the band if they fail. */
+/** An agent thread needs backend queries; keep the surface if they fail. */
 class ChatBoundary extends Component<
   { children: ReactNode },
   { failed: boolean }
@@ -465,7 +449,7 @@ class ChatBoundary extends Component<
     if (this.state.failed) {
       return (
         <div className="grid h-full place-items-center px-3 text-center font-tower-mono text-[9px] italic text-tower-fg-faint">
-          This lane&apos;s flight deck needs a connected thread.
+          This agent&apos;s workspace needs a connected thread.
         </div>
       );
     }
@@ -474,15 +458,12 @@ class ChatBoundary extends Component<
 }
 
 /**
- * A LEAD CARD — one per agent, two per row.
+ * An agent workspace card — one per lead, two per row when space allows.
  *
- * Lifted from the Lead Cards sheet: a contained card split into the lead's own
- * side (identity, its focus and what is next, its live conversation) and its
- * IN FLIGHT side. Values are the sheet's own — card #1F1E1D on a 1px #302F2C
- * edge at radius 16, focus block inset at #232322 radius 12, flight cards
- * #262624 radius 11, and the tool line recessed to #1F1E1D radius 8.
+ * The agent's thread is the primary surface. Current work stays visible above
+ * it, while the queue expands only when the operator asks for task detail.
  */
-function LeadCard({
+function AgentCard({
   threadId,
   projectId,
   providerId,
@@ -501,17 +482,17 @@ function LeadCard({
   escalated: boolean;
   hasThread: boolean;
 }) {
-  const airborne = items.filter((it) => it.col === "in_flight").length;
-  const held = items.filter((it) => HELD_COLS.has(it.col)).length;
-  const onBoard = items
+  const workingCount = items.filter((it) => it.col === "in_flight").length;
+  const reviewCount = items.filter((it) => HELD_COLS.has(it.col)).length;
+  const activeItems = items
     .filter((it) => STAGE_OF[it.col] != null)
     .sort((a, b) => (STAGE_RANK[b.col] ?? -1) - (STAGE_RANK[a.col] ?? -1));
   const terminal = items.filter((it) => it.col === "terminal");
 
-  // FOCUS is the most-advanced live flight; NEXT is the next thing to launch.
-  const focus = onBoard[0] ?? null;
+  // FOCUS is the most-advanced active task; NEXT is the next queued task.
+  const focus = activeItems[0] ?? null;
   const focusChip = focus ? statusChip(focus) : null;
-  const focusAloft = focus ? ageSince(focus.attemptAt) : null;
+  const focusAge = focus ? ageSince(focus.attemptAt) : null;
   const next =
     items
       .filter((it) => HOLD_COLS.has(it.col))
@@ -519,169 +500,228 @@ function LeadCard({
     null;
 
   const silent = items.find(hasLostContact);
-  const awaitingClearance = items.filter((it) => it.col === "clearance").length;
+  const awaitingApproval = items.filter((it) => it.col === "clearance").length;
   const risk = silent
-    ? `${svNumber(silent.taskId)} has lost contact — still assigned, still burning.`
-    : awaitingClearance > 0
-      ? `${awaitingClearance} waiting on your clearance before this lead can move on.`
+    ? `${taskNumber(silent.taskId)} is disconnected but remains assigned.`
+    : awaitingApproval > 0
+      ? `${awaitingApproval} waiting for your approval before this agent can continue.`
       : escalated
-        ? "A mayday is standing on this lead."
+        ? "This agent escalated a blocker that needs your input."
         : null;
 
-  const EYE =
-    "font-tower-mono text-[8.5px] uppercase tracking-[0.85px] text-tower-fg-dim";
+  const EYE = "text-xs font-medium text-tower-fg-faint";
 
   const identity = (
-    <div className="flex items-center gap-2.5">
-      <PlatedInsignia
-        rank={hasThread ? "lead" : "sortie"}
-        state={airborne > 0 ? "working" : "waiting"}
-        plate={38}
-      />
-      <span
-        className={
-          "min-w-0 flex-1 truncate text-[18px] font-semibold text-tower-fg" +
-          (onOpen ? " group-hover/sp:text-tower-accent-hover" : "")
-        }
-      >
-        {label}
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-md border border-tower-border bg-tower-input text-tower-fg-muted">
+        <Icon
+          name={hasThread ? "Code" : "ListTodo"}
+          className="size-4"
+          aria-hidden
+        />
       </span>
-      {held > 0 ? (
-        <span className="shrink-0 rounded-[6px] bg-tower-accent-tint px-1.5 py-0.5 font-tower-mono text-[8.5px] font-semibold uppercase tracking-[0.68px] text-tower-flight-strong">
-          {held} held
+      <span className="min-w-0">
+        <span className="block truncate text-base font-semibold text-tower-fg">
+          {label}
         </span>
-      ) : null}
+        <span className="mt-0.5 block text-xs text-tower-fg-faint">
+          {hasThread
+            ? workingCount > 0
+              ? "Coding agent · working"
+              : "Coding agent · ready"
+            : "Unassigned tasks"}
+        </span>
+      </span>
     </div>
   );
 
   return (
-    <article className="grid min-h-[560px] grid-cols-[minmax(0,55%)_minmax(0,45%)] overflow-hidden rounded-[16px] border border-tower-bright bg-tower-surface">
-      {/* ── the lead ── */}
-      <div className="flex min-h-0 flex-col gap-3 border-r border-tower-bright p-4">
+    <article className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-tower-border bg-tower-surface">
+      <header className="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-tower-border px-4 py-3">
         {onOpen ? (
           <button
             type="button"
             onClick={onOpen}
             title={`Open ${label}`}
-            className="group/sp shrink-0 text-left"
+            className="group/sp min-w-0 rounded-lg text-left outline-none focus-visible:ring-1 focus-visible:ring-tower-fg-dim"
           >
             {identity}
           </button>
         ) : (
-          <div className="shrink-0">{identity}</div>
+          <div className="min-w-0">{identity}</div>
         )}
 
-        {/* what it is on, and what it takes next */}
-        <div className="shrink-0 rounded-[12px] bg-tower-inset px-3.5 py-3">
-          <div className={EYE}>Focus</div>
-          {focus ? (
-            <>
-              <div className="mt-0.5 truncate text-[13px] font-[650] text-tower-fg">
-                {focus.title}
+        <div className="flex shrink-0 items-center gap-2 text-xs text-tower-fg-faint">
+          <span className="rounded-full border border-tower-border bg-tower-panel px-2.5 py-1">
+            {activeItems.length} active
+          </span>
+          {reviewCount > 0 ? (
+            <span className="rounded-full border border-tower-border bg-tower-panel px-2.5 py-1 text-tower-fg-muted">
+              {reviewCount} in review
+            </span>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        {/* Agent context stays compact so the thread remains the primary work surface. */}
+        <section className="shrink-0 border-b border-tower-border bg-tower-panel px-4 py-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className={EYE}>Current task</div>
+              {focus ? (
+                <>
+                  <div className="mt-1 truncate text-sm font-medium text-tower-fg">
+                    {focus.title}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-tower-fg-muted">
+                    {taskNumber(focus.taskId)}
+                    {focusChip ? ` · ${focusChip.label}` : ""}
+                    {focusAge ? ` · ${focusAge} ago` : ""}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-1 text-sm text-tower-fg-faint">
+                  Ready for an assignment.
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 max-w-[45%] text-right">
+              <div className={EYE}>Up next</div>
+              <div className="mt-1 truncate text-sm text-tower-fg-body">
+                {next ? next.title : "Nothing queued."}
               </div>
-              <div className="mt-0.5 truncate font-tower-mono text-[9px] text-tower-fg-muted">
-                {svNumber(focus.taskId)}
-                {focusChip ? ` · ${focusChip.label}` : ""}
-                {focusAloft ? ` · ${focusAloft} ago` : ""}
-              </div>
-            </>
+            </div>
+          </div>
+          {risk ? (
+            <div className="mt-3 rounded-lg border border-tower-border bg-tower-surface px-3 py-2">
+              <span className="text-xs font-medium text-tower-fg-body">
+                Needs attention
+              </span>{" "}
+              <span className="text-xs leading-relaxed text-tower-fg-muted">
+                {risk}
+              </span>
+            </div>
+          ) : null}
+        </section>
+
+        <details className="group shrink-0 border-b border-tower-border">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-xs text-tower-fg-muted transition-colors hover:bg-tower-panel [&::-webkit-details-marker]:hidden">
+            <Icon name="ListTodo" className="size-3.5" aria-hidden />
+            <span className="font-medium">Task queue</span>
+            <span className="text-tower-fg-faint">
+              {activeItems.length} active · {terminal.length} completed
+            </span>
+            <Icon
+              name="ChevronDown"
+              className="ml-auto size-3.5 transition-transform group-open:rotate-180"
+              aria-hidden
+            />
+          </summary>
+          <div className="max-h-64 overflow-y-auto border-t border-tower-border bg-tower-inset p-4">
+            <TaskStageProgress items={items} />
+            {activeItems.length === 0 ? (
+              <p className="py-4 text-center text-xs text-tower-fg-faint">
+                No active tasks.
+              </p>
+            ) : (
+              STAGES.map((st) => {
+                const inStage = activeItems.filter(
+                  (it) => STAGE_OF[it.col] === st.key,
+                );
+                if (inStage.length === 0) return null;
+                return (
+                  <div key={st.key} className="mb-2 last:mb-0">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="text-xs font-medium text-tower-fg-muted">
+                        {st.label}
+                      </span>
+                      <span className="h-px flex-1 bg-tower-border" />
+                      <span className="text-xs text-tower-fg-faint">
+                        {inStage.length}
+                      </span>
+                    </div>
+                    {inStage.map((it) => (
+                      <Card key={it.taskId} item={it} />
+                    ))}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </details>
+
+        {/* The lead's thread is the agent card's primary surface. */}
+        <section className="flex min-h-0 flex-1 flex-col gap-2 p-4">
+          <div className="flex shrink-0 items-center justify-between gap-2 px-0.5">
+            <span className="text-xs font-medium text-tower-fg-muted">
+              Agent thread
+            </span>
+            {hasThread ? (
+              <span className="text-xs text-tower-fg-faint">Live thread</span>
+            ) : null}
+          </div>
+          {hasThread && threadId ? (
+            <div
+              className="min-h-0 flex-1 overflow-hidden rounded-xl border border-tower-border bg-tower-transcript p-1 [zoom:0.9] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
+              style={
+                {
+                  "--background": "var(--color-tower-transcript)",
+                } as CSSProperties
+              }
+            >
+              <AgentThreadSurface
+                threadId={threadId}
+                projectId={projectId}
+                providerId={providerId}
+              />
+            </div>
           ) : (
-            <div className="mt-0.5 text-[12px] italic text-tower-fg-faint">
-              Nothing in the air.
+            <div className="grid min-h-36 flex-1 place-items-center rounded-xl border border-dashed border-tower-border px-4 text-center text-xs text-tower-fg-faint">
+              No conversation has started yet.
             </div>
           )}
-          <div className="my-2.5 h-px bg-tower-border" />
-          <div className="flex items-baseline gap-2">
-            <span className={`${EYE} shrink-0`}>Next</span>
-            <span className="min-w-0 flex-1 truncate text-[12px] text-tower-fg-body">
-              {next ? next.title : "Nothing queued."}
-            </span>
-          </div>
-        </div>
-
-        {risk ? (
-          <div className="shrink-0 rounded-[10px] bg-tower-silent px-3 py-2">
-            <span className="font-tower-mono text-[8.5px] font-bold uppercase tracking-[0.85px] text-tower-flight">
-              Risk
-            </span>{" "}
-            <span className="text-[10.5px] text-tower-fg-body">{risk}</span>
-          </div>
-        ) : null}
-
-        {/* the lead's live conversation, with its own composer */}
-        {hasThread && threadId ? (
-          <div
-            className="min-h-0 flex-1 overflow-hidden rounded-[10px] border border-tower-border bg-tower-transcript p-1 [zoom:0.85] [&_[data-follow-up-composer-footer]]:hidden [&_[data-promptbox-action-row]]:hidden [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
-            style={
-              { "--background": "var(--color-tower-transcript)" } as CSSProperties
-            }
-          >
-            <LaneFlightDeck
-              threadId={threadId}
-              projectId={projectId}
-              providerId={providerId}
-            />
-          </div>
-        ) : (
-          <div className="font-tower-mono text-[9px] italic text-tower-fg-faint">
-            Undispatched — no flight deck yet.
-          </div>
-        )}
-      </div>
-
-      {/* ── in flight ── */}
-      <div className="flex min-h-0 flex-col overflow-y-auto p-4">
-        <div className="mb-2 shrink-0 font-tower-mono text-[9px] uppercase tracking-[0.14em] text-tower-accent">
-          In flight
-        </div>
-        <StageRunway items={items} />
-        {onBoard.length === 0 ? (
-          <div className="font-tower-mono text-[9px] italic text-tower-fg-faint">
-            No flights in the air.
-          </div>
-        ) : (
-          STAGES.map((st) => {
-            const inStage = onBoard.filter((it) => STAGE_OF[it.col] === st.key);
-            if (inStage.length === 0) return null;
-            return (
-              <div key={st.key} className="mb-2">
-                <div className="mb-1.5 flex items-center gap-2">
-                  <span className="font-tower-mono text-[8.5px] uppercase tracking-[0.14em] text-tower-fg-muted">
-                    {st.label}
-                  </span>
-                  <span className="h-px flex-1 bg-tower-border" />
-                  <span className="font-tower-mono text-[8px] text-tower-fg-faint">
-                    {inStage.length}
-                  </span>
-                </div>
-                {inStage.map((it) => (
-                  <Card key={it.taskId} item={it} />
-                ))}
-              </div>
-            );
-          })
-        )}
-        {terminal.length > 0 ? (
-          <div className="mt-auto pt-2">
-            <div className="mb-1.5 flex items-center gap-2">
-              <span className="font-tower-mono text-[8.5px] uppercase tracking-[0.14em] text-tower-fg-faint">
-                Terminal
-              </span>
-              <span className="h-px flex-1 bg-tower-border" />
-            </div>
-            {terminal.map((it) => (
-              <div
-                key={it.taskId}
-                title={it.taskId}
-                className="mb-1 inline-flex rounded-full border border-tower-border px-2 py-0.5 font-tower-mono text-[8px] uppercase tracking-[0.6px] text-tower-fg-dim"
-              >
-                {it.termLabel}
-              </div>
-            ))}
-          </div>
-        ) : null}
+        </section>
       </div>
     </article>
+  );
+}
+
+function FleetLoadingState() {
+  return (
+    <div
+      className="grid min-h-full grid-cols-1 gap-4 px-4 pb-4 @[1240px]/board:grid-cols-2"
+      aria-label="Preparing crew activity"
+      aria-busy="true"
+    >
+      {[0, 1].map((index) => (
+        <div
+          key={index}
+          className="min-h-[520px] animate-pulse overflow-hidden rounded-xl border border-tower-border bg-tower-surface"
+        >
+          <div className="flex h-16 items-center gap-3 border-b border-tower-border px-4">
+            <div className="size-9 rounded-md bg-tower-input" />
+            <div className="space-y-2">
+              <div className="h-3 w-28 rounded-full bg-tower-input" />
+              <div className="h-2 w-16 rounded-full bg-tower-panel" />
+            </div>
+          </div>
+          <div className="h-[455px]">
+            <div className="h-24 space-y-3 border-b border-tower-border bg-tower-panel px-4 py-3">
+              <div className="h-2 w-20 rounded-full bg-tower-input" />
+              <div className="h-3 w-44 rounded-full bg-tower-input" />
+              <div className="h-2 w-28 rounded-full bg-tower-raised" />
+            </div>
+            <div className="h-9 border-b border-tower-border px-4 py-3">
+              <div className="h-2 w-28 rounded-full bg-tower-panel" />
+            </div>
+            <div className="h-[323px] p-4">
+              <div className="h-full rounded-xl border border-tower-border bg-tower-transcript" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -714,7 +754,11 @@ export function FleetOverviewTab({
   // chat-link nav: bb-tower:sp/<id> focuses; bb-tower:crew returns to the board.
   const towerNav = useAtomValue(towerNavAtom);
   const lastNav = useRef(0);
-  if (towerNav && towerNav.view === "crew" && towerNav.nonce !== lastNav.current) {
+  if (
+    towerNav &&
+    towerNav.view === "crew" &&
+    towerNav.nonce !== lastNav.current
+  ) {
     lastNav.current = towerNav.nonce;
     setFocusedSp(towerNav.spThreadId ?? null);
   }
@@ -739,8 +783,11 @@ export function FleetOverviewTab({
     return (
       <SpFocusView
         threadId={focusedSp}
-        label={agentLabel(r?.handle ?? null, liveIds?.get(focusedSp)?.title, focusedSp)}
-        domain={r?.parentThreadId ? "lead" : "commander"}
+        label={agentLabel(
+          r?.handle ?? null,
+          liveIds?.get(focusedSp)?.title,
+          focusedSp,
+        )}
         report={
           board.data?.rows.find((b) => b.threadId === focusedSp)?.report ?? null
         }
@@ -808,7 +855,7 @@ export function FleetOverviewTab({
   const chores = queue.data?.chores ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-tower-render font-tower-sans">
+    <div className="flex h-full min-h-0 flex-col bg-tower-surface">
       {error ? (
         <div className="shrink-0 px-4 pt-3 font-tower-mono text-[9px] text-tower-accent-hover">
           rpc error · {error}
@@ -817,30 +864,34 @@ export function FleetOverviewTab({
 
       <div className="@container/board min-h-0 flex-1 overflow-auto pt-3">
         {(fleet.loading || !crewKnown) && rows.length === 0 ? (
-          <div className="px-4 py-6 italic text-tower-fg-faint">loading leads…</div>
+          <FleetLoadingState />
         ) : fleet.timedOut && rows.length === 0 ? (
           // Slow and broken need different words. This machine also runs the
           // fleet's CI, so a late answer is a normal condition here rather than
           // evidence of a fault — and a spinner that never stops would say
           // neither.
-          <div className="px-4 py-6 text-tower-fg-faint">
-            <span className="italic">The fleet hasn&apos;t answered yet.</span>
-          </div>
+          <SecondaryPanelEmptyState
+            className="min-h-full"
+            icon="Clock"
+            title="Still checking agent activity"
+            description="The coding agents are taking longer than expected to respond."
+          />
         ) : rows.length === 0 && unassigned.length === 0 ? (
-          <div className="px-4 py-6 italic text-tower-fg-faint">
-            {viewerRole === "commander"
-              ? "No leads yet."
-              : "No sorties dispatched by this lead yet — its work items exist on the fleet board but no sortie has been spawned to fly them."}
-          </div>
+          <SecondaryPanelEmptyState
+            className="min-h-full"
+            icon="UserRound"
+            title={
+              viewerRole === "commander" ? "No leads yet" : "No workers yet"
+            }
+            description={
+              viewerRole === "commander"
+                ? "Leads will appear here as this crew takes shape."
+                : "This agent has not delegated any tasks yet."
+            }
+          />
         ) : (
-          // Two lead cards per row, as the sheet lays them out. A nested
-          // surface has half the width, so it stacks instead.
-          // Two lead cards per row (the Captain's preference and the sheet's own
-          // annotation), with the height the pair costs in width given back
-          // vertically. The stage ticks are sized to stay readable at this
-          // narrower zone — the earlier two-up truncated them, which is what
-          // made it look wrong, not the pairing itself. A nested surface has
-          // half the width again, so it stacks.
+          // Two agent workspaces per row when each can stay readable. A nested
+          // agent surface has half the width again, so it stacks.
           <div
             className={
               "grid gap-4 px-4 pb-4 " +
@@ -854,12 +905,16 @@ export function FleetOverviewTab({
             }
           >
             {rows.map((r) => (
-              <LeadCard
+              <AgentCard
                 key={r.threadId}
                 threadId={r.threadId}
                 projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
                 providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
-                label={agentLabel(r.handle, liveIds?.get(r.threadId)?.title, r.threadId)}
+                label={agentLabel(
+                  r.handle,
+                  liveIds?.get(r.threadId)?.title,
+                  r.threadId,
+                )}
                 onOpen={() => setFocusedSp(r.threadId)}
                 items={byRow.get(r.threadId) ?? []}
                 escalated={isEscalated(r.threadId)}
@@ -868,7 +923,7 @@ export function FleetOverviewTab({
             ))}
             {/* the commander's undispatched pipeline (not yet handed to a lead) */}
             {!crewRootThreadId && unassigned.length > 0 ? (
-              <LeadCard
+              <AgentCard
                 threadId={null}
                 projectId=""
                 providerId=""
@@ -899,7 +954,6 @@ export function FleetOverviewTab({
           </div>
         ) : null}
       </div>
-
     </div>
   );
 }

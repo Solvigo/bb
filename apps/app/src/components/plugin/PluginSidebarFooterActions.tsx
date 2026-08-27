@@ -11,7 +11,7 @@ import { getSettingsPluginRoutePath } from "@/lib/route-paths";
 
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
+  "h-8 w-auto gap-1.5 px-2 text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
 );
 
 /**
@@ -64,7 +64,7 @@ function PluginSidebarFooterActionList({
             }}
           >
             <PluginIcon pluginId={action.pluginId} icon={action.icon} />
-            <span className="sr-only">{action.title}</span>
+            <span className="max-w-20 truncate text-xs">{action.title}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}

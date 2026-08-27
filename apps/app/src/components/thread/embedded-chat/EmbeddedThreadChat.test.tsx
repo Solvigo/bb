@@ -14,7 +14,9 @@ const mocks = vi.hoisted(() => ({
   pendingInteractions: [] as Array<{
     id: string;
     createdAt: number;
-    payload: { kind: string };
+    threadId?: string;
+    origin?: { kind: "plugin"; pluginId: string; rendererId: string };
+    payload: { kind: string; title?: string; data?: null };
   }>,
   queuedMessages: [] as Array<{ id: string }>,
   readTrackingThreads: [] as Array<unknown>,
@@ -486,15 +488,31 @@ describe("EmbeddedThreadChat", () => {
     expect(screen.queryByTestId("embedded-chat-composer")).toBeNull();
   });
 
-  // A plugin-owned interaction has its own composer, so the draft must stay.
-  it("keeps the composer for a plugin-owned interaction", () => {
+  // A plugin-owned interaction has its own form, so it replaces the draft just
+  // like an approval rather than leaving a composer the server cannot accept.
+  it("swaps the composer for a plugin-owned interaction", () => {
     mocks.pendingInteractions = [
-      { id: "int_2", createdAt: 1, payload: { kind: "plugin" } },
+      {
+        id: "int_2",
+        threadId: "thr_side_chat",
+        createdAt: 1,
+        origin: {
+          kind: "plugin",
+          pluginId: "test-plugin",
+          rendererId: "test-request",
+        },
+        payload: {
+          kind: "plugin",
+          title: "Test plugin request",
+          data: null,
+        },
+      },
     ];
 
     renderEmbeddedChat({ threadId: "thr_side_chat" });
 
     expect(screen.queryByTestId("pending-interaction-banner")).toBeNull();
-    expect(screen.getByTestId("embedded-chat-composer")).toBeTruthy();
+    expect(screen.queryByTestId("embedded-chat-composer")).toBeNull();
+    expect(screen.getByText(/plugin form is unavailable/i)).toBeTruthy();
   });
 });

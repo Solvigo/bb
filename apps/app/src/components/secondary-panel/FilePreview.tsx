@@ -13,7 +13,6 @@ import type { UrlTransform } from "react-markdown";
 import { Button } from "@bb/shared-ui/button";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
@@ -21,7 +20,6 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +40,7 @@ import {
 } from "@/lib/code-overflow-mode";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SecondaryPanelSelectionActions } from "./SecondaryPanelSelectionActions.js";
+import { SecondaryPanelEmptyState } from "./SecondaryPanelEmptyState";
 
 export interface FilePreviewFile {
   cacheKey?: string;
@@ -1146,22 +1145,23 @@ function buildFilePreviewLineSelectionText({
 
 function FilePreviewLoading() {
   return (
-    <div className="space-y-2 px-4 pt-4" aria-busy>
-      <Skeleton className="h-3 w-3/4 rounded-sm" />
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-5/6 rounded-sm" />
-      <Skeleton className="h-3 w-2/3 rounded-sm" />
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-3/5 rounded-sm" />
-    </div>
+    <SecondaryPanelEmptyState
+      icon="Spinner"
+      iconClassName="animate-spin"
+      title="Loading file"
+      description="Reading this file's contents…"
+      aria-busy="true"
+    />
   );
 }
 
 function FilePreviewMessage({ message, role }: FilePreviewMessageProps) {
   return (
-    <EmptyStatePanel role={role} className="mx-4 mt-4 rounded-lg">
-      {message}
-    </EmptyStatePanel>
+    <SecondaryPanelEmptyState
+      role={role}
+      icon="FileText"
+      title={message.replace(/\.$/, "")}
+    />
   );
 }
 

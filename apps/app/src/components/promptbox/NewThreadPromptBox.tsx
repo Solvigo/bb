@@ -70,7 +70,7 @@ import {
   shouldDisablePermissionPickerForPromptMode,
 } from "./effective-prompt-mode";
 
-const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
+const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 52;
 const DEFAULT_NEW_THREAD_COMPOSER_SCOPE = {
   kind: "new-thread",
   projectId: null,

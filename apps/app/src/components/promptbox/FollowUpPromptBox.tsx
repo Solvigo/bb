@@ -110,7 +110,7 @@ function PromptBoxWithScrollAnchor({
 // (context banner + queued messages) grows, the textarea min-height shrinks
 // by the same amount — total prompt-area height stays constant and the
 // thread timeline does not shift when the context banner mounts.
-const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 64;
+const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 36;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
   FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
   THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT;
