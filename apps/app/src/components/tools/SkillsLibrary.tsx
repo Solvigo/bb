@@ -12,7 +12,10 @@ import {
   RegistrySkillDetailView,
   RegistrySkillsBrowsePage,
 } from "@/components/tools/SkillsBrowse";
-import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
+import {
+  getSkillsBrowseRoutePath,
+  isToolsCollectionBrowseView,
+} from "@/components/tools/tools-navigation";
 import {
   SkillDetailDialogView,
   SkillsOverview,
@@ -145,8 +148,7 @@ export function SkillsLibrary() {
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
   const isRegistryBrowseRoute =
     location.pathname === getRegistrySkillsRoutePath() ||
-    (location.pathname === getSkillsRoutePath() &&
-      new URLSearchParams(location.search).get("view") !== "library");
+    isToolsCollectionBrowseView("skills", location.pathname, location.search);
   const registryRequestPage =
     isRegistryBrowseRoute || routeRegistrySkillId !== undefined
       ? registryPage
@@ -377,15 +379,15 @@ export function SkillsLibrary() {
     (mode: SkillsCollectionMode) => {
       if (mode === "browse") {
         setRegistryPage(0);
-        navigate(getSkillsRoutePath());
+        navigate(getSkillsBrowseRoutePath());
         return;
       }
-      navigate(getToolsOwnedCollectionRoutePath("skills"));
+      navigate(getSkillsRoutePath());
     },
     [navigate],
   );
   const closeSkillDetail = useCallback(() => {
-    navigate(getToolsOwnedCollectionRoutePath("skills"));
+    navigate(getSkillsRoutePath());
   }, [navigate]);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.

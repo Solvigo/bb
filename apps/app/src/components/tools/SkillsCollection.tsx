@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
+import { Button } from "@bb/shared-ui/button";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   ResourcePagination,
   useResourcePagination,
@@ -54,7 +56,8 @@ const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = (
   Object.keys(RESOURCE_PROVIDER_FILTER_ORDER) as ResourceProviderFilter[]
 ).sort(
   (left, right) =>
-    RESOURCE_PROVIDER_FILTER_ORDER[left] - RESOURCE_PROVIDER_FILTER_ORDER[right],
+    RESOURCE_PROVIDER_FILTER_ORDER[left] -
+    RESOURCE_PROVIDER_FILTER_ORDER[right],
 );
 
 const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
@@ -409,6 +412,29 @@ export function SkillsOverview({
     />
   ) : isLoading ? (
     <ResourceListState state="loading" message="Loading skills" />
+  ) : skills.length === 0 && normalizedQuery === "" ? (
+    // A library that is empty because nothing is installed yet is a different
+    // thing from one emptied by a filter: it has somewhere to send you.
+    <EmptyStatePanel role="status" className="py-10">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">
+            No skills installed yet
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Skills teach your agents how you work, and they apply across every
+            agent you use in bb.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onModeChange("browse")}
+        >
+          Browse skills
+        </Button>
+      </div>
+    </EmptyStatePanel>
   ) : visibleSkills.length === 0 ? (
     <ResourceListState
       state="empty"
@@ -417,9 +443,7 @@ export function SkillsOverview({
         // filter is what emptied it — clearing the search would still show
         // nothing.
         normalizedQuery === ""
-          ? skills.length === 0
-            ? "No skills in your library."
-            : "No skills match these filters."
+          ? "No skills match these filters."
           : sourceFilters.length > 0 || providerFilters.length > 0
             ? `No skills match "${query}" with these filters.`
             : `No skills match "${query}"`
@@ -442,12 +466,12 @@ export function SkillsOverview({
       id="skills-collection"
       description="Create and manage agent skills. bb skills work across every agent you use in bb."
       modes={[
-        { id: "browse", label: "Browse" },
         {
           id: "library",
           label: TOOLS_OWNED_COLLECTION_LABEL.skills,
           count: skills.length,
         },
+        { id: "browse", label: "Browse" },
       ]}
       activeMode={activeMode}
       onModeChange={onModeChange}

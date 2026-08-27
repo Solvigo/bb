@@ -59,6 +59,45 @@ export function getToolsOwnedCollectionRoutePath(id: ToolsSectionId): string {
   return `${TOOLS_SECTIONS[id].to}?view=${TOOLS_OWNED_COLLECTION_VIEW[id]}`;
 }
 
+/**
+ * The marketplace. Skills opens on what you have installed, so browsing the
+ * registry is the view that has to name itself in the URL.
+ */
+export function getSkillsBrowseRoutePath(): string {
+  return `${TOOLS_SECTIONS.skills.to}?view=browse`;
+}
+
+/**
+ * Which view a collection lands on when the URL does not say. Skills opens on
+ * the library — what you have installed is the answer to "what can my agents
+ * do" — while plugins still opens on the catalogue.
+ */
+export const TOOLS_DEFAULT_COLLECTION_VIEW = {
+  skills: "library",
+  plugins: "browse",
+} as const satisfies Record<ToolsSectionId, string>;
+
+/**
+ * Whether a tools URL is showing the catalogue rather than what is installed.
+ *
+ * The page and the breadcrumbs both have to answer this, and they used to
+ * answer it separately — which is how a default can change in one place and
+ * not the other.
+ */
+export function isToolsCollectionBrowseView(
+  section: ToolsSectionId,
+  pathname: string,
+  search = "",
+): boolean {
+  if (pathname !== TOOLS_SECTIONS[section].to) {
+    return false;
+  }
+  const view =
+    new URLSearchParams(search).get("view") ??
+    TOOLS_DEFAULT_COLLECTION_VIEW[section];
+  return view !== TOOLS_OWNED_COLLECTION_VIEW[section];
+}
+
 export const TOOLS_NAV_ITEMS = [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills];
 
 export interface ToolsBreadcrumbSegment {
@@ -182,7 +221,6 @@ export function resolveToolsBreadcrumbs(
   search = "",
   resourceLabel?: string | null,
 ): ToolsBreadcrumbSegment[] | null {
-  const view = new URLSearchParams(search).get("view");
   // Browse is matched before detail on purpose. A single-param detail pattern
   // such as /tools/plugins/:pluginId also matches /tools/plugins/browse, so
   // testing detail first resolves the reserved "browse" segment as a resource
@@ -190,8 +228,7 @@ export function resolveToolsBreadcrumbs(
   for (const [section, browseRoute] of BROWSE_ROUTES) {
     if (
       pathname === browseRoute ||
-      (pathname === TOOLS_SECTIONS[section].to &&
-        view !== TOOLS_OWNED_COLLECTION_VIEW[section])
+      isToolsCollectionBrowseView(section, pathname, search)
     ) {
       return [sectionCrumb(section), { label: "Browse" }];
     }
@@ -216,10 +253,7 @@ export function resolveToolsBreadcrumbs(
       pathname === section.to ||
       ROOT_ROUTE_ALIASES[section.id].includes(pathname)
     ) {
-      if (
-        pathname === section.to &&
-        view !== TOOLS_OWNED_COLLECTION_VIEW[section.id]
-      ) {
+      if (isToolsCollectionBrowseView(section.id, pathname, search)) {
         continue;
       }
       return [
