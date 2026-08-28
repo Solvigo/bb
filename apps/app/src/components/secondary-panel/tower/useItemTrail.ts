@@ -69,7 +69,8 @@ export function useItemTrail(taskId: string | null): ItemTrail {
         // Resolve either way: a read that never finishes must not leave the
         // trail permanently "loading", which reads as a hang rather than a
         // failure. Empty-and-loaded is honest; empty-and-never-loaded is not.
-        if (!cancelled) setTrail({ transitions: [], truncated: false, loaded: true });
+        if (!cancelled)
+          setTrail({ transitions: [], truncated: false, loaded: true });
       } finally {
         clearTimeout(timer);
       }

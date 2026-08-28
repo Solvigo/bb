@@ -1,5 +1,6 @@
 import { FleetOverviewTab } from "./FleetOverviewTab";
 import { BriefTab } from "./BriefTab";
+import { FilesTab } from "./FilesTab";
 import {
   registerAgentSurfaceTab,
   type AgentSurfaceTabProps,
@@ -20,6 +21,10 @@ import {
 
 function CrewSurfaceTab({ agentId, viewerRole }: AgentSurfaceTabProps) {
   return <FleetOverviewTab scopeThreadId={agentId} viewerRole={viewerRole} />;
+}
+
+function FilesSurfaceTab({ agentId }: AgentSurfaceTabProps) {
+  return <FilesTab agentId={agentId} />;
 }
 
 function BriefSurfaceTab({ agentId }: AgentSurfaceTabProps) {
@@ -44,6 +49,14 @@ export function registerBuiltInAgentSurfaceTabs(): void {
     title: "Crew overview",
     order: 0,
     component: CrewSurfaceTab,
+  });
+  registerAgentSurfaceTab({
+    id: "files",
+    label: "Files",
+    icon: "Folder",
+    title: "The worktree this agent is working in",
+    order: 2,
+    component: FilesSurfaceTab,
   });
   registerAgentSurfaceTab({
     id: "brief",
