@@ -4,8 +4,9 @@ import { ThreadStorageBrowser } from "@/components/secondary-panel/ThreadStorage
 import { useThreadStorageBrowser } from "@/components/secondary-panel/useThreadStorageBrowser";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import { SecondaryPanelFilePreview } from "@/components/secondary-panel/ThreadStorageFilePreview";
+import { useEnvironmentFilePreview } from "@/hooks/queries/environment-queries";
 import { useWorktreeFiles } from "./useWorktreeFiles";
-import { useWorktreeFileOpener } from "./worktree-file-open";
 
 /**
  * The agent's own worktree, in the same file browser the thread-storage panel
@@ -16,20 +17,18 @@ import { useWorktreeFileOpener } from "./worktree-file-open";
  * working on, not a write path into a crew's isolated checkout.
  */
 export function FilesTab({ agentId }: { agentId: string }) {
-  const { files, truncated, rootPath, isLoading, error } =
+  const { environmentId, files, truncated, rootPath, isLoading, error } =
     useWorktreeFiles(agentId);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const openFile = useWorktreeFileOpener();
-  const onSelectPath = useCallback(
-    (path: string) => {
-      setSelectedPath(path);
-      // The panel already owns file tabs — chrome, previews, close buttons —
-      // so picking a file hands it the path rather than growing a second
-      // viewer in here. Without an opener the tree is still a tree: it
-      // selects, and nothing pretends a click did more than it did.
-      openFile?.(path);
-    },
-    [openFile],
+  const onSelectPath = useCallback((path: string) => setSelectedPath(path), []);
+
+  // The file opens BESIDE the tree, not as a tab in the strip above: this is a
+  // file view, and leaving the tree on screen is the whole point of one.
+  const preview = useEnvironmentFilePreview(
+    environmentId,
+    selectedPath ?? "",
+    { kind: "working-tree" },
+    { enabled: Boolean(environmentId && selectedPath) },
   );
 
   const controller = useThreadStorageBrowser({
@@ -87,12 +86,57 @@ export function FilesTab({ agentId }: { agentId: string }) {
           />
         </div>
       </div>
-      <div className="min-h-0 flex-1">
-        <ThreadStorageBrowser
-          controller={controller}
-          filesError={error}
-          isFilesLoading={isLoading}
-        />
+      <div className="flex min-h-0 flex-1">
+        <div className="min-h-0 w-64 shrink-0 overflow-hidden border-r border-tower-border">
+          <ThreadStorageBrowser
+            controller={controller}
+            filesError={error}
+            isFilesLoading={isLoading}
+          />
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {selectedPath === null ? (
+            <div className="flex h-full items-center justify-center px-4">
+              <p className="text-xs text-muted-foreground">
+                Pick a file to read it here.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* The path, as a trail rather than one long string — the tree
+                  beside it already shows where you are, so this is orientation
+                  for the pane, not navigation. */}
+              <div className="flex shrink-0 items-center gap-1 overflow-x-auto px-3 py-2 text-xs text-muted-foreground">
+                {selectedPath.split("/").map((segment, index, segments) => (
+                  <span
+                    key={`${segment}-${index}`}
+                    className="whitespace-nowrap"
+                  >
+                    {index > 0 ? (
+                      <span className="px-1 opacity-60">/</span>
+                    ) : null}
+                    <span
+                      className={
+                        index === segments.length - 1 ? "text-foreground" : ""
+                      }
+                    >
+                      {segment}
+                    </span>
+                  </span>
+                ))}
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto">
+                <SecondaryPanelFilePreview
+                  activePath={selectedPath}
+                  copyPath={selectedPath}
+                  error={(preview.error as Error | null) ?? null}
+                  filePreview={preview.data}
+                  isLoading={preview.isLoading}
+                />
+              </div>
+            </>
+          )}
+        </div>
       </div>
       {truncated ? (
         // The host stopped listing before the end. Saying so is the whole
