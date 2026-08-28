@@ -224,3 +224,21 @@ when guessed at instead:
   with no tab strip at all, which reads exactly like a broken tab strip.
 - **An unmanaged workspace on a live checkout is for looking.** An agent asked
   to change code there writes to the branch being watched, not to a worktree.
+
+## Two surfaces, one signal
+
+Before adding a count, a badge or a status chip, find out who already shows the
+same thing. Two surfaces deriving "the same" number from different signals is
+the most expensive shape in this codebase — it is not a rendering bug, nothing
+throws, and it is only ever discovered by someone noticing two numbers that
+disagree and not knowing which to believe.
+
+The check is cheap: grep for the words the existing surface uses, and read how
+it derives them, not just what it prints. `builtInAgentSurfaceTabs.tsx` records
+the version of this lesson that cost a whole tab — Clearance was deleted
+because "a second place to read the same asks is a second place for them to go
+stale".
+
+If a second surface genuinely is wanted, say out loud which signal is
+authoritative and make both read it. A count that is right in two places by
+coincidence is a count that will be wrong in one of them by Friday.
