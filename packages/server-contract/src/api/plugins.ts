@@ -217,7 +217,7 @@ export const installedPluginSchema = z.object({
   app: pluginAppStateSchema,
   logoUrl: z.string().nullable(),
   logoDarkUrl: z.string().nullable(),
-  frontendError: pluginFrontendErrorSchema.nullable(),
+  frontendError: pluginFrontendErrorSchema.nullable().default(null),
 });
 export type InstalledPlugin = z.infer<typeof installedPluginSchema>;
 
