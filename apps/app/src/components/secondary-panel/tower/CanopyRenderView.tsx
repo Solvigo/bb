@@ -82,9 +82,12 @@ export function CanopyRenderView({ artifactId }: { artifactId: number }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      const d = event.data as
-        | { channel?: string; selector?: unknown; quote?: unknown; occurrence?: unknown }
-        | null;
+      const d = event.data as {
+        channel?: string;
+        selector?: unknown;
+        quote?: unknown;
+        occurrence?: unknown;
+      } | null;
       if (!d || d.channel !== BRIDGE_CHANNEL) return;
       if (typeof d.selector !== "string" || typeof d.quote !== "string") return;
       // Enforce the bridge contract's own caps — a message whose "quote" is the

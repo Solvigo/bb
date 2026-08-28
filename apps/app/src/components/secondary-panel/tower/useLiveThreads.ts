@@ -32,7 +32,9 @@ export function useLiveThreads(): Map<string, LiveThread> | null {
       const abort = new AbortController();
       const timer = setTimeout(() => abort.abort(), READ_TIMEOUT_MS);
       try {
-        const res = await fetch("/api/v1/threads?archived=false", { signal: abort.signal });
+        const res = await fetch("/api/v1/threads?archived=false", {
+          signal: abort.signal,
+        });
         const d: unknown = await res.json();
         const list = Array.isArray(d)
           ? d
