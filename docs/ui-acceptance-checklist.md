@@ -205,3 +205,22 @@ differently:
 Watch a cold thread load rather than a warm one. A pane that renders nothing
 for several seconds is indistinguishable from a broken pane, and it was
 mistaken for one during the investigation that produced this file.
+
+## An empty rig proves nothing
+
+A rig with no registered project cannot exercise a single file surface. Every
+thread lands on the Personal project, whose environment is a workspace holding
+nothing but dotfiles, so the file tree reads zero — honestly, and looking
+exactly like the bug you came to check for.
+
+Give the rig something to look at before judging any of it. `bb project create
+--name X --root <path> --host <id>` registers a local path, and a thread whose
+`environment.workspace` is `{type: "unmanaged", path: "<checkout>"}` opens onto
+that checkout with no clone and no install. Two things that cost an hour each
+when guessed at instead:
+
+- **Agent-surface tabs render only on the project-scoped route** —
+  `/projects/<id>/threads/<id>`. The unscoped `/threads/<id>` renders the thread
+  with no tab strip at all, which reads exactly like a broken tab strip.
+- **An unmanaged workspace on a live checkout is for looking.** An agent asked
+  to change code there writes to the branch being watched, not to a worktree.
