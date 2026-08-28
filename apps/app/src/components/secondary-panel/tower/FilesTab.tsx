@@ -2,7 +2,10 @@ import { useCallback, useState } from "react";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { ThreadStorageBrowser } from "@/components/secondary-panel/ThreadStorageBrowser";
 import { useThreadStorageBrowser } from "@/components/secondary-panel/useThreadStorageBrowser";
+import { Icon } from "@bb/shared-ui/icon";
+import { Input } from "@bb/shared-ui/input";
 import { useWorktreeFiles } from "./useWorktreeFiles";
+import { useWorktreeFileOpener } from "./worktree-file-open";
 
 /**
  * The agent's own worktree, in the same file browser the thread-storage panel
@@ -16,7 +19,18 @@ export function FilesTab({ agentId }: { agentId: string }) {
   const { files, truncated, rootPath, isLoading, error } =
     useWorktreeFiles(agentId);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const onSelectPath = useCallback((path: string) => setSelectedPath(path), []);
+  const openFile = useWorktreeFileOpener();
+  const onSelectPath = useCallback(
+    (path: string) => {
+      setSelectedPath(path);
+      // The panel already owns file tabs — chrome, previews, close buttons —
+      // so picking a file hands it the path rather than growing a second
+      // viewer in here. Without an opener the tree is still a tree: it
+      // selects, and nothing pretends a click did more than it did.
+      openFile?.(path);
+    },
+    [openFile],
+  );
 
   const controller = useThreadStorageBrowser({
     files,
@@ -58,6 +72,21 @@ export function FilesTab({ agentId }: { agentId: string }) {
       data-files-state={isLoading ? "loading" : error ? "error" : "ready"}
       data-files-count={files?.length ?? -1}
     >
+      <div className="shrink-0 px-1 pb-1">
+        <div className="relative">
+          <Icon
+            name="Search"
+            className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            aria-label="Filter files"
+            className="h-7 pl-7 pr-2 text-xs focus-visible:ring-0"
+            placeholder="Filter files…"
+            value={controller.searchQuery}
+            onChange={(event) => controller.setSearchQuery(event.target.value)}
+          />
+        </div>
+      </div>
       <div className="min-h-0 flex-1">
         <ThreadStorageBrowser
           controller={controller}
