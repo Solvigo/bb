@@ -267,3 +267,13 @@ you reviewed. After any refresh:
 Console warnings are evidence. A plugin can be `enabled`, error-free in the
 registry, happily serving its backend, and have no user interface whatsoever —
 with one `console.warn` as the only trace in the entire system.
+
+## Navigate for real
+
+Driving routes with `history.pushState` and a synthetic `popstate` produces a
+correct URL and, often, no re-render at all — every route then reports the same
+content, which reads exactly like "lands on itself but renders the same thing".
+
+That is the probe failing, not the product. Navigate the way the app does — a
+real load, or a real click on a real link — before believing any conclusion
+about what a route renders.
