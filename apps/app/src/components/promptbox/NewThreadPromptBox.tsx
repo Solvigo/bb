@@ -184,6 +184,12 @@ export interface NewThreadPromptBoxUIProps {
   typeahead: TypeaheadConfig;
   attachments: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
+  /** Replaces the standard submit button without replacing the prompt box. */
+  submitAction?: ReactNode;
+  /** Hides project/environment controls when the surrounding flow owns them. */
+  showContextStrip?: boolean;
+  /** Hides model controls when the surrounding flow owns execution policy. */
+  showExecutionControls?: boolean;
 
   /** Thread environment, branch/worktree, permission, and optional header config. */
   modeConfig: NewThreadModeConfig;
@@ -233,6 +239,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   typeahead,
   attachments,
   promptActions,
+  submitAction,
+  showContextStrip = true,
+  showExecutionControls = true,
   modeConfig,
   project,
   execution,
@@ -326,6 +335,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
             mentionMenuPlacement="bottom"
             attachments={attachments}
             promptActions={promptActions}
+            submitAction={submitAction}
             voice={voice}
             submission={{
               isSubmitting,
@@ -339,7 +349,11 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
             minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
             placeholder={placeholder}
             header={modeConfig.header}
-            footerStart={<ExecutionControls {...execution} />}
+            footerStart={
+              showExecutionControls ? (
+                <ExecutionControls {...execution} />
+              ) : null
+            }
           />
         </PluginComposerHostProvider>
       </PluginComposerViewProvider>
@@ -348,41 +362,43 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           reproduces the 4px gap main got from a
           `space-y-1` wrapper in RootComposeView (now gone since the
           standalone project row was removed). */}
-      <div className="mt-1 flex items-center justify-between gap-2 px-3.5">
-        <div className="flex min-w-0 flex-1 items-center gap-1">
-          {project ? (
-            <ProjectSelector
-              projects={project.projects}
-              value={project.value}
-              onChange={project.onChange}
-              allowNoProject={project.allowNoProject ?? false}
-              createProject={project.createProject}
-              disabled={project.disabled}
-              className="shrink-0"
+      {showContextStrip ? (
+        <div className="mt-1 flex items-center justify-between gap-2 px-3.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            {project ? (
+              <ProjectSelector
+                projects={project.projects}
+                value={project.value}
+                onChange={project.onChange}
+                allowNoProject={project.allowNoProject ?? false}
+                createProject={project.createProject}
+                disabled={project.disabled}
+                className="shrink-0"
+              />
+            ) : null}
+            {project?.value !== null ? (
+              <ThreadEnvSlot
+                environment={modeConfig.environment}
+                branch={modeConfig.branch}
+                worktree={modeConfig.worktree}
+              />
+            ) : (
+              <ProjectlessMachineSlot environment={modeConfig.environment} />
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <PermissionModePicker
+              value={modeConfig.permission.value}
+              options={modeConfig.permission.options}
+              onChange={modeConfig.permission.onChange}
+              supported={modeConfig.permission.supported}
+              disabled={permissionPickerDisabledByPlanMode}
+              showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
+              displayOverride={permissionDisplayOverride}
             />
-          ) : null}
-          {project?.value !== null ? (
-            <ThreadEnvSlot
-              environment={modeConfig.environment}
-              branch={modeConfig.branch}
-              worktree={modeConfig.worktree}
-            />
-          ) : (
-            <ProjectlessMachineSlot environment={modeConfig.environment} />
-          )}
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <PermissionModePicker
-            value={modeConfig.permission.value}
-            options={modeConfig.permission.options}
-            onChange={modeConfig.permission.onChange}
-            supported={modeConfig.permission.supported}
-            disabled={permissionPickerDisabledByPlanMode}
-            showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
-            displayOverride={permissionDisplayOverride}
-          />
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 });

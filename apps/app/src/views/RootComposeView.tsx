@@ -29,6 +29,7 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
+import { NewCrewButton } from "@/components/sidebar/crew/NewCrewButton";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
   buildProviderCliIssue,
@@ -878,6 +879,7 @@ export function RootComposeView() {
   const [startedComposing, setStartedComposing] = useState(() =>
     shouldStartComposingFromLocationState(location.state),
   );
+  const [crewProjectMenuOpen, setCrewProjectMenuOpen] = useState(false);
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
@@ -3485,6 +3487,42 @@ export function RootComposeView() {
     />
   );
 
+  const landingPromptBox = (
+    <NewThreadPromptBox
+      id="fleet-home-prompt"
+      promptBoxRef={promptBoxRef}
+      value={prompt}
+      mentionRanges={promptDraft.mentions}
+      onChange={promptDraft.setTextAndMentions}
+      onSubmit={() => setCrewProjectMenuOpen(true)}
+      isSubmitting={false}
+      disabled={isSubmitDisabled}
+      zenModeStorageKey={rootComposeZenModeStorageKey}
+      placeholder="What should your new crew take on?"
+      history={historyConfig}
+      typeahead={typeaheadConfig}
+      attachments={{}}
+      modeConfig={{
+        environment: environmentConfig,
+        branch: branchConfig,
+        worktree: worktreeConfig,
+        permission: permissionConfig,
+      }}
+      execution={executionConfig}
+      showContextStrip={false}
+      showExecutionControls={false}
+      submitAction={
+        <NewCrewButton
+          variant="page"
+          openingRequest={prompt}
+          open={crewProjectMenuOpen}
+          onOpenChange={setCrewProjectMenuOpen}
+          className="h-9 shrink-0 rounded-full px-4"
+        />
+      }
+    />
+  );
+
   return (
     <>
       <RootComposePanelCommandHandlers
@@ -3543,7 +3581,9 @@ export function RootComposeView() {
         >
           {showFleetHome ? (
             <FleetHome
+              composer={landingPromptBox}
               onStartThread={handleStartComposing}
+              onFocusComposer={() => promptBoxRef.current?.focusEnd()}
               onAddProject={quickCreateProject.openCreateDialog}
               addProjectDisabled={
                 !quickCreateProject.isAvailable || quickCreateProject.isCreating
