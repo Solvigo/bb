@@ -26,6 +26,7 @@ import { AirwaysMark } from "./crew/BrandLockup";
 import { PlatformSection } from "./crew/PlatformSection";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
+import { PluginFrontendFailureNotice } from "@/components/plugin/PluginFrontendFailureNotice";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import type { QuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -370,6 +371,10 @@ export function AppSidebar({
           )}
         </SidebarContent>
         <SidebarFooter className="relative px-3 py-2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-20 before:h-px before:bg-tower-border">
+          {/* A plugin with no interface says so here. It cannot say it anywhere
+              else: a registration that throws leaves no slot to put a chip in,
+              so the notice has to live somewhere that is always on screen. */}
+          <PluginFrontendFailureNotice />
           <OverflowFade placement="above" tone="sidebar" size="sm" />
           {/* Codex-style account/action strip: identity anchors the left edge,
            * plugin actions sit beside it, and help/updates finish the row. */}
