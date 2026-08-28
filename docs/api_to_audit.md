@@ -39,6 +39,35 @@ Before stabilization, audit:
   disposer that throws may block others;
 - validation and accessibility of `label`/`title`/`icon` in the 38px tab row.
 
+## `ComposerCustomization.banners[].experimental_order`
+
+**What it does.** Pins where a plugin's banner row sits among _every_ plugin's
+banner rows above the composer. Ascending, lower is nearer the top; omitted
+means 0. The host flattens all rows across plugins and sorts them with a stable
+sort, so rows that state nothing keep the order they had.
+
+It exists because position was previously a side effect of the alphabet: rows
+arrive grouped by plugin id, so `agent-browser` preceded `crew` for no reason
+anyone chose, and renaming a plugin would silently reorder the composer. Two
+plugins whose rows must read in a fixed order relative to each other — the
+first case is review chips above an annotation queue — could not express that
+at all.
+
+Before stabilization, audit:
+
+- whether a plain number is the right contract, or whether rows want named
+  bands (`"top"`/`"default"`) that the host maps to numbers, so plugins stop
+  inventing magic constants and colliding on them;
+- what should happen on a TIE between two plugins that both pick the same
+  number — today the stable sort silently falls back to plugin-id order, which
+  is the very thing this field exists to escape;
+- whether unset should really mean 0 rather than sinking to the bottom: a row
+  that states nothing currently outranks a row that deliberately asked for 10;
+- whether the host should own a reserved band for its own future built-in rows
+  so a plugin cannot pin itself above them;
+- accessibility and reading order: the sort changes DOM order, so it changes
+  what a screen reader reaches first.
+
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 
 Lets a plugin-lifetime content script set or clear one of its own status
@@ -77,7 +106,6 @@ Each label is capped at 80 characters and rendered as a truncating segment.
 3. **Persistence and source identity.** Labels are snapshotted by the server
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
-
 
 ## `experimental_NewThreadComposer` (`@bb/plugin-sdk/app`)
 
@@ -247,6 +275,7 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    a sidebar of many distinct worktrees does not stampede the git host; and
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
+
 ## `app.slots.experimental_threadHeaderAction` (`@bb/plugin-sdk/app`)
 
 **What it does.** Renders a plugin component in the thread header's action row.
