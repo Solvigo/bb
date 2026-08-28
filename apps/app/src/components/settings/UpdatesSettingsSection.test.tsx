@@ -395,6 +395,36 @@ describe("UpdatesSettingsSection", () => {
     });
   });
 
+  it("collapses the bb-app row to a quiet line on a managed checkout", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        systemVersion: {
+          currentVersion: "0.0.0-dev",
+          latestVersion: null,
+          source: "npm",
+          updateAvailable: false,
+          isDevelopment: false,
+          managed: true,
+        },
+      }),
+    );
+
+    renderSection();
+
+    expect(
+      screen.getByText(
+        "Managed from this fleet's patched checkout — self-update is disabled here.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("0.0.0-dev")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+  });
+
   it("checks for desktop updates through the desktop bridge", async () => {
     const desktopInfo: BbDesktopInfo = {
       downloadState: "downloaded",

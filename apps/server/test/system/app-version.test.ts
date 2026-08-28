@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppVersionService } from "../../src/services/system/app-version.js";
 import { testLogger } from "../helpers/test-app.js";
 
@@ -43,6 +43,10 @@ function createStubFetch(
 }
 
 describe("createAppVersionService", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("skips the npm lookup in development mode", async () => {
     const calls: FetchCall[] = [];
     const service = createAppVersionService({
@@ -55,9 +59,51 @@ describe("createAppVersionService", () => {
       currentVersion: "0.0.5",
       isDevelopment: true,
       latestVersion: null,
+      managed: false,
       source: "npm",
       updateAvailable: false,
       upgradeCommand: "npx bb-app@latest",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("is managed via BB_UPDATE_CHANNEL=managed and skips the npm lookup", async () => {
+    vi.stubEnv("BB_UPDATE_CHANNEL", "managed");
+    const calls: FetchCall[] = [];
+    const service = createAppVersionService({
+      config: { appVersion: "1.2.3", isDevelopment: false },
+      fetchImpl: createStubFetch([{ body: { version: "9.9.9" } }], calls),
+      logger: testLogger,
+    });
+    const response = await service.getSystemVersion();
+    expect(response).toEqual({
+      currentVersion: "1.2.3",
+      isDevelopment: false,
+      latestVersion: null,
+      managed: true,
+      source: "npm",
+      updateAvailable: false,
+      upgradeCommand: undefined,
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("is managed via a prerelease current version and skips the npm lookup", async () => {
+    const calls: FetchCall[] = [];
+    const service = createAppVersionService({
+      config: { appVersion: "0.0.0-dev", isDevelopment: false },
+      fetchImpl: createStubFetch([{ body: { version: "9.9.9" } }], calls),
+      logger: testLogger,
+    });
+    const response = await service.getSystemVersion();
+    expect(response).toEqual({
+      currentVersion: "0.0.0-dev",
+      isDevelopment: false,
+      latestVersion: null,
+      managed: true,
+      source: "npm",
+      updateAvailable: false,
+      upgradeCommand: undefined,
     });
     expect(calls).toEqual([]);
   });
@@ -113,6 +159,7 @@ describe("createAppVersionService", () => {
       currentVersion: "0.0.5",
       isDevelopment: false,
       latestVersion: null,
+      managed: false,
       source: "npm",
       updateAvailable: false,
       upgradeCommand: "npx bb-app@latest",

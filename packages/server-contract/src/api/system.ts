@@ -264,8 +264,13 @@ export const systemVersionResponseSchema = z.object({
   updateAvailable: z.boolean(),
   /** Mirrors deps.config.isDevelopment so the frontend can skip the toast. */
   isDevelopment: z.boolean(),
-  /** Command users should run to upgrade. Server-owned product policy. */
-  upgradeCommand: z.string(),
+  /** Command users should run to upgrade. Omitted when `managed` is true. */
+  upgradeCommand: z.string().optional(),
+  /**
+   * True when this build is a managed checkout (a patched fork run from
+   * source), not an npm release install. The npm lookup is skipped entirely.
+   */
+  managed: z.boolean().optional(),
 });
 export type SystemVersionResponse = z.infer<typeof systemVersionResponseSchema>;
 
