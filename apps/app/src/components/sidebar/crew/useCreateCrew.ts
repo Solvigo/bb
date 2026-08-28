@@ -68,8 +68,16 @@ export function useCreateCrew(): {
             title?: string | null;
             parentThreadId?: string | null;
           }[];
+          // Scoped to the project asked for, because a commander is born on its
+          // project and can never move: resuming Personal's unfinished setup
+          // when the press came from a repo-backed project hands back a crew
+          // that can talk and can never dispatch for the project clicked.
+          const wantedProjectId = forProjectId ?? PERSONAL_PROJECT_ID;
           const unfinished = threads.find(
-            (t) => !t.parentThreadId && t.title === SETUP_THREAD_TITLE,
+            (t) =>
+              !t.parentThreadId &&
+              t.title === SETUP_THREAD_TITLE &&
+              (t.projectId ?? PERSONAL_PROJECT_ID) === wantedProjectId,
           );
           if (unfinished) {
             // Scoped, like every thread link: the projectless route resolves to

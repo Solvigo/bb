@@ -6,6 +6,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { SecondaryPanelFilePreview } from "@/components/secondary-panel/ThreadStorageFilePreview";
 import { useEnvironmentFilePreview } from "@/hooks/queries/environment-queries";
+import { useAddPathToChat } from "./worktree-file-actions";
 import { useWorktreeFiles } from "./useWorktreeFiles";
 
 /**
@@ -20,6 +21,7 @@ export function FilesTab({ agentId }: { agentId: string }) {
   const { environmentId, files, truncated, rootPath, isLoading, error } =
     useWorktreeFiles(agentId);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const addPathToChat = useAddPathToChat();
   const onSelectPath = useCallback((path: string) => setSelectedPath(path), []);
 
   // The file opens BESIDE the tree, not as a tab in the strip above: this is a
@@ -129,24 +131,38 @@ export function FilesTab({ agentId }: { agentId: string }) {
               {/* The path, as a trail rather than one long string — the tree
                   beside it already shows where you are, so this is orientation
                   for the pane, not navigation. */}
-              <div className="flex shrink-0 items-center gap-1 overflow-x-auto px-3 py-2 text-xs text-muted-foreground">
-                {selectedPath.split("/").map((segment, index, segments) => (
-                  <span
-                    key={`${segment}-${index}`}
-                    className="whitespace-nowrap"
-                  >
-                    {index > 0 ? (
-                      <span className="px-1 opacity-60">/</span>
-                    ) : null}
+              <div className="flex shrink-0 items-center gap-1 px-3 py-2 text-xs text-muted-foreground">
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                  {selectedPath.split("/").map((segment, index, segments) => (
                     <span
-                      className={
-                        index === segments.length - 1 ? "text-foreground" : ""
-                      }
+                      key={`${segment}-${index}`}
+                      className="whitespace-nowrap"
                     >
-                      {segment}
+                      {index > 0 ? (
+                        <span className="px-1 opacity-60">/</span>
+                      ) : null}
+                      <span
+                        className={
+                          index === segments.length - 1 ? "text-foreground" : ""
+                        }
+                      >
+                        {segment}
+                      </span>
                     </span>
-                  </span>
-                ))}
+                  ))}
+                </div>
+                {/* The same reference the drag makes, for anyone who would
+                    rather press a button than drag one — and for a pointer
+                    that cannot drag at all. */}
+                {addPathToChat === null ? null : (
+                  <button
+                    type="button"
+                    onClick={() => addPathToChat(selectedPath)}
+                    className="shrink-0 rounded-md px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-tower-accent hover:text-foreground"
+                  >
+                    Add to chat
+                  </button>
+                )}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
                 <SecondaryPanelFilePreview
