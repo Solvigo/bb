@@ -14,6 +14,7 @@ import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import {
   pluginApplyUpdateRequestSchema,
+  pluginFrontendRegistrationReportRequestSchema,
   pluginInstallRequestSchema,
   pluginSettingsUpdateRequestSchema,
   pluginTokenRequestSchema,
@@ -385,6 +386,37 @@ export function registerPluginRoutes(
     const plugin = await plugins.setEnabled(context.req.param("id"), false);
     if (!plugin)
       return context.json({ ok: false, error: "unknown plugin" }, 404);
+    return context.json({ ok: true, plugin });
+  });
+
+  // App-runtime report of a frontend registration attempt (design: the
+  // registry admits a `definePluginApp` setup throw instead of silently
+  // showing "enabled, no error"). Local-origin only: this is the app
+  // reporting on itself, not a plugin-facing surface.
+  app.post("/plugins/:id/frontend-registration", async (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) {
+      return context.json({ ok: false, error: problem.error }, problem.status);
+    }
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginFrontendRegistrationReportRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json(
+        {
+          ok: false,
+          error: "expected { generation: number, error: string | null }",
+        },
+        400,
+      );
+    }
+    const plugin = plugins.reportFrontendRegistration(
+      context.req.param("id"),
+      body.data.generation,
+      body.data.error,
+    );
+    if (!plugin) {
+      return context.json({ ok: false, error: "unknown plugin" }, 404);
+    }
     return context.json({ ok: true, plugin });
   });
 

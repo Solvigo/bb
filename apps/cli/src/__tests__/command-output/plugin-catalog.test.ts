@@ -48,6 +48,7 @@ const installedPlugin = {
   app: { hasApp: false, bundle: null },
   logoUrl: null,
   logoDarkUrl: null,
+  frontendError: null,
 };
 
 function json(value: object, status = 200): Response {

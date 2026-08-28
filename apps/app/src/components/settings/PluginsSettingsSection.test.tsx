@@ -219,6 +219,7 @@ function serverPlugin(
     app: { hasApp: false, bundle: null },
     logoUrl: null,
     logoDarkUrl: null,
+    frontendError: null,
     ...overrides,
   };
 }
@@ -489,9 +490,9 @@ describe("PluginSettingsDetail settings gating", () => {
       expect(requests.some((request) => request.init?.method === "POST")).toBe(
         true,
       );
-      expect(
-        requests.some((request) => request.init?.method !== "POST"),
-      ).toBe(true);
+      expect(requests.some((request) => request.init?.method !== "POST")).toBe(
+        true,
+      );
     });
 
     const pendingSwitch = screen.getByRole("switch", {

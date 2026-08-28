@@ -76,6 +76,7 @@ const INSTALLED_MEMORY_PLUGIN = {
   app: { hasApp: false, bundle: null },
   logoUrl: null,
   logoDarkUrl: null,
+  frontendError: null,
 };
 
 afterEach(() => {

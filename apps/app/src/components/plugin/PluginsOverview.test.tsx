@@ -71,6 +71,7 @@ const AUTOMATIONS_PLUGIN = {
   schedules: [],
   cliCommand: null,
   app: { hasApp: true, bundle: null },
+  frontendError: null,
 };
 
 // Preserve the pre-transfer owner in this retired remote-marketplace fixture:

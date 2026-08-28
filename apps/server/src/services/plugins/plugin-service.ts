@@ -176,6 +176,18 @@ export interface PluginService {
     id: string,
     enabled: boolean,
   ): Promise<PluginListEntry | undefined>;
+  /**
+   * Record the app runtime's outcome for one frontend registration attempt
+   * (`error` null on success). A report older than the last-seen generation
+   * for this plugin is ignored — out-of-order delivery must never let a
+   * stale success clobber a newer failure or vice versa. Undefined for an
+   * unknown plugin.
+   */
+  reportFrontendRegistration(
+    id: string,
+    generation: number,
+    error: string | null,
+  ): PluginListEntry | undefined;
   reload(id?: string): Promise<void>;
   /** Live API handle for a running plugin (used by later phases and tests). */
   getApi(id: string): BbPluginApi | undefined;
@@ -911,6 +923,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   // /^[a-zA-Z0-9_-]+$/).
   const HTTP_TOKEN_FILE = ".http-token";
 
+  // Frontend registration state reported by the app runtime (design: the
+  // registry stays honest when `definePluginApp` setup throws even though
+  // the server half loaded fine). Keyed by plugin id; `generation` guards
+  // against an out-of-order report clobbering a newer one.
+  const frontendRegistrations = new Map<
+    string,
+    { generation: number; error: { message: string; at: number } | null }
+  >();
+
   const {
     REGISTRATION_MUTATION_KEY,
     agentToolProblems,
@@ -1301,6 +1322,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.logoDark?.url
               : identity?.brandingAssets.logoDark?.url) ?? null,
+          frontendError: frontendRegistrations.get(row.id)?.error ?? null,
         };
       });
   }
@@ -1495,6 +1517,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         await withLifecycleLock(id, () => disposeOne(id));
         statuses.delete(id);
         handlerStats.delete(id);
+        frontendRegistrations.delete(id);
         agentToolProblems.delete(id);
         appBundles.delete(id);
         brandingAssets.delete(id);
@@ -1566,6 +1589,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         notifyPluginsChanged();
         return list().find((p) => p.id === id);
       });
+    },
+
+    reportFrontendRegistration(id, generation, error) {
+      if (getInstalledPlugin(deps.db, id) === undefined) return undefined;
+      const current = frontendRegistrations.get(id);
+      if (current !== undefined && generation < current.generation) {
+        // Stale report (out-of-order network delivery) — the newer state
+        // already on file is more accurate.
+        return list().find((p) => p.id === id);
+      }
+      frontendRegistrations.set(id, {
+        generation,
+        error: error === null ? null : { message: error, at: now() },
+      });
+      return list().find((p) => p.id === id);
     },
 
     async reload(id) {

@@ -49,6 +49,7 @@ const ROW = {
   app: { hasApp: false, bundle: null },
   logoUrl: null,
   logoDarkUrl: null,
+  frontendError: null,
 };
 
 describe("fetchPluginList envelope", () => {
