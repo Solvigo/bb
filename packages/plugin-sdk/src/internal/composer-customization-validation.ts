@@ -181,9 +181,19 @@ function parseRegions(
         `${entryKind}: "chrome" must be "card" or "bare" when set`,
       );
     }
+    const order = entry?.experimental_order;
+    if (
+      order !== undefined &&
+      (typeof order !== "number" || !Number.isFinite(order))
+    ) {
+      throw new Error(
+        `${entryKind}: "experimental_order" must be a finite number when set`,
+      );
+    }
     return {
       id,
       ...(chrome !== undefined ? { chrome } : {}),
+      ...(order !== undefined ? { experimental_order: order } : {}),
       component: requireComponent(entryKind, entry?.component),
     };
   });

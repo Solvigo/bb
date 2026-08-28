@@ -20,25 +20,24 @@ const checkOnly = process.argv.includes("--check");
 
 const brandDir = join(publicDir, "brand");
 const brandPngDir = join(brandDir, "png");
-// The tab icon is the graphite embossed jet the operator chose. It is a
-// SEPARATE source from the mono jet on purpose: that one still draws the
-// sidebar lockup and the welcome mark, and swapping the file would have moved
-// those too.
-const faviconJet = await readFile(
-  join(brandPngDir, "jet-embossed-graphite-favicon-1024.png"),
+// The tab icon is the mono app-icon tile the operator chose. It is a SEPARATE
+// source from the mono jet on purpose: that one still draws the sidebar lockup
+// and the welcome mark, and swapping the file would have moved those too.
+const faviconTile = await readFile(
+  join(brandPngDir, "app-icon-mono-favicon-256.png"),
 );
 const appIcon = await readFile(join(brandPngDir, "app-icon-mono-1024.png"));
 
 // [filename, source image, pixel size]
 const base = [
-  // The browser tab uses the approved embossed jet in every scheme. Tint and
-  // unread-attention variants are derived from these alpha-preserving bases.
-  ["favicon-16x16.png", faviconJet, 16],
-  ["favicon-32x32.png", faviconJet, 32],
-  ["favicon-16x16-dark.png", faviconJet, 16],
-  ["favicon-32x32-dark.png", faviconJet, 32],
-  ["favicon-16x16-dev.png", faviconJet, 16],
-  ["favicon-32x32-dev.png", faviconJet, 32],
+  // The browser tab uses the approved app-icon tile in every scheme. Tint and
+  // unread-attention variants are derived from these bases.
+  ["favicon-16x16.png", faviconTile, 16],
+  ["favicon-32x32.png", faviconTile, 32],
+  ["favicon-16x16-dark.png", faviconTile, 16],
+  ["favicon-32x32-dark.png", faviconTile, 32],
+  ["favicon-16x16-dev.png", faviconTile, 16],
+  ["favicon-32x32-dev.png", faviconTile, 32],
 
   // Larger launch surfaces use the package's dedicated app-icon composition.
   ["apple-touch-icon.png", appIcon, 180],

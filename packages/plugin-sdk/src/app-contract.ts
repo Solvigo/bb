@@ -899,6 +899,16 @@ export interface ComposerCustomization {
     id: string;
     /** Host chrome around the banner. Defaults to `"card"`. */
     chrome?: "card" | "bare";
+    /**
+     * Where this row sits among every plugin's banner rows: ascending, so a
+     * lower number is nearer the top. Omit and the row takes 0.
+     *
+     * Position is otherwise a side effect of the alphabet — rows sort by
+     * plugin id — which silently reorders the day a plugin is renamed. Two
+     * plugins that must read in a fixed order relative to each other should
+     * both state a number.
+     */
+    experimental_order?: number;
     component: ComponentType;
   }[];
   plusMenu?: readonly ComposerPlusMenuItem[];

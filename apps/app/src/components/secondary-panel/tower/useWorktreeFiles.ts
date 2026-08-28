@@ -1,11 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
+import { FILE_LIST_LIMIT_MAX } from "@bb/domain";
 import type { HostFileListResponse } from "@bb/server-contract";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { sdk } from "@/lib/sdk";
 
-/** One page of the tree. The response says when it stopped, and we say so too. */
-const WORKTREE_FILE_LIMIT = 500;
+/**
+ * Ask for the whole worktree, not a page of it.
+ *
+ * "Why can't we show all the files?" was a fair question: the tree stopped at
+ * 500 and said so, which reads as a limit of the product rather than a number
+ * someone picked. The host's own ceiling is 10,000 and it does not charge much
+ * for the difference — measured on this repo, the complete listing is 3,969
+ * files in under half a second, against 500 in the same half second. So the
+ * ceiling is the host's, and truncation is now reserved for a worktree that
+ * genuinely exceeds it.
+ */
+const WORKTREE_FILE_LIMIT = FILE_LIST_LIMIT_MAX;
 
 export interface WorktreeFiles {
   /** The agent's environment, for anything that reads files out of it. */
@@ -15,6 +26,8 @@ export interface WorktreeFiles {
   truncated: boolean;
   /** The agent's own checkout, for the empty and non-git cases. */
   rootPath: string | null;
+  /** The host the checkout lives on, for anything reading or writing it. */
+  hostId: string | null;
   isLoading: boolean;
   error: Error | null;
 }
@@ -52,6 +65,7 @@ export function useWorktreeFiles(threadId: string | null): WorktreeFiles {
     files: filesQuery.data?.files,
     truncated: filesQuery.data?.truncated === true,
     rootPath,
+    hostId,
     // The tree is unknown until BOTH hops land: a thread whose environment has
     // not arrived is still loading, not empty.
     isLoading:

@@ -220,6 +220,20 @@ const FILE_PREVIEW_WRAPPER_STYLE = {
   "--md-content-w": "100cqi",
 } as CSSProperties;
 
+// Rendered prose gets a measure, not the full pane: a line that runs the whole
+// width of a wide panel is measurably harder to read, and the eye loses the
+// next line's start. The cap only bites when the panel is wide — in a narrow
+// one the pane is the limit and nothing changes.
+//
+// `--md-content-w` is overridden with the SAME expression so tables line up
+// with the prose column rather than the pane's full width; leaving the outer
+// `100cqi` in place would sit a table wider than the text beside it.
+const MARKDOWN_MEASURE = "min(100cqi, 74ch)";
+const MARKDOWN_FILE_PREVIEW_STYLE = {
+  "--md-content-w": MARKDOWN_MEASURE,
+  maxWidth: MARKDOWN_MEASURE,
+} as CSSProperties;
+
 const HTML_FILE_PREVIEW_IFRAME_STYLE = {
   width: "100%",
   height: "100%",
@@ -892,7 +906,10 @@ function MarkdownFilePreview({
       className="contents"
       onSelectionAddToChat={onSelectionAddToChat}
     >
-      <div className="flex-auto bg-background px-4 py-4">
+      <div
+        className="flex-auto bg-background px-6 py-5 leading-7"
+        style={MARKDOWN_FILE_PREVIEW_STYLE}
+      >
         <MarkdownPreview
           allowHtml
           content={file.contents}
