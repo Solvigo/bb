@@ -4,6 +4,7 @@ import charter from "./crewSetupCharter.md?raw";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { AGENT_PROVIDER } from "@/lib/agentProvider";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { sdk } from "@/lib/sdk";
 
 /** A setup thread keeps this title until its crew is named — that is how a
  *  second press finds the unfinished interview instead of starting another. */
@@ -35,7 +36,7 @@ async function readJson<T>(url: string): Promise<T | null> {
  */
 export function useCreateCrew(): {
   /** Name the project the crew is FOR; omit only when it has no code yet. */
-  createCrew: (forProjectId?: string) => void;
+  createCrew: (forProjectId?: string, openingRequest?: string) => void;
   creating: boolean;
   error: string | null;
 } {
@@ -44,7 +45,7 @@ export function useCreateCrew(): {
   const [error, setError] = useState<string | null>(null);
 
   const createCrew = useCallback(
-    (forProjectId?: string) => {
+    (forProjectId?: string, openingRequest?: string) => {
       if (creating) return;
       setCreating(true);
       setError(null);
@@ -80,6 +81,14 @@ export function useCreateCrew(): {
               (t.projectId ?? PERSONAL_PROJECT_ID) === wantedProjectId,
           );
           if (unfinished) {
+            const request = openingRequest?.trim();
+            if (request) {
+              await sdk.threads.send({
+                threadId: unfinished.id,
+                input: [{ type: "text", text: request, mentions: [] }],
+                mode: "auto",
+              });
+            }
             // Scoped, like every thread link: the projectless route resolves to
             // the Personal project, which happens to be right for a setup
             // commander and would be silently wrong the day it is not.
@@ -167,7 +176,18 @@ export function useCreateCrew(): {
                   ? { type: "personal" }
                   : { type: "unmanaged", path: null },
               },
-              input: [{ type: "text", text: charter, mentions: [] }],
+              input: [
+                { type: "text", text: charter, mentions: [] },
+                ...(openingRequest?.trim()
+                  ? [
+                      {
+                        type: "text" as const,
+                        text: `The Captain's opening request:\n\n${openingRequest.trim()}`,
+                        mentions: [],
+                      },
+                    ]
+                  : []),
+              ],
             }),
           });
           if (!res.ok) {
