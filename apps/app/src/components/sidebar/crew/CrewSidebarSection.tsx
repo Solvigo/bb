@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
@@ -6,7 +6,12 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useProjectNames } from "@/hooks/queries/sidebar-navigation-query";
 import { useCreateCrew } from "./useCreateCrew";
-import { useCrews, type AgentLiveness, type Crew } from "./useCrews";
+import {
+  useCrews,
+  type AgentLiveness,
+  type Crew,
+  type CrewLead,
+} from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
 
 export const SIDEBAR_SECTION_LABEL_CLASS =
@@ -58,12 +63,120 @@ function CrewEntry({
               </span>
               <LivenessDot liveness={crew.liveness} />
             </span>
-            <span className="truncate text-xs text-muted-foreground">
-              {crew.status}
-            </span>
+            {crew.leads.length === 0 ? (
+              // Only worth a line when there is no tree to read instead. With
+              // leads on screen, "4 leads standing by" restates what the rows
+              // below it already say.
+              <span className="truncate text-xs text-muted-foreground">
+                {crew.status}
+              </span>
+            ) : null}
           </span>
         </NavLink>
       </div>
+      {crew.leads.length === 0 ? null : (
+        <ul className="flex flex-col">
+          {crew.leads.map((lead) => (
+            <AgentTreeRow
+              key={lead.threadId}
+              agent={lead}
+              depth={1}
+              onNavigate={onNavigate}
+              projectId={crew.projectId}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/**
+ * One agent in the crew tree, and whatever reports to it.
+ *
+ * The sidebar answers "where can I go", so every agent is a destination and the
+ * org chart lives here rather than in the render area. Depth is unbounded on
+ * purpose — the thread tree has no limit, and an agent that exists and is not
+ * shown is the one outcome an agent tree may not have.
+ *
+ * Sorties start COLLAPSED: a lead is worth seeing whenever its project is open,
+ * but a deep fleet expanded by default floods the rail and buries the projects
+ * underneath it.
+ */
+function AgentTreeRow({
+  agent,
+  depth,
+  onNavigate,
+  projectId,
+}: {
+  agent: CrewLead;
+  depth: number;
+  onNavigate?: () => void;
+  projectId: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasChildren = agent.sorties.length > 0;
+
+  return (
+    <li>
+      <div
+        className="flex min-w-0 items-center"
+        // Indentation is the only thing saying who reports to whom, so it is
+        // computed from depth rather than a fixed class per level — the tree is
+        // as deep as the fleet is.
+        style={{ paddingLeft: `${depth * 12}px` }}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            aria-label={
+              expanded
+                ? `Hide the agents under ${agent.name}`
+                : `Show the agents under ${agent.name}`
+            }
+            aria-expanded={expanded}
+            onClick={() => setExpanded((open) => !open)}
+            className="flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground transition-colors hover:text-foreground"
+          >
+            <Icon
+              name={expanded ? "ChevronDown" : "ChevronRight"}
+              className="size-3.5"
+              aria-hidden
+            />
+          </button>
+        ) : (
+          // The rows still have to line up when a leaf sits beside a parent.
+          <span className="size-5 shrink-0" aria-hidden />
+        )}
+        <NavLink
+          to={getThreadRoutePath({ projectId, threadId: agent.threadId })}
+          onClick={onNavigate}
+          className={({ isActive }) =>
+            cn(
+              "flex min-h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left transition-colors",
+              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+            )
+          }
+        >
+          <span className="truncate text-[13px] text-foreground">
+            {agent.name}
+          </span>
+          <LivenessDot liveness={agent.liveness} />
+        </NavLink>
+      </div>
+      {hasChildren && expanded ? (
+        <ul className="flex flex-col">
+          {agent.sorties.map((sortie) => (
+            <AgentTreeRow
+              key={sortie.threadId}
+              agent={sortie}
+              depth={depth + 1}
+              onNavigate={onNavigate}
+              projectId={projectId}
+            />
+          ))}
+        </ul>
+      ) : null}
     </li>
   );
 }
