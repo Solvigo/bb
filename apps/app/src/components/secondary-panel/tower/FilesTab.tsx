@@ -32,6 +32,10 @@ export function FilesTab({ agentId }: { agentId: string }) {
   );
 
   const controller = useThreadStorageBrowser({
+    // Rows become draggable so a path can be dragged into the chat. Nothing may
+    // be dropped INTO the tree: this view is read-only, and a file view that
+    // could move files would be a file manager nobody asked for.
+    dragAndDrop: { canDrop: () => false },
     files,
     onSelectPath,
     selectedPath,
@@ -87,7 +91,26 @@ export function FilesTab({ agentId }: { agentId: string }) {
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
-        <div className="min-h-0 w-64 shrink-0 overflow-hidden border-r border-tower-border">
+        <div
+          className="min-h-0 w-64 shrink-0 overflow-hidden border-r border-tower-border"
+          // Drag events are composed, so a dragstart inside the tree's shadow
+          // root reaches this listener with the row in its composed path. The
+          // payload is the path as PLAIN TEXT and nothing more: a composer is a
+          // textarea, and a textarea already knows how to accept dropped text.
+          onDragStart={(event) => {
+            const row = event.nativeEvent
+              .composedPath()
+              .find(
+                (node): node is HTMLElement =>
+                  node instanceof HTMLElement &&
+                  node.dataset.itemPath !== undefined,
+              );
+            const path = row?.dataset.itemPath;
+            if (path === undefined || row?.dataset.itemType !== "file") return;
+            event.dataTransfer.setData("text/plain", path);
+            event.dataTransfer.effectAllowed = "copy";
+          }}
+        >
           <ThreadStorageBrowser
             controller={controller}
             filesError={error}
