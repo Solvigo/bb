@@ -93,6 +93,17 @@ interface FleetRow {
   handle: string | null;
   rank: string;
   liveness?: AgentLiveness | null;
+  /**
+   * What the row IS. A `deck` is not an agent at all — it is a thread the crew
+   * plugin spawns to display decision cards, and it was appearing here as a
+   * lead because rank is derived from parentage and a deck is parented exactly
+   * like one.
+   *
+   * ABSENT MEANS AGENT, deliberately: an older plugin sends no kind, and a
+   * missing field must never make real crew disappear from the rail. Only an
+   * explicit `deck` is filtered.
+   */
+  kind?: string | null;
 }
 
 interface BoardRow {
@@ -191,7 +202,16 @@ function assembleFleet(
   attention: { open?: AttentionRow[] } | null,
   artifacts: { artifacts?: AttentionRow[] } | null,
 ): { crews: Crew[]; chats: LooseChat[] } {
-  const live = new Set(threads.map((t) => t.id));
+  // Decks leave the tree before anything else looks at it, so every downstream
+  // question — who is crewed, what is under whom, what is waiting on the
+  // operator — is answered as if they were never there. Filtering them later,
+  // at the render, would have left them counted in all three.
+  const deckIds = new Set(
+    (fleet?.rows ?? []).filter((r) => r.kind === "deck").map((r) => r.threadId),
+  );
+  const agentThreads =
+    deckIds.size === 0 ? threads : threads.filter((t) => !deckIds.has(t.id));
+  const live = new Set(agentThreads.map((t) => t.id));
   const handleOf = new Map<string, string>();
   const rankOf = new Map<string, string>();
   const livenessOf = new Map<string, AgentLiveness>();
@@ -221,7 +241,7 @@ function assembleFleet(
 
   // A commander is a live root thread; its leads are live children.
   const byParent = new Map<string, ThreadRow[]>();
-  for (const t of threads) {
+  for (const t of agentThreads) {
     if (!t.parentThreadId) continue;
     const list = byParent.get(t.parentThreadId) ?? [];
     list.push(t);
@@ -258,7 +278,7 @@ function assembleFleet(
         };
       });
 
-  const roots = threads.filter((t) => !t.parentThreadId && live.has(t.id));
+  const roots = agentThreads.filter((t) => !t.parentThreadId && live.has(t.id));
 
   // Crewed or not, decided by ABSENCE: a root with agents under it is a crew,
   // and so is one carrying a crew handle — chartered but not yet staffed. Both
