@@ -5,7 +5,7 @@ import type {
   PromptDraftState,
 } from "@/lib/prompt-draft";
 import {
-  appendPathToDraftText,
+  appendPathMentionToDraft,
   appendQuoteAndAttachmentsToDraft,
   arePromptDraftStatesEqual,
   emptyPromptDraftState,
@@ -335,7 +335,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   const addPath = useCallback(
     (path: string) => {
       const currentDraft = readPromptDraft(storageKey);
-      const nextDraft = appendPathToDraftText(currentDraft, path);
+      const nextDraft = appendPathMentionToDraft(currentDraft, path);
       if (nextDraft === currentDraft) {
         return;
       }
