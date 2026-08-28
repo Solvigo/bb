@@ -908,6 +908,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     projectId: thread?.projectId ?? projectId ?? "",
     threadId: thread?.id ?? "",
   });
+  const addPathToComposer = selectionPromptDraft.addPath;
   const addQuoteToComposer = selectionPromptDraft.addQuote;
   // Desktop quote actions keep their existing focus handoff. Mobile web does
   // not focus inputs programmatically; see PromptBoxInternal.
@@ -920,6 +921,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         setComposerFocusRequestNonce((nonce) => nonce + 1),
       ),
     [selectionPromptDraft.storageKey],
+  );
+  const handleAddPathToChat = useCallback(
+    (path: string) => {
+      dismissCompactKeyboard();
+      addPathToComposer(path);
+      setComposerFocusRequestNonce((nonce) => nonce + 1);
+    },
+    [addPathToComposer, dismissCompactKeyboard],
   );
   const handleSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
@@ -2569,6 +2578,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             isOpen: isSecondaryPanelOpen,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,
+            onAddPathToChat: handleAddPathToChat,
             onOpenFileInEditor: handleOpenFileInEditor,
             onFileTabReorder: reorderFileTab,
             onOpenNewTab: handleOpenNewTab,

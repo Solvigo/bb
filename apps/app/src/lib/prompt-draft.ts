@@ -98,6 +98,21 @@ export function appendQuoteToDraftText(
   return { ...state, text };
 }
 
+export function appendPathToDraftText(
+  state: PromptDraftState,
+  path: string,
+): PromptDraftState {
+  // A path, plainly. Not a quote block and not an attachment: the file is
+  // already in the agent's own worktree, so naming it is the whole reference —
+  // uploading a copy of what it can read would be absurd.
+  const trimmed = path.trim();
+  if (trimmed === "") return state;
+
+  const text = state.text === "" ? trimmed : `${state.text} ${trimmed}`;
+
+  return { ...state, text };
+}
+
 export function appendQuoteAndAttachmentsToDraft(
   state: PromptDraftState,
   quotedText: string,
