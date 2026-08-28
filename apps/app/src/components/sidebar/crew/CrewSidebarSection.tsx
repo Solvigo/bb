@@ -1,10 +1,11 @@
-import { type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useProjectNames } from "@/hooks/queries/sidebar-navigation-query";
+import { useCreateCrew } from "./useCreateCrew";
 import { useCrews, type AgentLiveness, type Crew } from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
 
@@ -126,8 +127,23 @@ interface ProjectGroup {
 function groupByProject(
   crews: readonly Crew[],
   nameOf: ReadonlyMap<string, string>,
+  projectIds: readonly string[],
 ): ProjectGroup[] {
   const groups = new Map<string, ProjectGroup>();
+
+  // Seed from the PROJECT list, not from the crews. A project is a folder
+  // someone chose; it exists the moment they choose it, and every project is
+  // crewless at birth. Deriving the band from crews alone meant a brand new
+  // project rendered nowhere — the operator picked a folder, the server created
+  // it, and the sidebar showed him nothing.
+  for (const projectId of projectIds) {
+    groups.set(projectId, {
+      projectId,
+      name: nameOf.get(projectId) ?? null,
+      crews: [],
+    });
+  }
+
   for (const crew of crews) {
     const existing = groups.get(crew.projectId);
     if (existing) {
@@ -148,11 +164,20 @@ function groupByProject(
     if (group.name === null) return 2;
     return group.projectId === PERSONAL_PROJECT_ID ? 1 : 0;
   };
-  return [...groups.values()].sort((a, b) => {
-    const byWeight = weightOf(a) - weightOf(b);
-    if (byWeight !== 0) return byWeight;
-    return (a.name ?? "").localeCompare(b.name ?? "");
-  });
+  return [...groups.values()]
+    .filter(
+      // Personal is the projectless bucket, not a folder anyone chose. It earns
+      // a row when it holds crews and stays out of the way when it does not —
+      // an empty "Personal" folder invites you to fill something that is not a
+      // place.
+      (group) =>
+        group.projectId !== PERSONAL_PROJECT_ID || group.crews.length > 0,
+    )
+    .sort((a, b) => {
+      const byWeight = weightOf(a) - weightOf(b);
+      if (byWeight !== 0) return byWeight;
+      return (a.name ?? "").localeCompare(b.name ?? "");
+    });
 }
 
 /**
@@ -171,6 +196,8 @@ export function CrewSidebarSection({
 }) {
   const { crews, loaded, failed, timedOut, reload } = useCrews();
   const projectNameOf = useProjectNames();
+  const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
+  const { createCrew, creating: creatingCrew } = useCreateCrew();
 
   return (
     <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
@@ -201,7 +228,7 @@ export function CrewSidebarSection({
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {groupByProject(crews, projectNameOf).map((group) => (
+          {groupByProject(crews, projectNameOf, projectIds).map((group) => (
             <li key={group.projectId}>
               {group.name === null ? null : (
                 <div className="flex min-h-6 items-center gap-1.5 px-2">
@@ -215,15 +242,29 @@ export function CrewSidebarSection({
                   </span>
                 </div>
               )}
-              <ul className="flex flex-col gap-1">
-                {group.crews.map((crew) => (
-                  <CrewEntry
-                    key={crew.commanderThreadId}
-                    crew={crew}
-                    onNavigate={onNavigate}
-                  />
-                ))}
-              </ul>
+              {group.crews.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => createCrew(group.projectId)}
+                  disabled={creatingCrew}
+                  className="flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
+                >
+                  <Icon name="Plus" className="size-3.5 shrink-0" aria-hidden />
+                  <span className="truncate text-[13px]">
+                    {creatingCrew ? "Standing up a crew…" : "Add a crew"}
+                  </span>
+                </button>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {group.crews.map((crew) => (
+                    <CrewEntry
+                      key={crew.commanderThreadId}
+                      crew={crew}
+                      onNavigate={onNavigate}
+                    />
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>
