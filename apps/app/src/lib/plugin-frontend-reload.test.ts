@@ -70,8 +70,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []) {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(
-      async (_url: string): Promise<unknown> => pluginModule("hello"),
+    importModule: vi.fn(async (_url: string): Promise<unknown> =>
+      pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     resetCrashedSlots: vi.fn(),
@@ -79,6 +79,7 @@ function makeDeps(initial: PluginFrontendCandidate[] = []) {
     removeRegistrations: vi.fn(),
     warn: vi.fn(),
     mountTimeoutMs: undefined as number | undefined,
+    reportFrontendRegistration: vi.fn(async () => {}),
   } satisfies PluginFrontendReconcileDeps;
 }
 
@@ -385,8 +386,7 @@ describe("reconcilePluginFrontends", () => {
           id: "thread-status",
           mount({ experimental_setThreadRowStatus }) {
             const setStatus = experimental_setThreadRowStatus as
-              | ((threadId: unknown, status: unknown) => void)
-              | undefined;
+              ((threadId: unknown, status: unknown) => void) | undefined;
             setStatus?.(42, {
               icon: "AiContentGenerator01",
               label: "Invalid number id",
@@ -513,6 +513,51 @@ describe("reconcilePluginFrontends", () => {
       phase: "setup",
       message: "setup failed",
     });
+  });
+
+  it("reports a thrown registration to the server (e.g. an invalid slot id) and clears it once a later generation registers cleanly", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    deps.importModule.mockResolvedValueOnce(
+      contentScriptModule(() => {
+        throw new Error('invalid slot id "myPanel" — use kebab-case');
+      }),
+    );
+    await reconcilePluginFrontends(state, deps);
+
+    expect(deps.reportFrontendRegistration).toHaveBeenCalledTimes(1);
+    expect(deps.reportFrontendRegistration).toHaveBeenCalledWith(
+      "hello",
+      1,
+      'invalid slot id "myPanel" — use kebab-case',
+    );
+    // A throwing setup never bumps the committed generation counter.
+    expect(state.generationByPluginId.get("hello")).toBeUndefined();
+
+    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
+    deps.importModule.mockResolvedValueOnce(pluginModule("fixed"));
+    await reconcilePluginFrontends(state, deps);
+
+    expect(deps.reportFrontendRegistration).toHaveBeenCalledTimes(2);
+    expect(deps.reportFrontendRegistration).toHaveBeenLastCalledWith(
+      "hello",
+      1,
+      null,
+    );
+    expect(state.generationByPluginId.get("hello")).toBe(1);
+  });
+
+  it("never lets a failed report to the server affect reconcile outcome", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    deps.reportFrontendRegistration = vi.fn(async () => {
+      throw new Error("network hiccup");
+    });
+
+    await expect(
+      reconcilePluginFrontends(state, deps),
+    ).resolves.toBeUndefined();
+    expect(state.diagnostics.get("hello")).toMatchObject({ status: "active" });
   });
 
   it("times out a stuck async mount without preventing another plugin from activating", async () => {

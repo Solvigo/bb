@@ -394,6 +394,17 @@ export interface PluginFrontendReconcileDeps {
   /** Test override; production allows 10s for async mount setup. */
   mountTimeoutMs?: number;
   diagnosticsChanged?: () => void;
+  /**
+   * Report a frontend registration attempt's outcome to the server's
+   * registry (`error: null` on success, clearing any prior report for this
+   * plugin+generation). Best-effort: a failed report never affects
+   * reconcile — see {@link reportFrontendRegistration}.
+   */
+  reportFrontendRegistration?: (
+    pluginId: string,
+    generation: number,
+    error: string | null,
+  ) => Promise<void>;
 }
 
 interface MountedContentScript {
@@ -433,6 +444,21 @@ function publishDiagnostic(
 ): void {
   state.diagnostics.set(diagnostic.pluginId, diagnostic);
   deps.diagnosticsChanged?.();
+}
+
+/** Best-effort: a network hiccup reporting to the server must never affect reconcile. */
+async function reportFrontendRegistration(
+  deps: PluginFrontendReconcileDeps,
+  pluginId: string,
+  generation: number,
+  error: string | null,
+): Promise<void> {
+  if (deps.reportFrontendRegistration === undefined) return;
+  try {
+    await deps.reportFrontendRegistration(pluginId, generation, error);
+  } catch {
+    // Ignored — the local diagnostic already recorded/cleared the failure.
+  }
 }
 
 async function callDisposer(
@@ -714,6 +740,12 @@ export async function reconcilePluginFrontends(
         return;
       }
 
+      // Computed once, before the try: the server-side report (success or
+      // failure) needs a generation number even when setup throws, and the
+      // committed counter must only bump after setup actually succeeds.
+      const candidateGeneration =
+        (state.generationByPluginId.get(pluginId) ?? 0) + 1;
+
       let collected: ReturnType<typeof collectPluginAppRegistrations>;
       try {
         const definition = record.module.default;
@@ -745,10 +777,25 @@ export async function reconcilePluginFrontends(
           active: null,
           lastFailure: { phase: "setup", message, scriptId: null },
         });
+        await reportFrontendRegistration(
+          deps,
+          pluginId,
+          candidateGeneration,
+          message,
+        );
         return;
       }
+      // Registration itself succeeded (content scripts may still fail to
+      // mount below, but that is a separate "mount" diagnostic) — the
+      // server-honest registry row can drop any earlier setup failure now.
+      await reportFrontendRegistration(
+        deps,
+        pluginId,
+        candidateGeneration,
+        null,
+      );
 
-      const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
+      const generation = candidateGeneration;
       state.generationByPluginId.set(pluginId, generation);
       const disposeFailures = await deactivateCommittedGeneration(
         pluginId,
@@ -912,6 +959,16 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   removeRegistrations: removePluginSlotRegistrations,
   warn: (message) => console.warn(message),
   diagnosticsChanged: publishBrowserDiagnostics,
+  reportFrontendRegistration: async (pluginId, generation, error) => {
+    await fetch(
+      `/api/v1/plugins/${encodeURIComponent(pluginId)}/frontend-registration`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ generation, error }),
+      },
+    );
+  },
 };
 
 /** Load state of every plugin frontend this page load, keyed by plugin id. */

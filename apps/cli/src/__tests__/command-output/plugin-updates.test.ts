@@ -36,6 +36,7 @@ const pluginList = (id: string, source: string) => ({
       app: { hasApp: false, bundle: null },
       logoUrl: null,
       logoDarkUrl: null,
+      frontendError: null,
     },
   ],
 });

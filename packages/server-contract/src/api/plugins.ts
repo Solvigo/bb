@@ -129,6 +129,28 @@ export const pluginScheduleEntrySchema = z.object({
   lastError: z.string().nullable(),
 });
 
+/**
+ * A frontend registration failure reported by the app runtime (design: the
+ * registry stays honest when a plugin's server half is fine but its
+ * `definePluginApp` setup threw — e.g. an invalid slot id). Additive to
+ * `status`/`enabled`: the server half may still be "running".
+ */
+export const pluginFrontendErrorSchema = z.object({
+  message: z.string(),
+  at: z.number(),
+});
+export type PluginFrontendError = z.infer<typeof pluginFrontendErrorSchema>;
+
+export const pluginFrontendRegistrationReportRequestSchema = z
+  .object({
+    generation: z.number().int().nonnegative(),
+    error: z.string().min(1).nullable(),
+  })
+  .strict();
+export type PluginFrontendRegistrationReportRequest = z.infer<
+  typeof pluginFrontendRegistrationReportRequestSchema
+>;
+
 export const pluginAppStateSchema = z.object({
   hasApp: z.boolean(),
   bundle: z
@@ -195,6 +217,7 @@ export const installedPluginSchema = z.object({
   app: pluginAppStateSchema,
   logoUrl: z.string().nullable(),
   logoDarkUrl: z.string().nullable(),
+  frontendError: pluginFrontendErrorSchema.nullable(),
 });
 export type InstalledPlugin = z.infer<typeof installedPluginSchema>;
 
@@ -230,6 +253,10 @@ export type PluginMutationResponse = z.infer<
 
 export const pluginInstallResponseSchema = pluginMutationResponseSchema;
 export type PluginInstallResponse = PluginMutationResponse;
+
+export const pluginFrontendRegistrationReportResponseSchema =
+  pluginMutationResponseSchema;
+export type PluginFrontendRegistrationReportResponse = PluginMutationResponse;
 
 export const pluginReloadResponseSchema = z.object({
   ok: z.literal(true),
