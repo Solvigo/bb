@@ -103,6 +103,45 @@ opened a native chooser the headless browser cannot see. **Absence of evidence
 in the DOM is not evidence of absence**, and a verdict of "this does nothing"
 needs the call path behind it, never a selector that found nothing.
 
+### Shadow roots: the count that reads zero either way
+
+The file tree renders inside a **custom element with a shadow root**, and a
+document-level query cannot see into one. So this:
+
+```js
+document.querySelectorAll('[role="treeitem"]').length; // 0 — always
+```
+
+returns zero whether the tree is working perfectly or drawing nothing at all.
+It cannot distinguish the two states, which is worse than useless: it reads
+like evidence. Count through the shadow root instead:
+
+```js
+document
+  .querySelector("file-tree-container")
+  .shadowRoot.querySelectorAll('[role="treeitem"]').length;
+```
+
+…or take a screenshot, which sees what a person sees.
+
+The same trap applies to `innerText` on a shadow host: it comes back empty
+while the component renders fine.
+
+### Three failures on one surface, none of them the product
+
+This tab was investigated three times before it was understood, and each time
+the **measurement** was the broken thing:
+
+- a path truncated inside a probe's own output, sending the reader to a
+  different directory that did have files in it;
+- a probe matching text in the chat pane rather than in the tree;
+- a treeitem count that could not see through a shadow root.
+
+The fix that ended it was not a better probe. It was making the panel **state
+what it believes** — loading, error, or ready, plus how many entries it holds —
+so one reading replaced an afternoon of inference. When a surface is hard to
+verify, that is the thing to add.
+
 ## A primary control wired to state nothing renders
 
 Promoting a control changes what its bugs cost. The sidebar built its own copy
