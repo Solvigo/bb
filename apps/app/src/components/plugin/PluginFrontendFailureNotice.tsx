@@ -3,7 +3,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   getPluginFrontendDiagnostics,
   subscribePluginFrontendDiagnostics,
-} from "@/lib/plugin-frontend";
+} from "@/lib/plugin-frontend-diagnostics";
 
 /**
  * Says out loud that a plugin has no user interface, and why.

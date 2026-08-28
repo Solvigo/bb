@@ -1,3 +1,11 @@
+import {
+  getPluginFrontendDiagnostics,
+  setPluginFrontendDiagnostics,
+  subscribePluginFrontendDiagnostics,
+  type PluginFrontendActiveGenerationDiagnostic,
+  type PluginFrontendDiagnostic,
+  type PluginFrontendFailure,
+} from "./plugin-frontend-diagnostics";
 import * as react from "react";
 import * as reactDom from "react-dom";
 import * as reactDomClient from "react-dom/client";
@@ -97,41 +105,6 @@ export type PluginFrontendRecord =
       status: "needs-update";
       sdkMajor: number;
       sdkVersion: string;
-    };
-
-export interface PluginFrontendFailure {
-  phase: "load" | "setup" | "mount" | "dispose";
-  message: string;
-  scriptId: string | null;
-}
-
-export interface PluginFrontendActiveGenerationDiagnostic {
-  generation: number;
-  hash: string;
-  contentScriptIds: readonly string[];
-}
-
-/** Per-window frontend lifecycle state shown in plugin diagnostics. */
-export type PluginFrontendDiagnostic =
-  | {
-      pluginId: string;
-      status: "active";
-      active: PluginFrontendActiveGenerationDiagnostic;
-      lastFailure: PluginFrontendFailure | null;
-    }
-  | {
-      pluginId: string;
-      status: "failed";
-      active: PluginFrontendActiveGenerationDiagnostic | null;
-      lastFailure: PluginFrontendFailure;
-    }
-  | {
-      pluginId: string;
-      status: "needs-update";
-      active: PluginFrontendActiveGenerationDiagnostic | null;
-      sdkMajor: number;
-      sdkVersion: string;
-      lastFailure: null;
     };
 
 export interface PluginFrontendLoaderDeps {
@@ -894,13 +867,8 @@ export function createPluginFrontendReconcileScheduler(args: {
 
 const state = createPluginFrontendReconcileState();
 let bootPromise: Promise<void> | null = null;
-let browserDiagnosticsSnapshot: ReadonlyMap<string, PluginFrontendDiagnostic> =
-  new Map();
-const browserDiagnosticsListeners = new Set<() => void>();
-
 function publishBrowserDiagnostics(): void {
-  browserDiagnosticsSnapshot = new Map(state.diagnostics);
-  for (const listener of browserDiagnosticsListeners) listener();
+  setPluginFrontendDiagnostics(state.diagnostics);
 }
 
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
@@ -922,23 +890,15 @@ export function getPluginFrontendRecords(): ReadonlyMap<
   return state.records;
 }
 
-/** Current per-window lifecycle diagnostics for plugin frontend generations. */
-export function getPluginFrontendDiagnostics(): ReadonlyMap<
-  string,
-  PluginFrontendDiagnostic
-> {
-  return browserDiagnosticsSnapshot;
-}
-
-/** Subscribe to per-window frontend diagnostic changes. */
-export function subscribePluginFrontendDiagnostics(
-  listener: () => void,
-): () => void {
-  browserDiagnosticsListeners.add(listener);
-  return () => {
-    browserDiagnosticsListeners.delete(listener);
-  };
-}
+// Re-exported so every existing importer keeps its import path; the store
+// itself lives in a module with no plugin-runtime dependencies.
+export {
+  getPluginFrontendDiagnostics,
+  subscribePluginFrontendDiagnostics,
+  type PluginFrontendActiveGenerationDiagnostic,
+  type PluginFrontendDiagnostic,
+  type PluginFrontendFailure,
+};
 
 /** App-window teardown path; exported for lifecycle tests. */
 export function teardownPluginFrontends(): Promise<void> {
