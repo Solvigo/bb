@@ -44,7 +44,12 @@ export function FilesTab({ agentId }: { agentId: string }) {
 
   return (
     <div
-      className="flex min-h-0 flex-col"
+      // h-full and a growing child are not decoration: the browser's own root
+      // is h-full, and the tree inside it is virtualised, so a parent with no
+      // height renders ZERO rows while anything with intrinsic height — the
+      // truncation note below — still shows. That combination reads exactly
+      // like a broken tree over working data.
+      className="flex h-full min-h-0 flex-col"
       data-testid="files-tab-worktree"
       // What this panel believes about itself, so a failure can be read from
       // the outside instead of inferred from an empty list. It earned its keep
@@ -53,15 +58,17 @@ export function FilesTab({ agentId }: { agentId: string }) {
       data-files-state={isLoading ? "loading" : error ? "error" : "ready"}
       data-files-count={files?.length ?? -1}
     >
-      <ThreadStorageBrowser
-        controller={controller}
-        filesError={error}
-        isFilesLoading={isLoading}
-      />
+      <div className="min-h-0 flex-1">
+        <ThreadStorageBrowser
+          controller={controller}
+          filesError={error}
+          isFilesLoading={isLoading}
+        />
+      </div>
       {truncated ? (
         // The host stopped listing before the end. Saying so is the whole
         // point: a tree that quietly ends looks like a small worktree.
-        <p className="px-3 py-2 text-xs text-muted-foreground">
+        <p className="shrink-0 px-3 py-2 text-xs text-muted-foreground">
           Showing the first files in this worktree — the list was truncated.
         </p>
       ) : null}
