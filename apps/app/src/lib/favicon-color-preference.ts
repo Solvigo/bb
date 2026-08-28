@@ -241,9 +241,15 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * The favicon is a monochrome glyph on a transparent background, so tinting
- * is a straight color replacement: draw the glyph, then fill with the target
- * color using "source-in" compositing to keep only the glyph's alpha.
+ * The favicon is a TILE — a rounded square with a lighter mark on a darker
+ * ground — so tinting cannot be a straight color replacement. Filling every
+ * opaque pixel ("source-in", which is right for a glyph on transparency)
+ * would flatten the tile into a solid colored square and erase the mark.
+ *
+ * So the tint applies HUE and leaves luminance alone: the "color" blend keeps
+ * the tile's own light-on-dark structure and recolors it. That blend paints
+ * the transparent corners too, so the original alpha is stamped back over the
+ * result — without it, a rounded tile comes out a hard square.
  */
 async function createFaviconHref({
   badge,
@@ -263,9 +269,11 @@ async function createFaviconHref({
   context.drawImage(image, 0, 0);
 
   if (colorPreference !== "default") {
-    context.globalCompositeOperation = "source-in";
+    context.globalCompositeOperation = "color";
     context.fillStyle = FAVICON_COLOR_VALUES[colorPreference];
     context.fillRect(0, 0, canvas.width, canvas.height);
+    context.globalCompositeOperation = "destination-in";
+    context.drawImage(image, 0, 0);
     context.globalCompositeOperation = "source-over";
   }
 
