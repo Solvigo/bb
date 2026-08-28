@@ -1,10 +1,9 @@
-import { useState } from "react";
+import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { NewCrewButton } from "@/components/sidebar/crew/NewCrewButton";
 import {
   useCrews,
   type AgentLiveness,
@@ -13,7 +12,9 @@ import {
 
 interface FleetHomeProps {
   addProjectDisabled?: boolean;
+  composer: ReactNode;
   onAddProject: () => void;
+  onFocusComposer: () => void;
   onStartThread: () => void;
 }
 
@@ -130,45 +131,13 @@ function QuickAction({
   );
 }
 
-function LandingComposer() {
-  const [request, setRequest] = useState("");
-
-  return (
-    <div className="w-full">
-      <div className="rounded-2xl border border-input bg-card p-3 shadow-sm transition-colors focus-within:border-ring">
-        <label htmlFor="fleet-home-prompt" className="sr-only">
-          What should your new crew take on?
-        </label>
-        <textarea
-          id="fleet-home-prompt"
-          value={request}
-          onChange={(event) => setRequest(event.target.value)}
-          rows={3}
-          autoFocus
-          placeholder="What should your new crew take on?"
-          className="min-h-24 w-full resize-none bg-transparent px-2 py-1 text-base leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
-        />
-        <div className="flex items-center justify-between gap-3 px-1 pt-2">
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Icon name="Code" className="size-3.5" aria-hidden />
-            Starts a commander who shapes the crew with you
-          </span>
-          <NewCrewButton
-            variant="page"
-            openingRequest={request}
-            className="h-9 shrink-0 rounded-full px-4"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** The root route is a quiet launch point. Work starts in the composer; the
  * fleet remains visible as a compact instrument below it. */
 export function FleetHome({
   addProjectDisabled,
+  composer,
   onAddProject,
+  onFocusComposer,
   onStartThread,
 }: FleetHomeProps) {
   const { crews, loaded, failed, timedOut, reload } = useCrews();
@@ -188,19 +157,14 @@ export function FleetHome({
         </p>
       </header>
 
-      <div className="w-full max-w-2xl">
-        <LandingComposer />
-      </div>
+      <div className="w-full max-w-2xl">{composer}</div>
 
       <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-3">
         <QuickAction
           icon="MessageSquarePlus"
           label="New crew"
           description="Start with the outcome"
-          onClick={() => {
-            const prompt = document.getElementById("fleet-home-prompt");
-            if (prompt instanceof HTMLTextAreaElement) prompt.focus();
-          }}
+          onClick={onFocusComposer}
         />
         <QuickAction
           icon="FolderPlus"

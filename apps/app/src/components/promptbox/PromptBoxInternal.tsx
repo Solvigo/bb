@@ -350,6 +350,9 @@ export interface PromptBoxInternalProps {
    * "Reusing existing worktree" banner when env mode is set to reuse. */
   header?: ReactNode;
   footerStart?: ReactNode;
+  /** Replaces the standard submit button while retaining the form's keyboard
+   * submission, editor, history, attachments, and typeahead behavior. */
+  submitAction?: ReactNode;
   submission?: PromptBoxSubmissionConfig;
   /**
    * Minimum textarea height in pixels. Defaults to PROMPTBOX_MIN_HEIGHT.
@@ -1063,6 +1066,7 @@ export function PromptBoxInternal({
   onComposerLayoutChange,
   header,
   footerStart,
+  submitAction,
   submission = {},
   minHeight = PROMPTBOX_MIN_HEIGHT,
   typeahead,
@@ -3127,6 +3131,8 @@ export function PromptBoxInternal({
                     >
                       <Icon name="Mic" className="size-4" />
                     </Button>
+                  ) : submitAction ? (
+                    submitAction
                   ) : (
                     <Button
                       data-promptbox-submit-action=""
