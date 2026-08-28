@@ -1,16 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useProjectNames } from "@/hooks/queries/sidebar-navigation-query";
-import {
-  useCrews,
-  type AgentLiveness,
-  type Crew,
-  type CrewLead,
-} from "./useCrews";
+import { useCrews, type AgentLiveness, type Crew } from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
 
 export const SIDEBAR_SECTION_LABEL_CLASS =
@@ -23,7 +18,6 @@ function CrewEntry({
   crew: Crew;
   onNavigate?: () => void;
 }) {
-  const [open, setOpen] = useState(true);
   const anyWorking = crew.leads.some((l) => l.working);
   // Every thread link carries its project scope. The projectless route resolves
   // to the PERSONAL project, so a lead on a real project rendered "belongs to a
@@ -35,18 +29,6 @@ function CrewEntry({
   return (
     <li>
       <div className="flex items-center">
-        <button
-          type="button"
-          aria-label={open ? `Collapse ${crew.name}` : `Expand ${crew.name}`}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="grid size-6 shrink-0 place-items-center rounded text-subtle-foreground hover:bg-sidebar-accent"
-        >
-          <Icon
-            name={open ? "ChevronDown" : "ChevronRight"}
-            className="size-3.5"
-          />
-        </button>
         <NavLink
           to={threadPath(crew.commanderThreadId)}
           onClick={onNavigate}
@@ -81,18 +63,6 @@ function CrewEntry({
           </span>
         </NavLink>
       </div>
-      {open && crew.leads.length > 0 ? (
-        <ul className="ml-6 mt-0.5 flex flex-col">
-          {crew.leads.map((lead) => (
-            <AgentRow
-              key={lead.threadId}
-              agent={lead}
-              threadPath={threadPath}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </ul>
-      ) : null}
     </li>
   );
 }
@@ -122,62 +92,6 @@ function LivenessDot({ liveness }: { liveness: AgentLiveness | null }) {
       aria-label={liveness.verdict}
       className={cn("size-1.5 shrink-0 rounded-full", tone)}
     />
-  );
-}
-
-/**
- * One agent and whatever reports to it. Renders itself the same way at every
- * tier — a lead and a sortie are the same kind of thing at different places in
- * the tree, so the row does not learn its own rank to draw itself.
- */
-function AgentRow({
-  agent,
-  threadPath,
-  onNavigate,
-}: {
-  agent: CrewLead;
-  threadPath: (threadId: string) => string;
-  onNavigate?: () => void;
-}) {
-  return (
-    <li>
-      <NavLink
-        to={threadPath(agent.threadId)}
-        onClick={onNavigate}
-        title={agent.status ?? undefined}
-        className={({ isActive }) =>
-          cn(
-            "flex h-7 min-w-0 items-center gap-2 rounded-md px-2 transition-colors",
-            isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
-          )
-        }
-      >
-        <Icon
-          name="UserRound"
-          className={cn(
-            "size-3.5 shrink-0",
-            agent.working ? "text-muted-foreground" : "text-subtle-foreground",
-          )}
-          aria-hidden
-        />
-        <span className="truncate text-[13px] text-foreground">
-          {agent.name}
-        </span>
-        <LivenessDot liveness={agent.liveness} />
-      </NavLink>
-      {agent.sorties.length > 0 ? (
-        <ul className="ml-4 flex flex-col border-l border-tower-border pl-1">
-          {agent.sorties.map((sortie) => (
-            <AgentRow
-              key={sortie.threadId}
-              agent={sortie}
-              threadPath={threadPath}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </ul>
-      ) : null}
-    </li>
   );
 }
 
