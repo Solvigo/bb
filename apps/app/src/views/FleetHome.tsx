@@ -1,25 +1,15 @@
-import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import { NewCrewButton } from "@/components/sidebar/crew/NewCrewButton";
 import {
   useCrews,
   type AgentLiveness,
   type Crew,
 } from "@/components/sidebar/crew/useCrews";
-import { useCreateCrew } from "@/components/sidebar/crew/useCreateCrew";
 
 interface FleetHomeProps {
   addProjectDisabled?: boolean;
@@ -142,48 +132,9 @@ function QuickAction({
 
 function LandingComposer() {
   const [request, setRequest] = useState("");
-  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
-  const { createCrew, creating, error } = useCreateCrew();
-  const navigation = useSidebarNavigation();
-  const projects = useMemo(
-    () =>
-      (navigation.data?.projects ?? []).filter(
-        (project) => project.id !== PERSONAL_PROJECT_ID,
-      ),
-    [navigation.data?.projects],
-  );
-
-  const submit = (event?: FormEvent) => {
-    event?.preventDefault();
-    const openingRequest = request.trim();
-    if (!openingRequest || creating) return;
-    if (projects.length === 0) {
-      createCrew(undefined, openingRequest);
-      return;
-    }
-    setProjectMenuOpen(true);
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (
-      event.key !== "Enter" ||
-      event.shiftKey ||
-      event.nativeEvent.isComposing
-    ) {
-      return;
-    }
-    event.preventDefault();
-    event.currentTarget.form?.requestSubmit();
-  };
-
-  const startCrew = (projectId?: string) => {
-    const openingRequest = request.trim();
-    if (!openingRequest) return;
-    createCrew(projectId, openingRequest);
-  };
 
   return (
-    <form onSubmit={submit} className="w-full">
+    <div className="w-full">
       <div className="rounded-2xl border border-input bg-card p-3 shadow-sm transition-colors focus-within:border-ring">
         <label htmlFor="fleet-home-prompt" className="sr-only">
           What should your new crew take on?
@@ -192,7 +143,6 @@ function LandingComposer() {
           id="fleet-home-prompt"
           value={request}
           onChange={(event) => setRequest(event.target.value)}
-          onKeyDown={handleKeyDown}
           rows={3}
           autoFocus
           placeholder="What should your new crew take on?"
@@ -203,48 +153,14 @@ function LandingComposer() {
             <Icon name="Code" className="size-3.5" aria-hidden />
             Starts a commander who shapes the crew with you
           </span>
-          <DropdownMenu
-            open={projectMenuOpen}
-            onOpenChange={setProjectMenuOpen}
-          >
-            <DropdownMenuTrigger asChild>
-              <button
-                type="submit"
-                disabled={request.trim().length === 0 || creating}
-                aria-label={creating ? "Starting crew" : "Start crew"}
-                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35"
-              >
-                <Icon
-                  name={creating ? "Spinner" : "ArrowUp"}
-                  className={cn("size-4", creating && "animate-spin")}
-                  aria-hidden
-                />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" mobileTitle="Start a crew">
-              <DropdownMenuLabel>
-                What project is this crew for?
-              </DropdownMenuLabel>
-              {projects.map((project) => (
-                <DropdownMenuItem
-                  key={project.id}
-                  onSelect={() => startCrew(project.id)}
-                >
-                  {project.name}
-                </DropdownMenuItem>
-              ))}
-              {projects.length > 0 ? <DropdownMenuSeparator /> : null}
-              <DropdownMenuItem onSelect={() => startCrew()}>
-                No code yet — just thinking
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <NewCrewButton
+            variant="page"
+            openingRequest={request}
+            className="h-9 shrink-0 rounded-full px-4"
+          />
         </div>
       </div>
-      {error ? (
-        <p className="mt-2 px-2 text-xs text-destructive-text">{error}</p>
-      ) : null}
-    </form>
+    </div>
   );
 }
 
