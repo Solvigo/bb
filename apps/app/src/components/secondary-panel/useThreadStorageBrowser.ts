@@ -1,11 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFileTree, type UseFileTreeResult } from "@pierre/trees/react";
+import type { FileTreeOptions } from "@pierre/trees";
 import type { WorkspaceFile } from "@bb/server-contract";
 
 const EMPTY_STORAGE_FILES: readonly WorkspaceFile[] = [];
@@ -13,6 +8,12 @@ const EMPTY_STORAGE_FILES: readonly WorkspaceFile[] = [];
 export type ThreadStoragePathSelectHandler = (path: string) => void;
 
 interface UseThreadStorageBrowserArgs {
+  /**
+   * Makes rows draggable. Nothing may be dropped INTO the tree — this is a
+   * read-only view — so a caller enabling it must refuse every drop; it exists
+   * so a row can be dragged OUT, to somewhere that accepts text.
+   */
+  dragAndDrop?: FileTreeOptions["dragAndDrop"];
   files: readonly WorkspaceFile[] | undefined;
   onSelectPath: ThreadStoragePathSelectHandler;
   selectedPath: string | null;
@@ -57,6 +58,7 @@ function buildDirectoryPaths(paths: readonly string[]): string[] {
  * search state passed down to the presentational browser.
  */
 export function useThreadStorageBrowser({
+  dragAndDrop,
   files,
   onSelectPath,
   selectedPath,
@@ -109,6 +111,7 @@ export function useThreadStorageBrowser({
 
   const { model } = useFileTree({
     density: "compact",
+    dragAndDrop,
     initialExpansion: "closed",
     onSelectionChange: handleTreeSelectionChange,
     paths: [],
@@ -131,11 +134,10 @@ export function useThreadStorageBrowser({
     const selectedPathIsVisible =
       selectedPath !== null && filePathSet.has(selectedPath);
 
-    const alreadyMatches =
-      selectedPathIsVisible
-        ? currentSelectedPaths.length === 1 &&
-          currentSelectedPaths[0] === selectedPath
-        : currentSelectedPaths.length === 0;
+    const alreadyMatches = selectedPathIsVisible
+      ? currentSelectedPaths.length === 1 &&
+        currentSelectedPaths[0] === selectedPath
+      : currentSelectedPaths.length === 0;
     if (alreadyMatches) return;
 
     isApplyingSelectionRef.current = true;
