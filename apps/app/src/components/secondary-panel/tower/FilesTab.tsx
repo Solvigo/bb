@@ -6,7 +6,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { SecondaryPanelFilePreview } from "@/components/secondary-panel/ThreadStorageFilePreview";
 import { useEnvironmentFilePreview } from "@/hooks/queries/environment-queries";
-import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { useAddPathToChat } from "./worktree-file-actions";
 import { useWorktreeFileEditor } from "./useWorktreeFileEditor";
@@ -32,7 +31,6 @@ export function FilesTab({ agentId }: { agentId: string }) {
     isLoading,
     error,
   } = useWorktreeFiles(agentId);
-  const queryClient = useQueryClient();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const addPathToChat = useAddPathToChat();
   const onSelectPath = useCallback((path: string) => setSelectedPath(path), []);
@@ -50,8 +48,10 @@ export function FilesTab({ agentId }: { agentId: string }) {
     hostId,
     rootPath,
     // The preview reads through its own cache, so a saved file would otherwise
-    // render as the version that was just replaced.
-    onSaved: () => void queryClient.invalidateQueries(),
+    // render as the version that was just replaced. Refetching THAT query is
+    // the whole need — dropping every cache in the app to refresh one file
+    // would evict work the rest of the screen is still using.
+    onSaved: () => void preview.refetch(),
   });
 
   const controller = useThreadStorageBrowser({
