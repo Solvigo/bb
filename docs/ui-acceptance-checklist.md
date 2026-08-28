@@ -242,3 +242,28 @@ stale".
 If a second surface genuinely is wanted, say out loud which signal is
 authoritative and make both read it. A count that is right in two places by
 coincidence is a count that will be wrong in one of them by Friday.
+
+## Verify the land, not the PR
+
+A change that passed CI and passed a live pass can still reach the rig broken,
+because **the regression rides in on the sibling PR**. Two changes landed
+together; one had been rendered and confirmed an hour earlier; the other
+registered a slot id in the wrong case, and the throw took its plugin's entire
+frontend down — tab, panel, banner, all of it — while CI stayed green and the
+plugin registry still reported `enabled` with no error.
+
+So the unit of acceptance is the **landed build on the rig**, never the branch
+you reviewed. After any refresh:
+
+- **`ff` then RESTART, and prove the order.** `ps -eo lstart` on the server
+  against the built artifact's mtime. A server older than its build is serving
+  something else, and every measurement taken against it is about the past.
+- **Confirm a marker from the change is in the RUNNING bundle**, not just in
+  the source tree.
+- **Then look at the screen.** The first question is not "does the feature
+  work" but "is the surface still there at all". A missing tab reads as a
+  design decision; nothing in a log says "the browser tab is gone".
+
+Console warnings are evidence. A plugin can be `enabled`, error-free in the
+registry, happily serving its backend, and have no user interface whatsoever —
+with one `console.warn` as the only trace in the entire system.
