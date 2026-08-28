@@ -5,7 +5,6 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { deriveProjectNameFromPath, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
@@ -14,10 +13,8 @@ import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
-import {
-  APP_ROOT_ROUTE_PATH,
-  getRootComposeRoutePath,
-} from "@/lib/route-paths";
+import {} from "@/lib/route-paths";
+import { useCreateCrew } from "@/components/sidebar/crew/useCreateCrew";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import type {
   ProjectPathDialogSubmitHandler,
@@ -50,10 +47,9 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const { mutate, isPending } = useCreateProject();
   const hostsQuery = useHosts();
   const hosts = hostsQuery.data ?? EMPTY_HOSTS;
-  const navigate = useNavigate();
-  const location = useLocation();
   const setRootComposeProjectId = useSetRootComposeProjectId();
-  const shouldReplaceRoute = location.pathname === APP_ROOT_ROUTE_PATH;
+
+  const { createCrew } = useCreateCrew();
 
   const submit = useCallback(
     ({ path, hostId, target, closeDialog }: LocalPathSubmitParams) => {
@@ -70,14 +66,18 @@ export function useQuickCreateProject(): QuickCreateProjectController {
           onSuccess: (project) => {
             closeDialog();
             setRootComposeProjectId(project.id);
-            void navigate(getRootComposeRoutePath(), {
-              replace: shouldReplaceRoute,
-            });
+            // A new project used to land on an empty compose view: the folder
+            // existed and nothing was in it. Creating a project IS starting to
+            // work on it, so it stands up the crew and drops you into that
+            // chat, ready to type. createCrew owns the navigation, and it is
+            // idempotent — a second create resumes an unfinished setup rather
+            // than leaving another husk on the rail.
+            createCrew(project.id);
           },
         },
       );
     },
-    [mutate, navigate, setRootComposeProjectId, shouldReplaceRoute],
+    [createCrew, mutate, setRootComposeProjectId],
   );
 
   const controller = useLocalPathPicker({
