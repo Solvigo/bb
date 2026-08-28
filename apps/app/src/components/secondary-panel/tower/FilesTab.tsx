@@ -186,10 +186,11 @@ export function FilesTab({ agentId }: { agentId: string }) {
         </div>
       </div>
       {truncated ? (
-        // The host stopped listing before the end. Saying so is the whole
-        // point: a tree that quietly ends looks like a small worktree.
+        // Only a worktree past the host's own ceiling reaches this now. Saying
+        // so is still the whole point: a tree that quietly ends looks like a
+        // small worktree, and the count is what makes it believable.
         <p className="shrink-0 px-3 py-2 text-xs text-muted-foreground">
-          Showing the first files in this worktree — the list was truncated.
+          {`This worktree has more files than the host will list at once. Showing the first ${(files?.length ?? 0).toLocaleString()}.`}
         </p>
       ) : null}
     </div>
