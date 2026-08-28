@@ -123,7 +123,7 @@ function QuickAction({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-card/45 px-3.5 py-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+      className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-card/40 px-3.5 py-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:text-foreground">
         <Icon name={icon} className="size-4" aria-hidden />
@@ -264,7 +264,6 @@ export function FleetHome({
   return (
     <div className="flex w-full flex-col items-center gap-7 py-8 duration-500 animate-in fade-in-0 slide-in-from-bottom-2 sm:py-12">
       <header className="flex flex-col items-center gap-2 text-center">
-        <p className="text-sm text-muted-foreground">Solvigo Airways</p>
         <h1 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
           {getGreeting()}, Solvigo Airways.
         </h1>
@@ -281,7 +280,7 @@ export function FleetHome({
         <QuickAction
           icon="MessageSquarePlus"
           label="New crew"
-          description="Choose the project first"
+          description="Start with the outcome"
           onClick={() => {
             const prompt = document.getElementById("fleet-home-prompt");
             if (prompt instanceof HTMLTextAreaElement) prompt.focus();
