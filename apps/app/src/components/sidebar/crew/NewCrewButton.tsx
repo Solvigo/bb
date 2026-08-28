@@ -26,10 +26,26 @@ import { useCreateCrew } from "./useCreateCrew";
  */
 export function NewCrewButton({
   className,
+  onOpenChange,
+  open,
   openingRequest,
   variant = "rail",
 }: {
   className?: string;
+  /**
+   * Opens the project chooser without the trigger being pressed — for a
+   * surface that asks its own question first and then needs this one asked.
+   *
+   * Controlled, rather than an imperative handle, for one reason: the project
+   * question must stay ASKED. A ref that opened the menu could just as easily
+   * grow a sibling that skipped it, and a commander born on the wrong project
+   * can talk and never dispatch. Driving the menu still walks the operator
+   * through the same choice, with `openingRequest` riding along.
+   *
+   * Omit both and the menu stays uncontrolled exactly as it was.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   /**
    * What the operator already typed before pressing this, handed to the
    * commander as its first instruction.
@@ -87,7 +103,10 @@ export function NewCrewButton({
 
   return (
     <div className="flex flex-col gap-1">
-      <DropdownMenu>
+      <DropdownMenu
+        {...(open === undefined ? {} : { open })}
+        {...(onOpenChange === undefined ? {} : { onOpenChange })}
+      >
         <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
         <DropdownMenuContent align="start" mobileTitle="New crew">
           <DropdownMenuLabel>What is this crew for?</DropdownMenuLabel>
