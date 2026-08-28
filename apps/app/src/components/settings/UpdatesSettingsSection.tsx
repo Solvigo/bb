@@ -320,6 +320,17 @@ export function BbAppUpdateRows({
     );
   }
 
+  if (systemVersion.managed === true) {
+    return (
+      <UpdatesRow>
+        <RowStatus>
+          Managed from this fleet's patched checkout — self-update is
+          disabled here.
+        </RowStatus>
+      </UpdatesRow>
+    );
+  }
+
   const name = (
     <RowName
       name="bb-app"
@@ -341,7 +352,8 @@ export function BbAppUpdateRows({
     );
   }
 
-  if (systemVersion.updateAvailable) {
+  if (systemVersion.updateAvailable && systemVersion.upgradeCommand !== undefined) {
+    const upgradeCommand = systemVersion.upgradeCommand;
     return (
       <UpdatesRow tone="attention">
         {name}
@@ -350,12 +362,12 @@ export function BbAppUpdateRows({
           {/* The command sits with the button that copies it, rather than
               crowding the app name on the left. */}
           <code className="hidden rounded-sm bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-muted-foreground sm:inline">
-            {systemVersion.upgradeCommand}
+            {upgradeCommand}
           </code>
           <RowButton
             onClick={() => {
               void navigator.clipboard
-                .writeText(systemVersion.upgradeCommand)
+                .writeText(upgradeCommand)
                 .then(() => appToast.success("Upgrade command copied"))
                 .catch(() => {
                   appToast.error("Couldn't copy upgrade command");

@@ -127,6 +127,10 @@ export function createAppVersionService(
     }
   }
 
+  const managed =
+    process.env.BB_UPDATE_CHANNEL === "managed" ||
+    semver.prerelease(config.appVersion) !== null;
+
   return {
     async getSystemVersion(
       args: AppVersionGetSystemVersionArgs = {},
@@ -137,10 +141,11 @@ export function createAppVersionService(
         source: "npm",
         updateAvailable: false,
         isDevelopment: config.isDevelopment,
-        upgradeCommand: UPGRADE_COMMAND,
+        upgradeCommand: managed ? undefined : UPGRADE_COMMAND,
+        managed,
       };
 
-      if (config.isDevelopment) {
+      if (managed || config.isDevelopment) {
         return baseResponse;
       }
 
