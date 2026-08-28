@@ -35,6 +35,7 @@ import {
   type AgentSurfaceTab,
 } from "./tower/agentSurfaceRegistry";
 import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
+import { WorktreeFileOpenProvider } from "./tower/worktree-file-open";
 import { registerBuiltInAgentSurfaceTabs } from "./tower/builtInAgentSurfaceTabs";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -873,14 +874,16 @@ export function ThreadSecondaryPanel({
         */}
         {browserDeck}
         {isBrowserTabActive ? null : activeTowerTab && openInThreadId ? (
-          <AgentSurfaceTabContent
-            key={`${activeTowerTab.id}:${activeTowerTab.generation ?? 0}`}
-            tab={activeTowerTab}
-            agentId={openInThreadId}
-            onTeardown={registerTowerTeardown}
-            viewerRole="commander"
-            visible
-          />
+          <WorktreeFileOpenProvider openFile={onOpenFilePreview ?? null}>
+            <AgentSurfaceTabContent
+              key={`${activeTowerTab.id}:${activeTowerTab.generation ?? 0}`}
+              tab={activeTowerTab}
+              agentId={openInThreadId}
+              onTeardown={registerTowerTeardown}
+              viewerRole="commander"
+              visible
+            />
+          </WorktreeFileOpenProvider>
         ) : hasActiveFileTab ? (
           <div
             className={
