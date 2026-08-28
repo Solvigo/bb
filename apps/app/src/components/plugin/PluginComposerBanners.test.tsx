@@ -224,4 +224,78 @@ describe("PluginComposerBanners", () => {
     );
     expect(screen.getByText("thread:draft two:zen:true:true")).toBeDefined();
   });
+  it("orders rows across plugins by experimental_order, not by plugin id", () => {
+    // "zulu" sorts after "alpha", so plugin-id order would put its row second.
+    // The numbers say otherwise, and the numbers are the contract.
+    setPluginSlotRegistrations(
+      "alpha-plugin",
+      registrations([
+        {
+          id: "a",
+          banners: [
+            {
+              id: "row",
+              experimental_order: 20,
+              component: () => <div>second</div>,
+            },
+          ],
+        },
+      ]),
+    );
+    setPluginSlotRegistrations(
+      "zulu-plugin",
+      registrations([
+        {
+          id: "z",
+          banners: [
+            {
+              id: "row",
+              experimental_order: 10,
+              component: () => <div>first</div>,
+            },
+          ],
+        },
+      ]),
+    );
+
+    const { container } = render(
+      <MemoryRouter>
+        <PluginComposerBanners view={composerView("t1")} />
+      </MemoryRouter>,
+    );
+
+    const text = container.textContent ?? "";
+    expect(text.indexOf("first")).toBeLessThan(text.indexOf("second"));
+    expect(text.indexOf("first")).toBeGreaterThanOrEqual(0);
+  });
+
+  it("leaves rows without an order in the order they arrived", () => {
+    setPluginSlotRegistrations(
+      "alpha-plugin",
+      registrations([
+        {
+          id: "a",
+          banners: [{ id: "one", component: () => <div>alpha</div> }],
+        },
+      ]),
+    );
+    setPluginSlotRegistrations(
+      "zulu-plugin",
+      registrations([
+        {
+          id: "z",
+          banners: [{ id: "one", component: () => <div>zulu</div> }],
+        },
+      ]),
+    );
+
+    const { container } = render(
+      <MemoryRouter>
+        <PluginComposerBanners view={composerView("t1")} />
+      </MemoryRouter>,
+    );
+
+    const text = container.textContent ?? "";
+    expect(text.indexOf("alpha")).toBeLessThan(text.indexOf("zulu"));
+  });
 });
