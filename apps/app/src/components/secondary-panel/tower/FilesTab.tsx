@@ -6,7 +6,10 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { SecondaryPanelFilePreview } from "@/components/secondary-panel/ThreadStorageFilePreview";
 import { useEnvironmentFilePreview } from "@/hooks/queries/environment-queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@bb/shared-ui/button";
 import { useAddPathToChat } from "./worktree-file-actions";
+import { useWorktreeFileEditor } from "./useWorktreeFileEditor";
 import { useWorktreeFiles } from "./useWorktreeFiles";
 
 /**
@@ -14,12 +17,22 @@ import { useWorktreeFiles } from "./useWorktreeFiles";
  * uses — same tree, same theming, same coarse-pointer sizing, pointed at the
  * checkout instead of the thread's storage dir.
  *
- * Read-only, deliberately: this is the operator's window into what an agent is
- * working on, not a write path into a crew's isolated checkout.
+ * Files are editable. The write surface is the agent's OWN worktree — an
+ * isolated checkout, which is exactly where a change is allowed to land — and
+ * every save carries the hash the file had when it was opened, so a write that
+ * would land on top of the agent's own is refused rather than silently winning.
  */
 export function FilesTab({ agentId }: { agentId: string }) {
-  const { environmentId, files, truncated, rootPath, isLoading, error } =
-    useWorktreeFiles(agentId);
+  const {
+    environmentId,
+    files,
+    truncated,
+    rootPath,
+    hostId,
+    isLoading,
+    error,
+  } = useWorktreeFiles(agentId);
+  const queryClient = useQueryClient();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const addPathToChat = useAddPathToChat();
   const onSelectPath = useCallback((path: string) => setSelectedPath(path), []);
@@ -33,10 +46,19 @@ export function FilesTab({ agentId }: { agentId: string }) {
     { enabled: Boolean(environmentId && selectedPath) },
   );
 
+  const editor = useWorktreeFileEditor({
+    hostId,
+    rootPath,
+    // The preview reads through its own cache, so a saved file would otherwise
+    // render as the version that was just replaced.
+    onSaved: () => void queryClient.invalidateQueries(),
+  });
+
   const controller = useThreadStorageBrowser({
     // Rows become draggable so a path can be dragged into the chat. Nothing may
-    // be dropped INTO the tree: this view is read-only, and a file view that
-    // could move files would be a file manager nobody asked for.
+    // be dropped INTO the tree: a file view that could MOVE files by dropping
+    // them on each other is a file manager nobody asked for — editing a file's
+    // contents is a different thing from rearranging a worktree.
     dragAndDrop: { canDrop: () => false },
     files,
     onSelectPath,
@@ -162,25 +184,87 @@ export function FilesTab({ agentId }: { agentId: string }) {
                 {/* The same reference the drag makes, for anyone who would
                     rather press a button than drag one — and for a pointer
                     that cannot drag at all. */}
-                {addPathToChat === null ? null : (
-                  <button
-                    type="button"
-                    onClick={() => addPathToChat(selectedPath)}
-                    className="shrink-0 rounded-md px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-tower-accent hover:text-foreground"
-                  >
-                    Add to chat
-                  </button>
+                {editor.editing === null ? (
+                  <>
+                    {addPathToChat === null ? null : (
+                      <button
+                        type="button"
+                        onClick={() => addPathToChat(selectedPath)}
+                        className="shrink-0 rounded-md px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-tower-accent hover:text-foreground"
+                      >
+                        Add to chat
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => editor.open(selectedPath)}
+                      disabled={editor.status.kind === "opening"}
+                      className="shrink-0 rounded-md px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-tower-accent hover:text-foreground disabled:opacity-50"
+                    >
+                      {editor.status.kind === "opening" ? "Opening…" : "Edit"}
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs"
+                      onClick={editor.cancel}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={editor.save}
+                      disabled={editor.status.kind === "saving"}
+                    >
+                      {editor.status.kind === "saving" ? "Saving…" : "Save"}
+                    </Button>
+                  </div>
                 )}
               </div>
-              <div className="min-h-0 flex-1 overflow-auto">
-                <SecondaryPanelFilePreview
-                  activePath={selectedPath}
-                  copyPath={selectedPath}
-                  error={(preview.error as Error | null) ?? null}
-                  filePreview={preview.data}
-                  isLoading={preview.isLoading}
+              {editor.status.kind === "conflict" ? (
+                // The file changed underneath the edit. Offering "save anyway"
+                // here would be offering to destroy an agent's work with one
+                // click, so the only ways out are keeping the text or dropping
+                // it — both of which the operator has to choose.
+                <p
+                  role="alert"
+                  className="shrink-0 border-b border-tower-border px-3 py-2 text-xs text-destructive-text"
+                >
+                  This file changed on disk since you opened it — most likely
+                  the agent working in it. Nothing was overwritten. Copy
+                  anything you want to keep, then cancel and reopen it.
+                </p>
+              ) : editor.status.kind === "error" ? (
+                <p
+                  role="alert"
+                  className="shrink-0 border-b border-tower-border px-3 py-2 text-xs text-destructive-text"
+                >
+                  {editor.status.message}
+                </p>
+              ) : null}
+              {editor.editing !== null ? (
+                <textarea
+                  aria-label={`Edit ${editor.editing.path}`}
+                  className="min-h-0 flex-1 resize-none bg-background px-4 py-3 font-mono text-xs leading-5 text-foreground outline-none"
+                  spellCheck={false}
+                  value={editor.editing.text}
+                  onChange={(event) => editor.setText(event.target.value)}
                 />
-              </div>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-auto">
+                  <SecondaryPanelFilePreview
+                    activePath={selectedPath}
+                    copyPath={selectedPath}
+                    error={(preview.error as Error | null) ?? null}
+                    filePreview={preview.data}
+                    isLoading={preview.isLoading}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>

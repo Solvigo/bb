@@ -26,6 +26,8 @@ export interface WorktreeFiles {
   truncated: boolean;
   /** The agent's own checkout, for the empty and non-git cases. */
   rootPath: string | null;
+  /** The host the checkout lives on, for anything reading or writing it. */
+  hostId: string | null;
   isLoading: boolean;
   error: Error | null;
 }
@@ -63,6 +65,7 @@ export function useWorktreeFiles(threadId: string | null): WorktreeFiles {
     files: filesQuery.data?.files,
     truncated: filesQuery.data?.truncated === true,
     rootPath,
+    hostId,
     // The tree is unknown until BOTH hops land: a thread whose environment has
     // not arrived is still loading, not empty.
     isLoading:
