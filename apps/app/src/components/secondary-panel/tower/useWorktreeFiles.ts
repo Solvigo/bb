@@ -8,6 +8,8 @@ import { sdk } from "@/lib/sdk";
 const WORKTREE_FILE_LIMIT = 500;
 
 export interface WorktreeFiles {
+  /** The agent's environment, for anything that reads files out of it. */
+  environmentId: string | null;
   files: HostFileListResponse["files"] | undefined;
   /** The host stopped listing before the end — shown, never swallowed. */
   truncated: boolean;
@@ -46,6 +48,7 @@ export function useWorktreeFiles(threadId: string | null): WorktreeFiles {
   });
 
   return {
+    environmentId,
     files: filesQuery.data?.files,
     truncated: filesQuery.data?.truncated === true,
     rootPath,
