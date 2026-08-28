@@ -26,9 +26,22 @@ import { useCreateCrew } from "./useCreateCrew";
  */
 export function NewCrewButton({
   className,
+  openingRequest,
   variant = "rail",
 }: {
   className?: string;
+  /**
+   * What the operator already typed before pressing this, handed to the
+   * commander as its first instruction.
+   *
+   * It rides THROUGH the project question rather than around it. A commander
+   * is born on its project and can never move, so the question is asked first
+   * whatever else is going on — a typed request is not a reason to skip it and
+   * strand the crew on Personal, where it can talk and never dispatch.
+   *
+   * Empty or whitespace is the same as none; the hook trims and ignores it.
+   */
+  openingRequest?: string;
   variant?: "rail" | "page";
 }) {
   const { createCrew, creating, error } = useCreateCrew();
@@ -81,13 +94,18 @@ export function NewCrewButton({
           {projects.map((project) => (
             <DropdownMenuItem
               key={project.id}
-              onSelect={() => createCrew(project.id)}
+              onSelect={() => createCrew(project.id, openingRequest)}
             >
               {project.name}
             </DropdownMenuItem>
           ))}
           {projects.length > 0 ? <DropdownMenuSeparator /> : null}
-          <DropdownMenuItem onSelect={() => createCrew()}>
+          {/* No code yet is still a choice ABOUT the project, so the request
+              travels with it — a crew that only needs to think deserves the
+              same opening instruction as one with a repo. */}
+          <DropdownMenuItem
+            onSelect={() => createCrew(undefined, openingRequest)}
+          >
             No code yet — just thinking
           </DropdownMenuItem>
         </DropdownMenuContent>
