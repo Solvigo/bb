@@ -62,6 +62,7 @@ function CrewEntry({
                 {crew.name}
               </span>
               <LivenessDot liveness={crew.liveness} />
+              <AttentionBadge count={crew.attention} name={crew.name} />
             </span>
             {crew.leads.length === 0 ? (
               // Only worth a line when there is no tree to read instead. With
@@ -162,6 +163,7 @@ function AgentTreeRow({
             {agent.name}
           </span>
           <LivenessDot liveness={agent.liveness} />
+          <AttentionBadge count={agent.attention} name={agent.name} />
         </NavLink>
       </div>
       {hasChildren && expanded ? (
@@ -178,6 +180,26 @@ function AgentTreeRow({
         </ul>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * How many things are waiting on the Captain here, counting everything below.
+ *
+ * It clears when the item is ACTED on — approved, answered, decided — and never
+ * on merely opening the agent. A badge that cleared on view would teach him
+ * that looking is the same as dealing with it, which is exactly the habit that
+ * loses an ask.
+ */
+function AttentionBadge({ count, name }: { count: number; name: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-label={`${count} item${count === 1 ? "" : "s"} waiting on you under ${name}`}
+      className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-destructive-text px-1 text-[10px] font-medium leading-none text-background"
+    >
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }
 

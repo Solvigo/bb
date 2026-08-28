@@ -24,6 +24,15 @@ export interface CrewLead {
    * outcome an agent tree may not have.
    */
   sorties: CrewLead[];
+  /**
+   * Items waiting on the OPERATOR, on this agent and everything below it.
+   *
+   * Rolled up rather than per-row, because the pilot is where the Captain looks
+   * first and an ask two levels down that shows nowhere until he happens to
+   * expand the right branch is an ask he never sees. Drilling in narrows the
+   * number to that subtree, which is how the count stays honest at every level.
+   */
+  attention: number;
 }
 
 export interface Crew {
@@ -36,6 +45,8 @@ export interface Crew {
   status: string;
   /** The commander is an agent too — same instrument, same honesty about null. */
   liveness: AgentLiveness | null;
+  /** Waiting on the operator, on the commander and its whole crew. */
+  attention: number;
 }
 
 /**
@@ -48,6 +59,16 @@ export interface LooseChat {
   name: string;
   projectId: string;
   liveness: AgentLiveness | null;
+}
+
+/**
+ * One thing waiting on somebody. Only `operator` items count here: an ask
+ * routed to another AGENT is not the Captain's to clear, and counting it would
+ * put a number on his screen that nothing he does removes.
+ */
+interface AttentionRow {
+  threadId?: string | null;
+  audience?: string | null;
 }
 
 interface ThreadRow {
@@ -167,6 +188,8 @@ function assembleFleet(
   threads: ThreadRow[],
   fleet: { rows: FleetRow[] } | null,
   board: { rows: BoardRow[] } | null,
+  attention: { open?: AttentionRow[] } | null,
+  artifacts: { artifacts?: AttentionRow[] } | null,
 ): { crews: Crew[]; chats: LooseChat[] } {
   const live = new Set(threads.map((t) => t.id));
   const handleOf = new Map<string, string>();
@@ -179,6 +202,20 @@ function assembleFleet(
     // a reader cannot mistake a missing verdict for a quiet one.
     if (r.liveness) livenessOf.set(r.threadId, r.liveness);
   }
+  // What is waiting on the operator, per agent, before any rolling up. An item
+  // with no thread on it belongs to nobody on this tree and is left out rather
+  // than attributed to a guess.
+  const asksOf = new Map<string, number>();
+  for (const item of [
+    ...(attention?.open ?? []),
+    ...(artifacts?.artifacts ?? []),
+  ]) {
+    if (item.audience !== undefined && item.audience !== "operator") continue;
+    const id = item.threadId;
+    if (typeof id !== "string" || id === "") continue;
+    asksOf.set(id, (asksOf.get(id) ?? 0) + 1);
+  }
+
   const reportOf = new Map<string, { state: string; note: string } | null>();
   for (const b of board?.rows ?? []) reportOf.set(b.threadId, b.report);
 
@@ -206,6 +243,7 @@ function assembleFleet(
       .map((t) => {
         seen.add(t.id);
         const report = reportOf.get(t.id) ?? null;
+        const sorties = agentsUnder(t.id, seen);
         return {
           threadId: t.id,
           name: agentName(handleOf.get(t.id) ?? titleOf(t)),
@@ -213,7 +251,10 @@ function assembleFleet(
           working: report?.state === "working",
           rank: rankOf.get(t.id) ?? null,
           liveness: livenessOf.get(t.id) ?? null,
-          sorties: agentsUnder(t.id, seen),
+          sorties,
+          attention:
+            (asksOf.get(t.id) ?? 0) +
+            sorties.reduce((total, sortie) => total + sortie.attention, 0),
         };
       });
 
@@ -246,6 +287,9 @@ function assembleFleet(
       projectId: commander.projectId ?? "",
       liveness: livenessOf.get(commander.id) ?? null,
       leads,
+      attention:
+        (asksOf.get(commander.id) ?? 0) +
+        leads.reduce((total, lead) => total + lead.attention, 0),
       status:
         leads.length === 0
           ? "no leads yet"
@@ -384,21 +428,26 @@ async function loadOnce(timeoutMs: number = READ_TIMEOUT_MS): Promise<void> {
   // Ranks and working states settle in a second pass — until they do, a lead
   // reads as standing by rather than being guessed at.
   publish({
-    ...assembleFleet(threads, null, null),
+    ...assembleFleet(threads, null, null, null, null),
     loaded: true,
     failed: false,
     timedOut: false,
   });
 
-  const [fleet, board] = await Promise.all([
+  const [fleet, board, attention, artifacts] = await Promise.all([
     crewRpc<{ rows: FleetRow[] }>(
       "crew_fleet",
       Math.max(timeoutMs, FLEET_READ_TIMEOUT_MS),
     ),
     crewRpc<{ rows: BoardRow[] }>("crew_board", timeoutMs),
+    crewRpc<{ open?: AttentionRow[] }>("crew_attention", timeoutMs),
+    crewRpc<{ artifacts?: AttentionRow[] }>(
+      "crew_artifacts_pending",
+      timeoutMs,
+    ),
   ]);
   publish({
-    ...assembleFleet(threads, fleet, board),
+    ...assembleFleet(threads, fleet, board, attention, artifacts),
     loaded: true,
     failed: false,
     timedOut: false,
