@@ -71,12 +71,20 @@ const FILE_TREE_BASE_HOST_STYLE: FileTreeHostStyle = {
 
 interface ThreadStorageBrowserProps {
   controller: ThreadStorageBrowserController;
+  /**
+   * What to say when the listing came back with nothing. Naming the place that
+   * was read is the whole point: "No files yet" is equally true of an empty
+   * directory and of a panel pointed somewhere wrong, and telling those apart
+   * cost hours once already.
+   */
+  emptyMessage?: string;
   filesError?: Error | null;
   isFilesLoading: boolean;
 }
 
 export function ThreadStorageBrowser({
   controller,
+  emptyMessage,
   filesError,
   isFilesLoading,
 }: ThreadStorageBrowserProps) {
@@ -137,7 +145,7 @@ export function ThreadStorageBrowser({
       />
     );
   } else if (loadedFiles.length === 0) {
-    body = <EmptyState message="No files yet." />;
+    body = <EmptyState message={emptyMessage ?? "No files yet."} />;
   } else if (filteredFiles.length === 0) {
     body = <EmptyState message="No files match search." />;
   } else {
