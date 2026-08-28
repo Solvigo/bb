@@ -26,7 +26,11 @@ export function FilesTab({ agentId }: { agentId: string }) {
 
   if (!isLoading && rootPath === null) {
     return (
-      <EmptyStatePanel role="status" className="py-8">
+      <EmptyStatePanel
+        role="status"
+        className="py-8"
+        data-testid="files-tab-worktree"
+      >
         <div className="flex flex-col items-center gap-1 text-center">
           <p className="text-sm text-foreground">No worktree yet</p>
           <p className="text-xs text-muted-foreground">
@@ -39,7 +43,16 @@ export function FilesTab({ agentId }: { agentId: string }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-col">
+    <div
+      className="flex min-h-0 flex-col"
+      data-testid="files-tab-worktree"
+      // What this panel believes about itself, so a failure can be read from
+      // the outside instead of inferred from an empty list. It earned its keep
+      // immediately: an empty tree here looked like a broken tab until these
+      // said ready/0, which matched what the host reported for that path.
+      data-files-state={isLoading ? "loading" : error ? "error" : "ready"}
+      data-files-count={files?.length ?? -1}
+    >
       <ThreadStorageBrowser
         controller={controller}
         filesError={error}

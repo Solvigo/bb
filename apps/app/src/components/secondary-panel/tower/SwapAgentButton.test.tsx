@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigate = vi.fn();
@@ -55,12 +49,8 @@ describe("the swap control", () => {
 
   it("offers the harnesses this instance has, minus the one it is already on", async () => {
     render(<SwapAgentButton threadId="thr_source" />);
-    fireEvent.pointerDown(screen.getByTestId("swap-agent-button"), {
-      button: 0,
-    });
-    expect(
-      await screen.findByRole("menuitem", { name: "Cursor" }),
-    ).toBeTruthy();
+    fireEvent.pointerDown(screen.getByTestId("swap-agent-button"), { button: 0 });
+    expect(await screen.findByRole("menuitem", { name: "Cursor" })).toBeTruthy();
     // Already on it — swapping to yourself is not a move.
     expect(screen.queryByRole("menuitem", { name: "Claude Code" })).toBeNull();
     // Unavailable — offering it would be a door to nothing.
@@ -86,15 +76,11 @@ describe("the swap control", () => {
       })),
     );
     render(<SwapAgentButton threadId="thr_source" />);
-    fireEvent.pointerDown(screen.getByTestId("swap-agent-button"), {
-      button: 0,
-    });
+    fireEvent.pointerDown(screen.getByTestId("swap-agent-button"), { button: 0 });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Cursor" }));
     // A projectless path would resolve to the personal scope and 404 the successor.
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith(
-        "/projects/proj_real/threads/thr_new",
-      ),
+      expect(navigate).toHaveBeenCalledWith("/projects/proj_real/threads/thr_new"),
     );
   });
 
@@ -103,19 +89,16 @@ describe("the swap control", () => {
       "fetch",
       vi.fn(async () => ({
         json: async () => ({
-          result: {
-            ok: false,
-            error: "That thread is held; the hold would evaporate.",
-          },
+          result: { ok: false, error: "That thread is held; the hold would evaporate." },
         }),
       })),
     );
     render(<SwapAgentButton threadId="thr_source" />);
-    fireEvent.pointerDown(screen.getByTestId("swap-agent-button"), {
-      button: 0,
-    });
+    fireEvent.pointerDown(screen.getByTestId("swap-agent-button"), { button: 0 });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Cursor" }));
-    expect(await screen.findByText(/the hold would evaporate/i)).toBeTruthy();
+    expect(
+      await screen.findByText(/the hold would evaporate/i),
+    ).toBeTruthy();
     expect(navigate).not.toHaveBeenCalled();
   });
 

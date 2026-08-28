@@ -150,10 +150,7 @@ export function SwapAgentButton({
         </DropdownMenuContent>
       </DropdownMenu>
       {error ? (
-        <span
-          className="min-w-0 truncate text-[10px] text-tower-accent-hover"
-          title={error}
-        >
+        <span className="min-w-0 truncate text-[10px] text-tower-accent-hover" title={error}>
           {error}
         </span>
       ) : null}

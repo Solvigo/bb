@@ -32,9 +32,7 @@ export const towerNavAtom = atom<TowerNavRequest | null>(null);
 const PREFIX = "bb-tower:";
 
 /** Parse a href into a Tower nav request, or null if it is not a tower link. */
-export function parseTowerLink(
-  href: string,
-): Omit<TowerNavRequest, "nonce"> | null {
+export function parseTowerLink(href: string): Omit<TowerNavRequest, "nonce"> | null {
   if (!href.startsWith(PREFIX)) return null;
   const rest = href.slice(PREFIX.length).replace(/^\/+/, "");
   if (rest.startsWith("sp/")) {

@@ -1,5 +1,6 @@
 import { FleetOverviewTab } from "./FleetOverviewTab";
 import { BriefTab } from "./BriefTab";
+import { FilesTab } from "./FilesTab";
 import {
   registerAgentSurfaceTab,
   type AgentSurfaceTabProps,
@@ -20,6 +21,10 @@ import {
 
 function CrewSurfaceTab({ agentId, viewerRole }: AgentSurfaceTabProps) {
   return <FleetOverviewTab scopeThreadId={agentId} viewerRole={viewerRole} />;
+}
+
+function FilesSurfaceTab({ agentId }: AgentSurfaceTabProps) {
+  return <FilesTab agentId={agentId} />;
 }
 
 function BriefSurfaceTab({ agentId }: AgentSurfaceTabProps) {
@@ -45,12 +50,14 @@ export function registerBuiltInAgentSurfaceTabs(): void {
     order: 0,
     component: CrewSurfaceTab,
   });
-  // NOT REGISTERED YET, deliberately. The data path is verified — the
-  // environment hop and the file list both fire and the server returns the
-  // worktree — but the tab renders empty and I could not prove whether that is
-  // the tab itself or a probe pointing at the wrong control. An empty-looking
-  // control in the operator's window is worse than an absent one, so the
-  // component stays here, inert, until it is watched working.
+  registerAgentSurfaceTab({
+    id: "files",
+    label: "Files",
+    icon: "Folder",
+    title: "The worktree this agent is working in",
+    order: 2,
+    component: FilesSurfaceTab,
+  });
   registerAgentSurfaceTab({
     id: "brief",
     label: "Brief",

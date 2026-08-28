@@ -32,9 +32,7 @@ interface TimelineRow {
  * plus the newest text. It never invents a tool name it cannot see, because a
  * plausible-looking activity line is worse than an honest quiet one.
  */
-export function useSortieActivity(
-  threadId: string | null,
-): SortieActivity | null {
+export function useSortieActivity(threadId: string | null): SortieActivity | null {
   const [activity, setActivity] = useState<SortieActivity | null>(null);
   useEffect(() => {
     if (!threadId) {
@@ -46,9 +44,7 @@ export function useSortieActivity(
       const abort = new AbortController();
       const timer = setTimeout(() => abort.abort(), READ_TIMEOUT_MS);
       try {
-        const res = await fetch(`/api/v1/threads/${threadId}/timeline`, {
-          signal: abort.signal,
-        });
+        const res = await fetch(`/api/v1/threads/${threadId}/timeline`, { signal: abort.signal });
         const d = (await res.json()) as {
           rows?: TimelineRow[];
           activeThinking?: unknown;
@@ -57,10 +53,8 @@ export function useSortieActivity(
         const lastTurn = [...rows].reverse().find((r) => r.kind === "turn");
         const working =
           Boolean(d.activeThinking) ||
-          (lastTurn?.status != null &&
-            lastTurn.status !== "completed" &&
-            lastTurn.status !== "failed" &&
-            lastTurn.status !== "interrupted");
+          (lastTurn?.status != null && lastTurn.status !== "completed" &&
+            lastTurn.status !== "failed" && lastTurn.status !== "interrupted");
         const lastSaid = [...rows]
           .reverse()
           .find((r) => r.kind === "conversation" && (r.text ?? "").trim());

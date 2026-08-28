@@ -20,10 +20,7 @@ import { BriefTab } from "./BriefTab";
 
 function withEnvironment(environmentId: string | null): void {
   liveThreads = new Map([
-    [
-      "thr_agent",
-      { projectId: "p", providerId: "x", title: "Lead", environmentId },
-    ],
+    ["thr_agent", { projectId: "p", providerId: "x", title: "Lead", environmentId }],
   ]);
 }
 

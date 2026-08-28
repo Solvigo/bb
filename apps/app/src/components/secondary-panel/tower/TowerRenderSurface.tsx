@@ -13,6 +13,7 @@ import {
 import { registerBuiltInAgentSurfaceTabs } from "./builtInAgentSurfaceTabs";
 import { AgentSurfaceTabContent } from "./AgentSurfaceTabContent";
 
+
 /**
  * The recursive rendering surface. The top-level shell is a commander chat plus
  * a rendering surface with tabs; drilling into an agent gives the SAME shell
