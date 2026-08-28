@@ -61,6 +61,19 @@ export function NewCrewButton({
   variant?: "rail" | "page";
 }) {
   const { createCrew, creating, error } = useCreateCrew();
+  // Only pass a request when there IS one. With nothing typed the call keeps
+  // its original shape — createCrew(projectId), createCrew() — rather than
+  // trailing an explicit undefined. Callers that assert on how this is invoked
+  // should not have to learn a new signature to say the same thing.
+  const request = openingRequest?.trim() ? openingRequest : undefined;
+  const startCrew = (forProjectId?: string) => {
+    if (request === undefined) {
+      if (forProjectId === undefined) createCrew();
+      else createCrew(forProjectId);
+      return;
+    }
+    createCrew(forProjectId, request);
+  };
   const navigation = useSidebarNavigation();
   const projects = (navigation.data?.projects ?? []).filter(
     (project) => project.id !== PERSONAL_PROJECT_ID,
@@ -113,7 +126,7 @@ export function NewCrewButton({
           {projects.map((project) => (
             <DropdownMenuItem
               key={project.id}
-              onSelect={() => createCrew(project.id, openingRequest)}
+              onSelect={() => startCrew(project.id)}
             >
               {project.name}
             </DropdownMenuItem>
@@ -122,9 +135,7 @@ export function NewCrewButton({
           {/* No code yet is still a choice ABOUT the project, so the request
               travels with it — a crew that only needs to think deserves the
               same opening instruction as one with a repo. */}
-          <DropdownMenuItem
-            onSelect={() => createCrew(undefined, openingRequest)}
-          >
+          <DropdownMenuItem onSelect={() => startCrew()}>
             No code yet — just thinking
           </DropdownMenuItem>
         </DropdownMenuContent>
