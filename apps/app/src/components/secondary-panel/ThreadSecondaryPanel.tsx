@@ -35,7 +35,7 @@ import {
   type AgentSurfaceTab,
 } from "./tower/agentSurfaceRegistry";
 import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
-import { WorktreeFileOpenProvider } from "./tower/worktree-file-open";
+import { WorktreeFileActionsProvider } from "./tower/worktree-file-actions";
 import { registerBuiltInAgentSurfaceTabs } from "./tower/builtInAgentSurfaceTabs";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -289,6 +289,8 @@ export interface ThreadSecondaryPanelProps {
   workspaceRootPath?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
+  /** Puts a worktree path into the composer, for a surface tab that has one. */
+  onAddPathToChat?: (path: string) => void;
   onSelectionAddToChat?: (text: string) => void;
   /**
    * When true the conversation pane is collapsed: this panel expands to fill
@@ -362,6 +364,7 @@ export function ThreadSecondaryPanel({
   workspaceRootPath,
   onOpenFileInEditor,
   onOpenFilePreview,
+  onAddPathToChat,
   onSelectionAddToChat,
   isConversationCollapsed,
   onToggleConversationCollapse,
@@ -874,7 +877,7 @@ export function ThreadSecondaryPanel({
         */}
         {browserDeck}
         {isBrowserTabActive ? null : activeTowerTab && openInThreadId ? (
-          <WorktreeFileOpenProvider openFile={onOpenFilePreview ?? null}>
+          <WorktreeFileActionsProvider addPathToChat={onAddPathToChat ?? null}>
             <AgentSurfaceTabContent
               key={`${activeTowerTab.id}:${activeTowerTab.generation ?? 0}`}
               tab={activeTowerTab}
@@ -883,7 +886,7 @@ export function ThreadSecondaryPanel({
               viewerRole="commander"
               visible
             />
-          </WorktreeFileOpenProvider>
+          </WorktreeFileActionsProvider>
         ) : hasActiveFileTab ? (
           <div
             className={

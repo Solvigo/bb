@@ -5,6 +5,7 @@ import type {
   PromptDraftState,
 } from "@/lib/prompt-draft";
 import {
+  appendPathToDraftText,
   appendQuoteAndAttachmentsToDraft,
   arePromptDraftStatesEqual,
   emptyPromptDraftState,
@@ -331,6 +332,19 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [storageKey],
   );
 
+  const addPath = useCallback(
+    (path: string) => {
+      const currentDraft = readPromptDraft(storageKey);
+      const nextDraft = appendPathToDraftText(currentDraft, path);
+      if (nextDraft === currentDraft) {
+        return;
+      }
+
+      writePromptDraft(storageKey, nextDraft);
+    },
+    [storageKey],
+  );
+
   const clear = useCallback(() => {
     setDraftAndPersist(EMPTY_PROMPT_DRAFT);
   }, [setDraftAndPersist]);
@@ -379,6 +393,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       setAttachments,
       addAttachment,
       removeAttachment,
+      addPath,
       addQuote,
       clear,
       clearIfCurrentMatches,
@@ -386,6 +401,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     }),
     [
       addAttachment,
+      addPath,
       addQuote,
       clear,
       clearIfCurrentMatches,
