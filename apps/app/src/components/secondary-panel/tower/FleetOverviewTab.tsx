@@ -99,6 +99,11 @@ interface ChoresSummary {
   newestTitle: string;
 }
 
+/** What the crew plugin says is still waiting on somebody. */
+interface AttentionResult {
+  open?: { threadId?: string | null; audience?: string | null }[];
+}
+
 interface QueueResult {
   ok: boolean;
   items: QueueItem[];
@@ -752,6 +757,11 @@ export function FleetOverviewTab({
   const board = useCrewRpc<BoardResult>("crew", "crew_board");
   const work = useCrewRpc<WorkBoardResult>("crew", "crew_work_board");
   const queue = useCrewRpc<QueueResult>("crew", "crew_queue");
+  // The one producer of "waiting on the operator". The board used to derive its
+  // own answer from report.escalated, which meant this tab and the sidebar
+  // could show different numbers for the same question — and a reader had no
+  // way to tell which to believe.
+  const attention = useCrewRpc<AttentionResult>("crew", "crew_attention");
   const liveIds = useLiveThreads();
   // A board belongs to the crew whose thread it is opened in. Without this it
   // rendered the rig's WHOLE queue, so a freshly created crew opened showing
@@ -866,14 +876,22 @@ export function FleetOverviewTab({
   const workingAgentCount = rows.filter((row) =>
     (byRow.get(row.threadId) ?? []).some((item) => item.col === "in_flight"),
   ).length;
-  const attentionCount = rows.filter((row) => {
-    const items = byRow.get(row.threadId) ?? [];
-    return (
-      isEscalated(row.threadId) ||
-      items.some(hasLostContact) ||
-      items.some((item) => item.col === "clearance")
-    );
-  }).length;
+  // Agents with something the OPERATOR must clear, read from the same producer
+  // the sidebar badges count. Lost contact and clearance items are still shown
+  // on the cards themselves — they are operational signals about an agent, not
+  // asks addressed to him, and folding them in here is what made this number
+  // mean something different from every other place it appears.
+  const agentsAwaitingOperator = new Set(
+    (attention.data?.open ?? [])
+      .filter(
+        (item) => item.audience === undefined || item.audience === "operator",
+      )
+      .map((item) => item.threadId)
+      .filter((threadId): threadId is string => typeof threadId === "string"),
+  );
+  const attentionCount = rows.filter((row) =>
+    agentsAwaitingOperator.has(row.threadId),
+  ).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-tower-surface">
