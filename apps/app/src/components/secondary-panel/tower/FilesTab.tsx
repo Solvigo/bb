@@ -148,6 +148,12 @@ export function FilesTab({ agentId }: { agentId: string }) {
           <div className="min-h-0 flex-1">
             <ThreadStorageBrowser
               controller={controller}
+              // The path, not just the emptiness. An empty worktree and a panel
+              // pointed at the wrong place look identical otherwise, and this
+              // exact ambiguity sent me hunting a bug that was not there.
+              emptyMessage={
+                rootPath === null ? undefined : `${rootPath} is empty`
+              }
               filesError={error}
               isFilesLoading={isLoading}
             />
