@@ -77,24 +77,9 @@ export function FilesTab({ agentId }: { agentId: string }) {
       data-files-state={isLoading ? "loading" : error ? "error" : "ready"}
       data-files-count={files?.length ?? -1}
     >
-      <div className="shrink-0 px-1 pb-1">
-        <div className="relative">
-          <Icon
-            name="Search"
-            className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            aria-label="Filter files"
-            className="h-7 pl-7 pr-2 text-xs focus-visible:ring-0"
-            placeholder="Filter files…"
-            value={controller.searchQuery}
-            onChange={(event) => controller.setSearchQuery(event.target.value)}
-          />
-        </div>
-      </div>
       <div className="flex min-h-0 flex-1">
         <div
-          className="min-h-0 w-64 shrink-0 overflow-hidden border-r border-tower-border"
+          className="flex min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-tower-border"
           // Drag events are composed, so a dragstart inside the tree's shadow
           // root reaches this listener with the row in its composed path. The
           // payload is the path as PLAIN TEXT and nothing more: a composer is a
@@ -113,11 +98,34 @@ export function FilesTab({ agentId }: { agentId: string }) {
             event.dataTransfer.effectAllowed = "copy";
           }}
         >
-          <ThreadStorageBrowser
-            controller={controller}
-            filesError={error}
-            isFilesLoading={isLoading}
-          />
+          {/* The filter belongs to the tree, so it lives in the tree's own rail
+              rather than as a full-width bar over a panel it does not filter. */}
+          <div className="shrink-0 border-b border-tower-border px-2 py-1.5">
+            <div className="relative">
+              <Icon
+                name="Search"
+                className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                aria-label="Filter files"
+                className="h-7 pl-7 pr-2 text-xs focus-visible:ring-0"
+                placeholder="Filter files…"
+                value={controller.searchQuery}
+                onChange={(event) =>
+                  controller.setSearchQuery(event.target.value)
+                }
+              />
+            </div>
+          </div>
+          {/* The tree is virtualised and its own root is h-full, so it needs a
+              growing box with a floor — without one it renders zero rows. */}
+          <div className="min-h-0 flex-1">
+            <ThreadStorageBrowser
+              controller={controller}
+              filesError={error}
+              isFilesLoading={isLoading}
+            />
+          </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {selectedPath === null ? (
