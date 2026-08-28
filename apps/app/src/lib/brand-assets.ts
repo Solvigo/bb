@@ -27,8 +27,9 @@ export const AIRWAYS_BRAND_PNG_FILES = [
   "app-icon-outline-mono-256.png",
   "app-icon-outline-mono-64.png",
   "jet-embossed-ember-1024.png",
-  "jet-embossed-graphite-1024.png",
+  "jet-embossed-graphite-favicon-1024.png",
   "jet-embossed-mono-1024.png",
+  "jet-embossed-graphite-1024.png",
   "jet-flat-ember-256.png",
   "jet-flat-graphite-256.png",
   "jet-flat-mono-256.png",
@@ -117,7 +118,7 @@ export function getAirwaysBrandSvgUrl(
 
 /** Semantic defaults currently used by the app shell. */
 export const AIRWAYS_BRAND_ASSETS = {
-  favicon: getAirwaysBrandPngUrl("jet-embossed-mono-1024.png"),
+  favicon: getAirwaysBrandPngUrl("jet-embossed-graphite-1024.png"),
   largeMark: getAirwaysBrandPngUrl("jet-embossed-mono-1024.png"),
   smallMark: getAirwaysBrandPngUrl("jet-flat-mono-256.png"),
   sidebarLockup: getAirwaysBrandPngUrl("wordmark-embossed-mono.png"),

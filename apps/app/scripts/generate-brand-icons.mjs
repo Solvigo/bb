@@ -20,8 +20,12 @@ const checkOnly = process.argv.includes("--check");
 
 const brandDir = join(publicDir, "brand");
 const brandPngDir = join(brandDir, "png");
+// The tab icon is the graphite embossed jet the operator chose. It is a
+// SEPARATE source from the mono jet on purpose: that one still draws the
+// sidebar lockup and the welcome mark, and swapping the file would have moved
+// those too.
 const faviconJet = await readFile(
-  join(brandPngDir, "jet-embossed-mono-1024.png"),
+  join(brandPngDir, "jet-embossed-graphite-favicon-1024.png"),
 );
 const appIcon = await readFile(join(brandPngDir, "app-icon-mono-1024.png"));
 
