@@ -173,4 +173,123 @@ describe("useCrews", () => {
     // agent, so the number he sees is the number he can actually clear.
     expect(crew?.attention).toBe(1);
   });
+  it("builds the operator's example shape from parent pointers alone", async () => {
+    // root -> child -> three siblings under that child. The structure is the
+    // pointer and nothing else: no rank is sent, and the tree still comes out
+    // the right shape at the right depths.
+    const SHAPE = [
+      { id: "thr_root", title: "root", projectId: "p", parentThreadId: null },
+      {
+        id: "thr_child",
+        title: "child",
+        projectId: "p",
+        parentThreadId: "thr_root",
+      },
+      {
+        id: "thr_s1",
+        title: "sib one",
+        projectId: "p",
+        parentThreadId: "thr_child",
+      },
+      {
+        id: "thr_s2",
+        title: "sib two",
+        projectId: "p",
+        parentThreadId: "thr_child",
+      },
+      {
+        id: "thr_s3",
+        title: "sib three",
+        projectId: "p",
+        parentThreadId: "thr_child",
+      },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/threads"))
+          return { ok: true, json: async () => SHAPE };
+        if (url.includes("crew_attention")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result: { open: [{ threadId: "thr_s3", audience: "operator" }] },
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ result: { rows: [] } }) };
+      }),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.crews[0]?.leads.length).toBe(1);
+    });
+
+    const root = result.current.crews[0];
+    const child = root?.leads[0];
+    expect(child?.name).toBe("child");
+    // Three siblings, all under the one child, all at the same depth.
+    expect(child?.sorties.map((s) => s.name).sort()).toEqual([
+      "sib one",
+      "sib three",
+      "sib two",
+    ]);
+    // An ask on ONE sibling rolls up the whole ancestor chain and nowhere else.
+    const asked = child?.sorties.find((s) => s.name === "sib three");
+    const quiet = child?.sorties.find((s) => s.name === "sib one");
+    expect(asked?.attention).toBe(1);
+    expect(quiet?.attention).toBe(0);
+    expect(child?.attention).toBe(1);
+    expect(root?.attention).toBe(1);
+  });
+
+  it("nests as deep as the pointers go", async () => {
+    // Five levels. Nothing in the tree caps depth, and the roll-up has to climb
+    // all of it — the deepest ask must be visible on the root.
+    const DEEP = Array.from({ length: 5 }, (_, i) => ({
+      id: `thr_${i}`,
+      title: `level ${i}`,
+      projectId: "p",
+      parentThreadId: i === 0 ? null : `thr_${i - 1}`,
+    }));
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/threads"))
+          return { ok: true, json: async () => DEEP };
+        if (url.includes("crew_attention")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result: { open: [{ threadId: "thr_4", audience: "operator" }] },
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ result: { rows: [] } }) };
+      }),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.crews[0]?.attention).toBe(1);
+    });
+
+    let node = result.current.crews[0]?.leads[0];
+    const names = [node?.name];
+    for (let depth = 0; depth < 3; depth += 1) {
+      node = node?.sorties[0];
+      names.push(node?.name);
+    }
+    expect(names).toEqual(["level 1", "level 2", "level 3", "level 4"]);
+    // The ask sits five levels down and is still counted at the root.
+    expect(node?.attention).toBe(1);
+    expect(result.current.crews[0]?.attention).toBe(1);
+  });
 });
