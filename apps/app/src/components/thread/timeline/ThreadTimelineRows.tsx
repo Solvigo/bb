@@ -937,6 +937,7 @@ function ConversationRow({
       <ConversationMessageContent
         attachments={row.attachments}
         childOrigin={childOrigin}
+        id={row.id}
         initiator={row.initiator}
         mentions={row.mentions}
         mobileActionDisplay={
@@ -945,6 +946,7 @@ function ConversationRow({
         onAddToChat={onSelectionAddToChat}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
+        onOpenPluginPanel={onOpenPluginPanel}
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
@@ -961,6 +963,7 @@ function ConversationRow({
         pluginActions={rowPluginActions}
         text={row.text}
         threadId={row.threadId}
+        turnId={row.turnId}
         turnRequest={row.turnRequest}
       />
     );

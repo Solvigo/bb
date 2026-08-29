@@ -5,6 +5,40 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `PluginMessageDirectiveRegistration.experimental_userMessages`
+
+**What it does.** Lets a `messageDirective` registration also mount when its
+directive appears in a USER message. Default false: `app.slots.messageDirective`
+has always mounted for assistant (and nested agent) message Markdown only,
+because that text is host- or agent-authored; a user message carries pasted
+text the sender fully controls, so a directive there stays inert prose unless
+its own registration opts in.
+
+The contract for an opted-in directive is that its attributes are a
+**reference**, not payload: the component must resolve its own data from an id
+it looks up in its own store, never trust attacker-chosen attribute values
+directly. A pasted forgery of the marker — same name, garbage attributes —
+still mounts (the app has no way to tell a forgery from the real thing), so it
+must render an inert shell. The app enforces only where the pipeline
+activates (see `filterUserMessageDirectiveRegistry` in
+`apps/app/src/components/ui/markdown-message-directives.tsx`); the
+reference-only discipline itself is the plugin's own responsibility.
+
+**Audit before stabilizing.**
+
+1. **Contract enforcement.** Nothing currently stops a plugin from opting in
+   and then trusting attributes directly, which would let a forged paste in
+   someone else's copy-pasted message run with that attacker's chosen values.
+   Decide whether the SDK should validate anything at registration time, or
+   whether documentation + review is the whole enforcement story.
+2. **First consumer.** Ships ahead of a first real consumer (motivated by a
+   flagged-annotation card that needs to render inside a user message).
+   Confirm the shape holds once one exists.
+3. **Collision behavior.** An opted-in directive that collides with another
+   plugin's registration (same id) is dropped from both the assistant and the
+   user-message registry — confirm that symmetry is still wanted once a
+   collision involving an opted-in directive actually happens.
+
 ## `app.slots.experimental_agentSurfaceTab`
 
 **What it does.** Adds a tab to every agent's rendering surface — the recursive

@@ -209,6 +209,7 @@ const app = await loadPluginApp(
     builder.slots.messageDirective({
       id: "inline-vis",
       component: InlineVis,
+      experimental_userMessages: true,
     });
     builder.slots.homepageSection({
       id: "realtime-connection",
@@ -504,7 +505,11 @@ describe("loadPluginApp", () => {
 
   it("captures messageDirective registrations", () => {
     expect(app.messageDirectives).toEqual([
-      { id: "inline-vis", component: InlineVis },
+      {
+        id: "inline-vis",
+        component: InlineVis,
+        experimental_userMessages: true,
+      },
     ]);
   });
 
