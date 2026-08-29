@@ -63,7 +63,11 @@ function PluginComposerBannerRows() {
             ) : (
               <PromptStackCard
                 ariaLabel={customization.pluginId}
-                className="empty:hidden"
+                // The composer's own inner inset, so plugin content is not
+                // flush against a 22px corner arc. Every other card in this
+                // stack insets its own content; a plugin's does not belong to
+                // us, so the region does it on the plugin's behalf.
+                className="empty:hidden px-3.5 pb-3.5 pt-4"
               >
                 <banner.component />
               </PromptStackCard>
