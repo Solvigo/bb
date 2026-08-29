@@ -77,11 +77,12 @@ function CrewEntry({
       </div>
       {crew.leads.length === 0 ? null : (
         <ul className="flex flex-col">
-          {crew.leads.map((lead) => (
+          {crew.leads.map((lead, index) => (
             <AgentTreeRow
               key={lead.threadId}
               agent={lead}
               depth={1}
+              isLast={index === crew.leads.length - 1}
               onNavigate={onNavigate}
               projectId={crew.projectId}
             />
@@ -107,11 +108,14 @@ function CrewEntry({
 function AgentTreeRow({
   agent,
   depth,
+  isLast,
   onNavigate,
   projectId,
 }: {
   agent: CrewLead;
   depth: number;
+  /** Last child of its parent, so the guide rail can stop rather than dangle. */
+  isLast: boolean;
   onNavigate?: () => void;
   projectId: string;
 }) {
@@ -121,12 +125,38 @@ function AgentTreeRow({
   return (
     <li>
       <div
-        className="flex min-w-0 items-center"
-        // Indentation is the only thing saying who reports to whom, so it is
-        // computed from depth rather than a fixed class per level — the tree is
-        // as deep as the fleet is.
-        style={{ paddingLeft: `${depth * 12}px` }}
+        className="relative flex min-w-0 items-center"
+        // Indentation is computed from depth rather than a fixed class per
+        // level, because the tree is as deep as the fleet is.
+        //
+        // It is 22px and not the 12 it started at. Twelve was indentation you
+        // could MEASURE and not indentation you could SEE: against the padding
+        // the rows already carry, three leads under a pilot read as one flat
+        // list of four, which is exactly what the operator reported. The guide
+        // line below does the other half of the work — the eye follows a line
+        // where it will not follow whitespace.
+        style={{ paddingLeft: `${depth * 22}px` }}
       >
+        {/* One rail per level, each marking the branch its row hangs off. It
+            stops at the row's middle on the last child so the line ends where
+            the tree does instead of running into open space. */}
+        {Array.from({ length: depth }, (_, level) => (
+          <span
+            key={level}
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute top-0 w-px bg-tower-border",
+              level === depth - 1 && isLast ? "h-1/2" : "h-full",
+            )}
+            style={{ left: `${level * 22 + 10}px` }}
+          />
+        ))}
+        {/* The elbow into this row, drawn only for the level it belongs to. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute h-px w-2 bg-tower-border"
+          style={{ left: `${(depth - 1) * 22 + 10}px`, top: "50%" }}
+        />
         {hasChildren ? (
           <button
             type="button"
@@ -168,11 +198,12 @@ function AgentTreeRow({
       </div>
       {hasChildren && expanded ? (
         <ul className="flex flex-col">
-          {agent.sorties.map((sortie) => (
+          {agent.sorties.map((sortie, index) => (
             <AgentTreeRow
               key={sortie.threadId}
               agent={sortie}
               depth={depth + 1}
+              isLast={index === agent.sorties.length - 1}
               onNavigate={onNavigate}
               projectId={projectId}
             />
