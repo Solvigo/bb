@@ -871,6 +871,39 @@ export function FleetOverviewTab({
   const isEscalated = (threadId: string): boolean =>
     board.data?.rows.find((b) => b.threadId === threadId)?.report?.escalated ??
     false;
+  // The board is an INSTRUMENT and the fleet has a shape, so it is arranged by
+  // rank rather than laid out as equal cards in a grid. A grid says every agent
+  // is a peer; the fleet says a sortie answers to a lead. Depth-first from the
+  // agents this board owns, each row carrying how deep it sits.
+  const childrenOfRow = new Map<string, FleetRow[]>();
+  const shownIds = new Set(rows.map((r) => r.threadId));
+  for (const r of rows) {
+    const parent = r.parentThreadId ?? "";
+    if (!shownIds.has(parent)) continue;
+    childrenOfRow.set(parent, [...(childrenOfRow.get(parent) ?? []), r]);
+  }
+  const rankedRows: { row: FleetRow; depth: number }[] = [];
+  const walkRank = (row: FleetRow, depth: number): void => {
+    rankedRows.push({ row, depth });
+    for (const child of childrenOfRow.get(row.threadId) ?? []) {
+      walkRank(child, depth + 1);
+    }
+  };
+  // The pilot goes on top, and its crew hangs beneath it. Without it a crew of
+  // three leads and no sorties is three cards at the same depth — arranged by
+  // rank and looking exactly like the flat grid this replaced, because the rank
+  // that makes the others make sense was the one left off the page.
+  const pilotRow =
+    crewRootThreadId === null
+      ? undefined
+      : (fleet.data?.rows ?? []).find((r) => r.threadId === crewRootThreadId);
+  if (pilotRow !== undefined) rankedRows.push({ row: pilotRow, depth: 0 });
+  const leadDepth = pilotRow === undefined ? 0 : 1;
+  for (const r of rows) {
+    const parent = r.parentThreadId ?? "";
+    if (!shownIds.has(parent)) walkRank(r, leadDepth);
+  }
+
   const unassigned = byRow.get(UNASSIGNED) ?? [];
   const chores = queue.data?.chores ?? null;
   const workingAgentCount = rows.filter((row) =>
@@ -957,26 +990,32 @@ export function FleetOverviewTab({
                 ) : null}
               </div>
             </div>
-            {/* At ordinary harness widths, two coding-agent workspaces fit
-                comfortably side by side. Each card owns its scroll and height,
-                so adding an agent grows the board—not every card above it. */}
-            <div className="grid grid-cols-1 content-start items-start gap-3.5 px-4 py-4 @[900px]/board:grid-cols-2">
-              {rows.map((r) => (
-                <AgentCard
+            {/* One column, not a grid. Side-by-side cards buy width and cost
+                the only thing this page is for — you cannot see who reports to
+                whom in a grid, and that is what was asked for twice. */}
+            <div className="flex flex-col content-start items-stretch gap-3.5 px-4 py-4">
+              {rankedRows.map(({ row: r, depth }) => (
+                <div
                   key={r.threadId}
-                  threadId={r.threadId}
-                  projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
-                  providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
-                  label={agentLabel(
-                    r.handle,
-                    liveIds?.get(r.threadId)?.title,
-                    r.threadId,
-                  )}
-                  onOpen={() => setFocusedSp(r.threadId)}
-                  items={byRow.get(r.threadId) ?? []}
-                  escalated={isEscalated(r.threadId)}
-                  hasThread
-                />
+                  // Rank, as distance from the left edge.
+                  style={{ paddingLeft: `${depth * 28}px` }}
+                >
+                  <AgentCard
+                    key={r.threadId}
+                    threadId={r.threadId}
+                    projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
+                    providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
+                    label={agentLabel(
+                      r.handle,
+                      liveIds?.get(r.threadId)?.title,
+                      r.threadId,
+                    )}
+                    onOpen={() => setFocusedSp(r.threadId)}
+                    items={byRow.get(r.threadId) ?? []}
+                    escalated={isEscalated(r.threadId)}
+                    hasThread
+                  />
+                </div>
               ))}
               {/* the commander's undispatched pipeline (not yet handed to a lead) */}
               {!crewRootThreadId && unassigned.length > 0 ? (
