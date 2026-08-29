@@ -7,7 +7,10 @@ import { Input } from "@bb/shared-ui/input";
 import { SecondaryPanelFilePreview } from "@/components/secondary-panel/ThreadStorageFilePreview";
 import { useEnvironmentFilePreview } from "@/hooks/queries/environment-queries";
 import { Button } from "@bb/shared-ui/button";
-import { WORKTREE_PATH_DRAG_TYPE } from "@/lib/worktree-path-drag";
+import {
+  setDragImageCard,
+  WORKTREE_PATH_DRAG_TYPE,
+} from "@/lib/worktree-path-drag";
 import { useAddPathToChat } from "./worktree-file-actions";
 import { useWorktreeFileEditor } from "./useWorktreeFileEditor";
 import { useWorktreeFiles } from "./useWorktreeFiles";
@@ -34,6 +37,13 @@ export function FilesTab({ agentId }: { agentId: string }) {
   } = useWorktreeFiles(agentId);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const addPathToChat = useAddPathToChat();
+  // Which row the cursor is over, and where to draw its button. The rows live
+  // inside the tree's shadow root, so nothing can be rendered INTO them — the
+  // button is an overlay that follows the hovered row instead.
+  const [hoveredRow, setHoveredRow] = useState<{
+    path: string;
+    top: number;
+  } | null>(null);
   const onSelectPath = useCallback((path: string) => setSelectedPath(path), []);
 
   // The file opens BESIDE the tree, not as a tab in the strip above: this is a
@@ -102,7 +112,32 @@ export function FilesTab({ agentId }: { agentId: string }) {
     >
       <div className="flex min-h-0 flex-1">
         <div
-          className="flex min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-tower-border"
+          className="relative flex min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-tower-border"
+          onMouseLeave={() => setHoveredRow(null)}
+          onMouseMove={(event) => {
+            const rail = event.currentTarget;
+            const row = event.nativeEvent
+              .composedPath()
+              .find(
+                (node): node is HTMLElement =>
+                  node instanceof HTMLElement &&
+                  node.dataset.itemPath !== undefined,
+              );
+            if (row === undefined || row.dataset.itemType !== "file") {
+              setHoveredRow(null);
+              return;
+            }
+            const path = row.dataset.itemPath;
+            if (path === undefined) return;
+            const top =
+              row.getBoundingClientRect().top -
+              rail.getBoundingClientRect().top;
+            setHoveredRow((current) =>
+              current?.path === path && current.top === top
+                ? current
+                : { path, top },
+            );
+          }}
           // Drag events are composed, so a dragstart inside the tree's shadow
           // root reaches this listener with the row in its composed path.
           onDragStart={(event) => {
@@ -122,6 +157,7 @@ export function FilesTab({ agentId }: { agentId: string }) {
             event.dataTransfer.setData(WORKTREE_PATH_DRAG_TYPE, path);
             event.dataTransfer.setData("text/plain", path);
             event.dataTransfer.effectAllowed = "copy";
+            setDragImageCard(event.dataTransfer, path);
           }}
         >
           {/* The filter belongs to the tree, so it lives in the tree's own rail
@@ -143,6 +179,21 @@ export function FilesTab({ agentId }: { agentId: string }) {
               />
             </div>
           </div>
+          {/* One click instead of a drag. It is the same reference either way —
+              this exists because a drag across two panes is a fiddly thing to
+              ask for, and some pointers cannot drag at all. */}
+          {hoveredRow !== null && addPathToChat !== null ? (
+            <button
+              type="button"
+              aria-label={`Add ${hoveredRow.path} to the chat`}
+              data-testid="files-row-add"
+              onClick={() => addPathToChat(hoveredRow.path)}
+              className="absolute right-2 z-10 flex size-5 items-center justify-center rounded border border-tower-border bg-tower-input text-muted-foreground transition-colors hover:text-foreground"
+              style={{ top: `${hoveredRow.top + 2}px` }}
+            >
+              <Icon name="Plus" className="size-3" aria-hidden />
+            </button>
+          ) : null}
           {/* The tree is virtualised and its own root is h-full, so it needs a
               growing box with a floor — without one it renders zero rows. */}
           <div className="min-h-0 flex-1">
