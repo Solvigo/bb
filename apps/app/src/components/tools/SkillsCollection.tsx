@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Icon } from "@bb/shared-ui/icon";
 import type { ReactNode } from "react";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
@@ -177,7 +178,17 @@ function SkillLeading({ skill }: { skill: SkillSummary }) {
   if (skill.provider !== null) {
     return <ProviderLogo providerId={skill.provider} className="size-6" />;
   }
-  return <BbLogo className="size-6" />;
+  // A bb-native skill gets the glyph that MEANS skill — the same one the
+  // sidebar uses to get you here — rather than the company mark.
+  //
+  // The mark was the provider fallback, which is defensible per row and absurd
+  // down a column: an instance whose skills are all bb skills renders its own
+  // logo seventy-six times, and a badge every row shares tells you nothing
+  // about any of them. The provider logos stay where a skill genuinely has a
+  // provider, because there the icon still answers a question.
+  return (
+    <Icon name="Zap" className="size-5 text-subtle-foreground" aria-hidden />
+  );
 }
 
 function skillDescription(skill: SkillSummary): string {
