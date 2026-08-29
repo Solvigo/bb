@@ -17,9 +17,15 @@ import type { PluginMessageDirectiveSlot } from "@/lib/plugin-slots.js";
  * Assistant-message plugin directives (`::inline-vis{file="demo.html"}`).
  *
  * Parsing is owned by the unified/remark-directive ecosystem — not plugin
- * regex callbacks. Only the assistant conversation path activates this
- * pipeline (via {@link MarkdownMessageDirectives}); user messages and generic
- * Markdown previews leave directives as ordinary text.
+ * regex callbacks. The assistant conversation path activates every registered
+ * directive (via {@link MarkdownMessageDirectives}); generic Markdown previews
+ * leave directives as ordinary text. The user-message path is the one
+ * carve-out: it activates the same pipeline but filtered, via
+ * {@link filterUserMessageDirectiveRegistry}, to only the directives whose
+ * registration opted in with `experimental_userMessages`. User messages carry
+ * pasted untrusted text, so an opted-in directive's marker must be
+ * reference-only — an id the component resolves against its own store, never
+ * attacker-chosen attributes it trusts directly.
  *
  * Recognized mounts use an indexed custom HAST element (same pattern as prompt
  * mentions) so attributes stay in a host-owned table rather than DOM attrs.
@@ -167,6 +173,24 @@ export function buildMessageDirectiveRegistry(
 
 function defaultCollisionWarn(message: string): void {
   console.warn(message);
+}
+
+/**
+ * Narrow the timeline-level registry to directives that opted into user
+ * messages via `experimental_userMessages`. A non-opted-in id (including a
+ * collision) is simply absent from the result, so `remarkMessageDirectives`
+ * treats it exactly like an unrecognized id and rewrites it to literal text.
+ */
+export function filterUserMessageDirectiveRegistry(
+  registry: MessageDirectiveRegistry,
+): MessageDirectiveRegistry {
+  const filtered = new Map<string, MessageDirectiveRegistryEntry>();
+  for (const [id, entry] of registry) {
+    if (entry.status === "ok" && entry.slot.experimental_userMessages === true) {
+      filtered.set(id, entry);
+    }
+  }
+  return filtered;
 }
 
 /**

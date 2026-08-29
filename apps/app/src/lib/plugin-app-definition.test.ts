@@ -201,6 +201,7 @@ describe("collectPluginAppRegistrations", () => {
       app.slots.messageDirective({
         id: "inline-vis",
         component: Component,
+        experimental_userMessages: true,
       });
       app.slots.messageAction({
         id: "summarize",
@@ -265,7 +266,7 @@ describe("collectPluginAppRegistrations", () => {
       },
     ]);
     expect(registrations.messageDirectives).toEqual([
-      { id: "inline-vis", component: Component },
+      { id: "inline-vis", component: Component, experimental_userMessages: true },
     ]);
     expect(registrations.messageActions).toEqual([
       { id: "summarize", title: "Summarize", icon: "Zap", run },
@@ -660,8 +661,29 @@ describe("collectPluginAppRegistrations", () => {
         }),
       /"component" must be/,
     ],
+    [
+      "message directive with non-boolean experimental_userMessages",
+      () =>
+        definePluginApp((app) => {
+          app.slots.messageDirective({
+            id: "inline-vis",
+            component: Component,
+            experimental_userMessages: "yes" as never,
+          });
+        }),
+      /"experimental_userMessages" must be a boolean/,
+    ],
   ])("rejects %s", (_name, build, message) => {
     expect(() => collectPluginAppRegistrations(build())).toThrow(message);
+  });
+
+  it("omits experimental_userMessages from a message directive that never set it", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.messageDirective({ id: "inline-vis", component: Component });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).messageDirectives[0],
+    ).not.toHaveProperty("experimental_userMessages");
   });
 
   it("keeps a headerContent registration", () => {
