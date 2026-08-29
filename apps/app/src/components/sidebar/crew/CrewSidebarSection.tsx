@@ -626,6 +626,14 @@ export function ChatsSidebarSection({
                   threadId: chat.threadId,
                 })}
                 onClick={onNavigate}
+                // A chat is an agent that nothing reports to yet, so it can be
+                // picked up like any other. Drag one onto an agent and it stops
+                // being loose — it moves out of here and into that branch.
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData(AGENT_DRAG_TYPE, chat.threadId);
+                  event.dataTransfer.effectAllowed = "move";
+                }}
                 className={({ isActive }) =>
                   cn(
                     "flex h-7 min-w-0 items-center gap-2 rounded-md px-2 transition-colors",
