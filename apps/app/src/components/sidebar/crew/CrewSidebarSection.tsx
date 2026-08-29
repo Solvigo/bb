@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
@@ -7,6 +7,8 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { useProjectNames } from "@/hooks/queries/sidebar-navigation-query";
 import { useCreateCrew } from "./useCreateCrew";
 import {
+  reparentAgent,
+  reparentRefusalText,
   useCrews,
   type AgentLiveness,
   type Crew,
@@ -18,12 +20,15 @@ export const SIDEBAR_SECTION_LABEL_CLASS =
   "px-2 text-xs font-medium text-muted-foreground";
 
 function CrewEntry({
+  announce,
   crew,
   onNavigate,
 }: {
+  announce: (message: string) => void;
   crew: Crew;
   onNavigate?: () => void;
 }) {
+  const drop = useAgentDrop({ agentId: crew.commanderThreadId, announce });
   const anyWorking = crew.leads.some((l) => l.working);
   // Every thread link carries its project scope. The projectless route resolves
   // to the PERSONAL project, so a lead on a real project rendered "belongs to a
@@ -38,10 +43,17 @@ function CrewEntry({
         <NavLink
           to={threadPath(crew.commanderThreadId)}
           onClick={onNavigate}
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData(AGENT_DRAG_TYPE, crew.commanderThreadId);
+            event.dataTransfer.effectAllowed = "move";
+          }}
+          {...drop.handlers}
           className={({ isActive }) =>
             cn(
               "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
               isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+              drop.isOver && "ring-1 ring-inset ring-primary",
             )
           }
         >
@@ -81,6 +93,7 @@ function CrewEntry({
             <AgentTreeRow
               key={lead.threadId}
               agent={lead}
+              announce={announce}
               depth={1}
               isLast={index === crew.leads.length - 1}
               onNavigate={onNavigate}
@@ -91,6 +104,67 @@ function CrewEntry({
       )}
     </li>
   );
+}
+
+/** The drag payload: which agent is being moved. */
+const AGENT_DRAG_TYPE = "application/x-bb-agent";
+
+function readAgentDrag(dataTransfer: DataTransfer | null): string | null {
+  if (!dataTransfer) return null;
+  if (!dataTransfer.types.includes(AGENT_DRAG_TYPE)) return null;
+  const id = dataTransfer.getData(AGENT_DRAG_TYPE).trim();
+  return id === "" ? null : id;
+}
+
+/**
+ * Everything a row needs to be both a thing you can pick up and a place you can
+ * drop one, kept in a single hook so a row and a root row cannot drift apart.
+ *
+ * `announce` is not decoration: a drag is invisible to a screen reader, and a
+ * refusal that only shows as a row springing back is a refusal nobody heard.
+ */
+function useAgentDrop(args: {
+  agentId: string;
+  announce: (message: string) => void;
+}): {
+  isOver: boolean;
+  handlers: {
+    onDragOver: (event: React.DragEvent) => void;
+    onDragLeave: () => void;
+    onDrop: (event: React.DragEvent) => void;
+  };
+} {
+  const { agentId, announce } = args;
+  const [isOver, setIsOver] = useState(false);
+  return {
+    isOver,
+    handlers: {
+      onDragOver: (event) => {
+        const moving = readAgentDrag(event.dataTransfer);
+        if (moving === null || moving === agentId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setIsOver(true);
+      },
+      onDragLeave: () => setIsOver(false),
+      onDrop: (event) => {
+        setIsOver(false);
+        const moving = readAgentDrag(event.dataTransfer);
+        if (moving === null || moving === agentId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void reparentAgent(moving, agentId === "" ? null : agentId).then(
+          (outcome) => {
+            announce(
+              outcome.ok
+                ? "Moved."
+                : `Not moved — ${reparentRefusalText(outcome)}.`,
+            );
+          },
+        );
+      },
+    },
+  };
 }
 
 /**
@@ -107,11 +181,13 @@ function CrewEntry({
  */
 function AgentTreeRow({
   agent,
+  announce,
   depth,
   isLast,
   onNavigate,
   projectId,
 }: {
+  announce: (message: string) => void;
   agent: CrewLead;
   depth: number;
   /** Last child of its parent, so the guide rail can stop rather than dangle. */
@@ -121,6 +197,7 @@ function AgentTreeRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasChildren = agent.sorties.length > 0;
+  const drop = useAgentDrop({ agentId: agent.threadId, announce });
 
   return (
     <li>
@@ -182,10 +259,33 @@ function AgentTreeRow({
         <NavLink
           to={getThreadRoutePath({ projectId, threadId: agent.threadId })}
           onClick={onNavigate}
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData(AGENT_DRAG_TYPE, agent.threadId);
+            event.dataTransfer.effectAllowed = "move";
+          }}
+          {...drop.handlers}
+          // The keyboard route to the same move. A drag is a mouse gesture and
+          // reparenting must not be mouse-only: this promotes an agent to the
+          // root, which is the one move that cannot be reached by dropping on
+          // something else when the row you want is off screen.
+          onKeyDown={(event) => {
+            if (event.key !== "Backspace" && event.key !== "Delete") return;
+            if (!event.shiftKey) return;
+            event.preventDefault();
+            void reparentAgent(agent.threadId, null).then((outcome) => {
+              announce(
+                outcome.ok
+                  ? `${agent.name} moved to the top.`
+                  : `Not moved — ${reparentRefusalText(outcome)}.`,
+              );
+            });
+          }}
           className={({ isActive }) =>
             cn(
               "flex min-h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left transition-colors",
               isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+              drop.isOver && "ring-1 ring-inset ring-primary",
             )
           }
         >
@@ -202,6 +302,7 @@ function AgentTreeRow({
             <AgentTreeRow
               key={sortie.threadId}
               agent={sortie}
+              announce={announce}
               depth={depth + 1}
               isLast={index === agent.sorties.length - 1}
               onNavigate={onNavigate}
@@ -364,6 +465,12 @@ export function CrewSidebarSection({
   const projectNameOf = useProjectNames();
   const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
   const { createCrew, creating: creatingCrew } = useCreateCrew();
+  // What just happened to a dragged agent, said out loud. A move that only
+  // shows as a row sliding is a move a screen reader never reports.
+  const [moveMessage, setMoveMessage] = useState("");
+  const announce = useCallback((message: string) => {
+    setMoveMessage(message);
+  }, []);
 
   return (
     <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
@@ -371,6 +478,12 @@ export function CrewSidebarSection({
         <span className={SIDEBAR_SECTION_LABEL_CLASS}>Projects</span>
         {headerTrailing}
       </div>
+      {/* Politely, so a completed or refused move announces itself without
+          interrupting. A drag is invisible to a screen reader, and a refusal
+          that shows only as a row springing back is a refusal nobody heard. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {moveMessage}
+      </p>
       {!loaded ? (
         <p className="px-2 py-1 text-xs italic text-muted-foreground">
           Reading the fleet…
@@ -397,7 +510,29 @@ export function CrewSidebarSection({
           {groupByProject(crews, projectNameOf, projectIds).map((group) => (
             <li key={group.projectId}>
               {group.name === null ? null : (
-                <div className="flex min-h-6 items-center gap-1.5 px-2">
+                <div
+                  className="flex min-h-6 items-center gap-1.5 rounded px-2"
+                  // Dropping an agent on its project makes it a root — the one
+                  // move that has no row to aim at.
+                  onDragOver={(event) => {
+                    if (readAgentDrag(event.dataTransfer) === null) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => {
+                    const moving = readAgentDrag(event.dataTransfer);
+                    if (moving === null) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void reparentAgent(moving, null).then((outcome) => {
+                      announce(
+                        outcome.ok
+                          ? "Moved to the top."
+                          : `Not moved — ${reparentRefusalText(outcome)}.`,
+                      );
+                    });
+                  }}
+                >
                   <Icon
                     name="Folder"
                     className="size-3.5 shrink-0 text-subtle-foreground"
@@ -425,6 +560,7 @@ export function CrewSidebarSection({
                   {group.crews.map((crew) => (
                     <CrewEntry
                       key={crew.commanderThreadId}
+                      announce={announce}
                       crew={crew}
                       onNavigate={onNavigate}
                     />

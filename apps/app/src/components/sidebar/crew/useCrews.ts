@@ -195,6 +195,16 @@ async function crewRpc<T>(
  * tolerant of either plugin view being absent: called once with the thread list
  * alone so crews paint immediately, then again once the plugin answers.
  */
+/**
+ * Moves the operator has made but the server has not confirmed yet.
+ *
+ * A drag has to look instant or it does not feel like dragging, so the row
+ * moves on drop and this remembers where it was put. It is cleared either way
+ * — on success the next read carries the same shape, and on refusal the row
+ * springs back to where the server still says it belongs.
+ */
+const pendingParents = new Map<string, string | null>();
+
 function assembleFleet(
   threads: ThreadRow[],
   fleet: { rows: FleetRow[] } | null,
@@ -240,12 +250,18 @@ function assembleFleet(
   for (const b of board?.rows ?? []) reportOf.set(b.threadId, b.report);
 
   // A commander is a live root thread; its leads are live children.
+  const parentOf = (t: ThreadRow): string | null =>
+    pendingParents.has(t.id)
+      ? (pendingParents.get(t.id) ?? null)
+      : (t.parentThreadId ?? null);
+
   const byParent = new Map<string, ThreadRow[]>();
   for (const t of agentThreads) {
-    if (!t.parentThreadId) continue;
-    const list = byParent.get(t.parentThreadId) ?? [];
+    const parent = parentOf(t);
+    if (parent === null) continue;
+    const list = byParent.get(parent) ?? [];
     list.push(t);
-    byParent.set(t.parentThreadId, list);
+    byParent.set(parent, list);
   }
 
   const titleOf = (t: ThreadRow) =>
@@ -505,6 +521,92 @@ function subscribe(notify: () => void): () => void {
     // underneath, instead of flashing an empty fleet it has no reason to claim.
     if (subscribers.size === 0) disposeSources?.();
   };
+}
+
+/** Why a move was refused, in the server's words rather than a guess. */
+export type ReparentRefusal =
+  | "cycle"
+  | "self"
+  | "unknown-agent"
+  | "not-permitted";
+
+export interface ReparentOutcome {
+  ok: boolean;
+  reason?: ReparentRefusal;
+  /** Set when the call itself failed rather than being refused. */
+  failed?: boolean;
+}
+
+const REFUSAL_TEXT: Record<ReparentRefusal, string> = {
+  cycle: "that would put an agent inside its own branch",
+  self: "an agent cannot report to itself",
+  "unknown-agent": "that agent is no longer there",
+  "not-permitted": "that move isn't allowed",
+};
+
+/** What to tell the operator, in a sentence rather than a code. */
+export function reparentRefusalText(outcome: ReparentOutcome): string {
+  if (outcome.ok) return "";
+  if (outcome.reason) return REFUSAL_TEXT[outcome.reason];
+  return "couldn't move it";
+}
+
+/**
+ * Move an agent under another, or to the root when `newParentId` is null.
+ *
+ * The row moves first and the server is asked second, because a drag that
+ * waits does not feel like a drag. Both endings clear the optimistic move: on
+ * success the refetch carries the same shape, and on refusal the row springs
+ * back to where the server still says it belongs.
+ *
+ * A REFUSAL is not a FAILURE. The server answers "that would make a cycle" as
+ * a result, and the difference matters on screen: one is a sentence about the
+ * fleet, the other is an apology about the software.
+ */
+export async function reparentAgent(
+  threadId: string,
+  newParentId: string | null,
+): Promise<ReparentOutcome> {
+  if (threadId === newParentId) return { ok: false, reason: "self" };
+  pendingParents.set(threadId, newParentId);
+  requestLoad();
+  try {
+    const outcome = await readJson<{
+      ok?: boolean;
+      reason?: ReparentRefusal;
+      result?: { ok?: boolean; reason?: ReparentRefusal };
+    }>(
+      "/api/v1/plugins/crew/rpc/crew_reparent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ threadId, newParentId }),
+      },
+      READ_TIMEOUT_MS,
+    );
+    if (!outcome.ok) {
+      pendingParents.delete(threadId);
+      requestLoad();
+      return { ok: false, failed: true };
+    }
+    // The plugin route wraps its payload; the refusal may arrive at either
+    // level, so read the inner one when it is there.
+    const result = outcome.value.result ?? outcome.value;
+    if (result.ok === false) {
+      pendingParents.delete(threadId);
+      requestLoad();
+      return { ok: false, ...(result.reason ? { reason: result.reason } : {}) };
+    }
+    // The server's own signal brings the confirmed shape; drop the guess so the
+    // two can never disagree silently.
+    pendingParents.delete(threadId);
+    requestLoad();
+    return { ok: true };
+  } catch {
+    pendingParents.delete(threadId);
+    requestLoad();
+    return { ok: false, failed: true };
+  }
 }
 
 export function reloadCrews(): void {
