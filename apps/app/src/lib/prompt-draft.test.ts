@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PromptMentionResource } from "@bb/domain";
 import {
+  appendPathMentionToDraft,
   appendQuoteAndAttachmentsToDraft,
   appendQuoteToDraftText,
   emptyPromptDraftState,
@@ -407,5 +408,60 @@ describe("appendQuoteAndAttachmentsToDraft", () => {
     };
 
     expect(appendQuoteAndAttachmentsToDraft(base, "", [attachment])).toBe(base);
+  });
+});
+
+describe("appendPathMentionToDraft", () => {
+  it("spans the mention over exactly the @path the serializer will slice", () => {
+    // The whole contract: elsewhere the editor reconstructs a pill with
+    // `text.slice(mention.start, mention.end)`, so an offset off by one turns a
+    // chip into a chip missing its first or last character — and nothing
+    // throws.
+    const next = appendPathMentionToDraft(emptyPromptDraftState(), "src/a.ts");
+    const mention = next.mentions[0]!;
+
+    expect(next.text.slice(mention.start, mention.end)).toBe("@src/a.ts");
+    expect(mention.resource).toEqual({
+      kind: "path",
+      source: "workspace",
+      entryKind: "file",
+      path: "src/a.ts",
+      label: "a.ts",
+    });
+  });
+
+  it("leaves an existing mention pointing at the same characters", () => {
+    // References are appended rather than inserted precisely so this holds. If
+    // it ever stops holding, every earlier pill in the draft silently shifts.
+    const first = appendPathMentionToDraft(
+      emptyPromptDraftState(),
+      "src/first.ts",
+    );
+    const second = appendPathMentionToDraft(first, "src/second.ts");
+
+    const [earlier, later] = second.mentions;
+    expect(second.text.slice(earlier!.start, earlier!.end)).toBe(
+      "@src/first.ts",
+    );
+    expect(second.text.slice(later!.start, later!.end)).toBe("@src/second.ts");
+  });
+
+  it("separates from existing text without doubling an existing space", () => {
+    const spaced = appendPathMentionToDraft(
+      { text: "look at ", mentions: [], attachments: [] },
+      "a.ts",
+    );
+    expect(spaced.text).toBe("look at @a.ts ");
+
+    const unspaced = appendPathMentionToDraft(
+      { text: "look at", mentions: [], attachments: [] },
+      "a.ts",
+    );
+    expect(unspaced.text).toBe("look at @a.ts ");
+  });
+
+  it("ignores an empty path rather than emitting a bare @", () => {
+    const base = emptyPromptDraftState();
+    expect(appendPathMentionToDraft(base, "   ")).toBe(base);
   });
 });

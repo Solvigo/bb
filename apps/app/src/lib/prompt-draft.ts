@@ -98,19 +98,42 @@ export function appendQuoteToDraftText(
   return { ...state, text };
 }
 
-export function appendPathToDraftText(
+export function appendPathMentionToDraft(
   state: PromptDraftState,
   path: string,
 ): PromptDraftState {
-  // A path, plainly. Not a quote block and not an attachment: the file is
-  // already in the agent's own worktree, so naming it is the whole reference —
-  // uploading a copy of what it can read would be absurd.
+  // The same thing @-mentioning a file produces — a mention pill, not the path
+  // spelled out. A file reference is a reference; rendering it as raw text
+  // leaves the composer holding a string that only looks like one, and the
+  // agent reading a sentence instead of a resource.
   const trimmed = path.trim();
   if (trimmed === "") return state;
 
-  const text = state.text === "" ? trimmed : `${state.text} ${trimmed}`;
+  const separator = state.text === "" || /\s$/.test(state.text) ? "" : " ";
+  const start = state.text.length + separator.length;
+  const serialized = `@${trimmed}`;
 
-  return { ...state, text };
+  return {
+    ...state,
+    // Appended, never inserted mid-text, which is what keeps this simple: every
+    // existing mention's offsets still point at the same characters.
+    text: `${state.text}${separator}${serialized} `,
+    mentions: [
+      ...state.mentions,
+      {
+        start,
+        end: start + serialized.length,
+        resource: {
+          kind: "path",
+          source: "workspace",
+          entryKind: "file",
+          path: trimmed,
+          // The short name is what the pill shows; the path is what it means.
+          label: trimmed.split("/").at(-1) ?? trimmed,
+        },
+      },
+    ],
+  };
 }
 
 export function appendQuoteAndAttachmentsToDraft(

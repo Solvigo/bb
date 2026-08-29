@@ -7,6 +7,7 @@ import { Input } from "@bb/shared-ui/input";
 import { SecondaryPanelFilePreview } from "@/components/secondary-panel/ThreadStorageFilePreview";
 import { useEnvironmentFilePreview } from "@/hooks/queries/environment-queries";
 import { Button } from "@bb/shared-ui/button";
+import { WORKTREE_PATH_DRAG_TYPE } from "@/lib/worktree-path-drag";
 import { useAddPathToChat } from "./worktree-file-actions";
 import { useWorktreeFileEditor } from "./useWorktreeFileEditor";
 import { useWorktreeFiles } from "./useWorktreeFiles";
@@ -103,9 +104,7 @@ export function FilesTab({ agentId }: { agentId: string }) {
         <div
           className="flex min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-tower-border"
           // Drag events are composed, so a dragstart inside the tree's shadow
-          // root reaches this listener with the row in its composed path. The
-          // payload is the path as PLAIN TEXT and nothing more: a composer is a
-          // textarea, and a textarea already knows how to accept dropped text.
+          // root reaches this listener with the row in its composed path.
           onDragStart={(event) => {
             const row = event.nativeEvent
               .composedPath()
@@ -116,6 +115,11 @@ export function FilesTab({ agentId }: { agentId: string }) {
               );
             const path = row?.dataset.itemPath;
             if (path === undefined || row?.dataset.itemType !== "file") return;
+            // Two payloads on purpose. The composer reads the typed one and
+            // inserts the same mention pill @-mentioning the file produces;
+            // anywhere else — a terminal, an editor, another app — the plain
+            // text still lands as a usable path.
+            event.dataTransfer.setData(WORKTREE_PATH_DRAG_TYPE, path);
             event.dataTransfer.setData("text/plain", path);
             event.dataTransfer.effectAllowed = "copy";
           }}

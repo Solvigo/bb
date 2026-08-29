@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { readWorktreePathDrag } from "@/lib/worktree-path-drag";
 import { useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -1391,23 +1392,43 @@ export function ThreadDetailPromptArea({
   }
 
   return (
-    <FollowUpPromptBox
-      id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
-      attachments={bottomAttachmentsConfig}
-      stack={promptStack}
-      activePromptMode={activePromptMode}
-      composer={shouldHideComposer ? null : bottomComposerConfig}
-      pluginComposerHost={normalPluginComposerHost}
-      pluginComposerScope={normalPluginComposerHost.scope}
-      textEffects={promptTextEffects}
-      zenModeResetKey={thread.id}
-      focusEndKey={bottomFocusEndKey}
-      environmentSummary={environmentSummary}
-      contextWindowUsage={contextWindowUsage ?? null}
-      execution={bottomExecutionConfig}
-      permission={bottomPermissionConfig}
-      typeahead={typeaheadConfig}
-      promptActions={promptActions}
-    />
+    // A file dragged out of the Files tab is caught here, before the editor
+    // sees it. Capture phase on purpose: the editor would otherwise take the
+    // plain-text payload and drop the path in as a sentence, which is what
+    // this exists to prevent — the same reference, dropped, must become the
+    // same mention pill that @-mentioning it produces.
+    <div
+      onDragOverCapture={(event) => {
+        if (readWorktreePathDrag(event.dataTransfer) === null) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDropCapture={(event) => {
+        const path = readWorktreePathDrag(event.dataTransfer);
+        if (path === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        promptDraft.addPath(path);
+      }}
+    >
+      <FollowUpPromptBox
+        id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
+        attachments={bottomAttachmentsConfig}
+        stack={promptStack}
+        activePromptMode={activePromptMode}
+        composer={shouldHideComposer ? null : bottomComposerConfig}
+        pluginComposerHost={normalPluginComposerHost}
+        pluginComposerScope={normalPluginComposerHost.scope}
+        textEffects={promptTextEffects}
+        zenModeResetKey={thread.id}
+        focusEndKey={bottomFocusEndKey}
+        environmentSummary={environmentSummary}
+        contextWindowUsage={contextWindowUsage ?? null}
+        execution={bottomExecutionConfig}
+        permission={bottomPermissionConfig}
+        typeahead={typeaheadConfig}
+        promptActions={promptActions}
+      />
+    </div>
   );
 }
