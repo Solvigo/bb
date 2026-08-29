@@ -84,8 +84,7 @@ export function DefaultsSettingsSection() {
   const busy = setDefault.isPending || clearDefault.isPending;
   // The sentence form ("just now", "3h ago"), not the Tower's compact one: a
   // default saved a second ago should not read "0s ago".
-  const setAt =
-    state?.kind === "stored" ? Date.parse(state.setAt) : Number.NaN;
+  const setAt = state?.kind === "stored" ? Date.parse(state.setAt) : Number.NaN;
   const setAge = Number.isFinite(setAt)
     ? formatRelativeTime({ timestamp: setAt, now })
     : null;
@@ -111,9 +110,7 @@ export function DefaultsSettingsSection() {
                   {providerLabel(state.providers, state.providerId)}
                 </span>
                 {" · "}
-                <span className="font-medium">
-                  {modelLabel(state.modelId)}
-                </span>
+                <span className="font-medium">{modelLabel(state.modelId)}</span>
               </p>
               <p className="text-xs text-muted-foreground">
                 Saved{state.setBy ? ` by ${state.setBy}` : ""}
@@ -177,8 +174,8 @@ export function DefaultsSettingsSection() {
       {state?.kind === "stored" && state.providersError ? (
         <p className="text-xs text-muted-foreground">
           The saved pair is shown as stored, but this instance&rsquo;s harness
-          list could not be read ({state.providersError}), so whether it is still
-          available is unknown.
+          list could not be read ({state.providersError}), so whether it is
+          still available is unknown.
         </p>
       ) : null}
 
@@ -230,9 +227,9 @@ export function DefaultsSettingsSection() {
                 >
                   {modelChoice
                     ? modelLabel(modelChoice)
-                    : (catalogue.isPending && providerChoice
-                        ? "Reading models…"
-                        : "Choose a model")}
+                    : catalogue.isPending && providerChoice
+                      ? "Reading models…"
+                      : "Choose a model"}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" mobileTitle="Model">
@@ -269,6 +266,21 @@ export function DefaultsSettingsSection() {
             >
               {setDefault.isPending ? "Saving…" : "Save"}
             </Button>
+
+            {providerChoice && !modelChoice ? (
+              // Choosing a harness clears the model, because a model belongs to
+              // the harness that runs it. That silently disables Save, and a
+              // dead button with no reason beside it is indistinguishable from
+              // a broken one — which is exactly what it was reported as: "I'm
+              // unable to actually switch the default here."
+              <p
+                role="status"
+                data-testid="defaults-needs-model"
+                className="text-xs text-muted-foreground"
+              >
+                {`Pick a model for ${providerLabel(providers, providerChoice)} to save it.`}
+              </p>
+            ) : null}
 
             {state.kind === "stored" ? (
               <Button
