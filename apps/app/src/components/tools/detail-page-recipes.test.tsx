@@ -545,7 +545,22 @@ describe("Skill detail recipe", () => {
     ).toContain("text-destructive");
   });
 
-  it("keeps short skill content on one page without pagination chrome", () => {
+  it("lets a skill document scroll instead of paging it", () => {
+    // The operator's ruling: a skill is a document, not a fragment. It used to
+    // be clipped to one viewport with Previous/Next beneath it — twenty-one
+    // pages for the CLI skill — and reference documentation you have to click
+    // through is documentation nobody reads to the end.
+    const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
+    const viewport = container.querySelector<HTMLElement>(
+      "[data-skill-content-viewport]",
+    );
+    expect(viewport).not.toBeNull();
+    expect(viewport?.className).toContain("overflow-y-auto");
+    expect(viewport?.className).not.toContain("overflow-hidden");
+  });
+
+  it("shows no paging chrome however long the content is", () => {
+    // The guard that matters: length must not bring the controls back.
     const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
     const viewport = container.querySelector<HTMLElement>(
       "[data-skill-content-viewport]",
@@ -553,139 +568,42 @@ describe("Skill detail recipe", () => {
     const content = container.querySelector<HTMLElement>(
       "[data-skill-content-pages]",
     );
-    expect(viewport).not.toBeNull();
-    expect(content).not.toBeNull();
     Object.defineProperty(viewport, "clientHeight", {
       configurable: true,
       value: 240,
     });
     Object.defineProperty(content, "scrollHeight", {
       configurable: true,
-      value: 120,
+      value: 9600,
     });
     act(() => window.dispatchEvent(new Event("resize")));
 
-    expect(viewport?.className).toContain("max-h-[60dvh]");
     expect(
       screen.queryByRole("navigation", { name: "Skill content pagination" }),
     ).toBeNull();
+    expect(screen.queryByText(/Page \d+ of \d+/)).toBeNull();
+    expect(screen.queryByText(/\d+ pages/)).toBeNull();
   });
 
-  it("pages through long skill content with first and last page controls", () => {
+  it("leaves the wheel alone so the document actually scrolls", () => {
+    // The wheel used to be rewired to flip pages, calling preventDefault on
+    // every event. Left in place beside a scroll container it would have
+    // quietly fought the scrolling that replaced it — the visible control
+    // gone and the page still refusing to move.
     const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
     const viewport = container.querySelector<HTMLElement>(
       "[data-skill-content-viewport]",
     );
-    const content = container.querySelector<HTMLElement>(
-      "[data-skill-content-pages]",
-    );
     expect(viewport).not.toBeNull();
-    expect(content).not.toBeNull();
-
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 240,
+    const wheel = new WheelEvent("wheel", {
+      deltaY: 400,
+      bubbles: true,
+      cancelable: true,
     });
-    Object.defineProperty(content, "scrollHeight", {
-      configurable: true,
-      value: 720,
+    act(() => {
+      viewport?.dispatchEvent(wheel);
     });
-    act(() => window.dispatchEvent(new Event("resize")));
-
-    const pagination = screen.getByRole("navigation", {
-      name: "Skill content pagination",
-    });
-    const previous = screen.getByRole("button", { name: /Previous/ });
-    const next = screen.getByRole("button", { name: /Next/ });
-    expect(pagination.textContent).toContain("Page 1 of 3");
-    expect(previous.getAttribute("disabled")).not.toBeNull();
-    expect(next.getAttribute("disabled")).toBeNull();
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 2 of 3");
-    expect(content?.style.transform).toBe("translateY(-240px)");
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 3 of 3");
-    expect(previous.getAttribute("disabled")).toBeNull();
-    expect(next.getAttribute("disabled")).not.toBeNull();
-
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 180,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-    expect(pagination.textContent).toContain("Page 3 of 4");
-    expect(next.getAttribute("disabled")).toBeNull();
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 4 of 4");
-    expect(content?.style.transform).toBe("translateY(-540px)");
-    expect(next.getAttribute("disabled")).not.toBeNull();
-  });
-
-  it("pages once per vertical wheel or trackpad gesture", () => {
-    vi.useFakeTimers();
-    try {
-      const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
-      const viewport = container.querySelector<HTMLElement>(
-        "[data-skill-content-viewport]",
-      );
-      const content = container.querySelector<HTMLElement>(
-        "[data-skill-content-pages]",
-      );
-      expect(viewport).not.toBeNull();
-      expect(content).not.toBeNull();
-
-      Object.defineProperty(viewport, "clientHeight", {
-        configurable: true,
-        value: 240,
-      });
-      Object.defineProperty(content, "scrollHeight", {
-        configurable: true,
-        value: 720,
-      });
-      act(() => window.dispatchEvent(new Event("resize")));
-
-      const pagination = screen.getByRole("navigation", {
-        name: "Skill content pagination",
-      });
-      fireEvent.wheel(viewport!, { deltaY: -100 });
-      expect(pagination.textContent).toContain("Page 1 of 3");
-
-      // Trackpads emit several small pixel deltas. Accumulate them, then move
-      // exactly one page for the gesture even if momentum events continue.
-      fireEvent.wheel(viewport!, { deltaY: 24 });
-      expect(pagination.textContent).toContain("Page 1 of 3");
-      fireEvent.wheel(viewport!, { deltaY: 24 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
-
-      act(() => {
-        vi.advanceTimersByTime(161);
-      });
-      // Line-mode wheel input is normalized to pixels and uses the same
-      // threshold and one-page-per-gesture behavior.
-      fireEvent.wheel(viewport!, { deltaY: 3, deltaMode: 1 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-
-      // Momentum can keep moving toward the boundary, then briefly rebound in
-      // the opposite direction. Both events are still part of the gesture that
-      // moved from page 2 to page 3, so the rebound must not navigate back.
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-      fireEvent.wheel(viewport!, { deltaY: -40 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-
-      act(() => {
-        vi.advanceTimersByTime(161);
-      });
-      fireEvent.wheel(viewport!, { deltaY: -40 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(wheel.defaultPrevented).toBe(false);
   });
 });
 
