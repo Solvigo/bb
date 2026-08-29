@@ -26,12 +26,54 @@ import { useCreateCrew } from "./useCreateCrew";
  */
 export function NewCrewButton({
   className,
+  onOpenChange,
+  open,
+  openingRequest,
   variant = "rail",
 }: {
   className?: string;
+  /**
+   * Opens the project chooser without the trigger being pressed — for a
+   * surface that asks its own question first and then needs this one asked.
+   *
+   * Controlled, rather than an imperative handle, for one reason: the project
+   * question must stay ASKED. A ref that opened the menu could just as easily
+   * grow a sibling that skipped it, and a commander born on the wrong project
+   * can talk and never dispatch. Driving the menu still walks the operator
+   * through the same choice, with `openingRequest` riding along.
+   *
+   * Omit both and the menu stays uncontrolled exactly as it was.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /**
+   * What the operator already typed before pressing this, handed to the
+   * commander as its first instruction.
+   *
+   * It rides THROUGH the project question rather than around it. A commander
+   * is born on its project and can never move, so the question is asked first
+   * whatever else is going on — a typed request is not a reason to skip it and
+   * strand the crew on Personal, where it can talk and never dispatch.
+   *
+   * Empty or whitespace is the same as none; the hook trims and ignores it.
+   */
+  openingRequest?: string;
   variant?: "rail" | "page";
 }) {
   const { createCrew, creating, error } = useCreateCrew();
+  // Only pass a request when there IS one. With nothing typed the call keeps
+  // its original shape — createCrew(projectId), createCrew() — rather than
+  // trailing an explicit undefined. Callers that assert on how this is invoked
+  // should not have to learn a new signature to say the same thing.
+  const request = openingRequest?.trim() ? openingRequest : undefined;
+  const startCrew = (forProjectId?: string) => {
+    if (request === undefined) {
+      if (forProjectId === undefined) createCrew();
+      else createCrew(forProjectId);
+      return;
+    }
+    createCrew(forProjectId, request);
+  };
   const navigation = useSidebarNavigation();
   const projects = (navigation.data?.projects ?? []).filter(
     (project) => project.id !== PERSONAL_PROJECT_ID,
@@ -74,20 +116,26 @@ export function NewCrewButton({
 
   return (
     <div className="flex flex-col gap-1">
-      <DropdownMenu>
+      <DropdownMenu
+        {...(open === undefined ? {} : { open })}
+        {...(onOpenChange === undefined ? {} : { onOpenChange })}
+      >
         <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
         <DropdownMenuContent align="start" mobileTitle="New crew">
           <DropdownMenuLabel>What is this crew for?</DropdownMenuLabel>
           {projects.map((project) => (
             <DropdownMenuItem
               key={project.id}
-              onSelect={() => createCrew(project.id)}
+              onSelect={() => startCrew(project.id)}
             >
               {project.name}
             </DropdownMenuItem>
           ))}
           {projects.length > 0 ? <DropdownMenuSeparator /> : null}
-          <DropdownMenuItem onSelect={() => createCrew()}>
+          {/* No code yet is still a choice ABOUT the project, so the request
+              travels with it — a crew that only needs to think deserves the
+              same opening instruction as one with a repo. */}
+          <DropdownMenuItem onSelect={() => startCrew()}>
             No code yet — just thinking
           </DropdownMenuItem>
         </DropdownMenuContent>

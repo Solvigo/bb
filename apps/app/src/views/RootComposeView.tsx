@@ -29,6 +29,7 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
+import { NewCrewButton } from "@/components/sidebar/crew/NewCrewButton";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
   buildProviderCliIssue,
@@ -199,9 +200,7 @@ import {
   resolveRootComposeProviderRouting,
 } from "./root-compose-environment-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
-import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
 import { FleetHome } from "./FleetHome";
-import { useCrews } from "@/components/sidebar/crew/useCrews";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
 import {
   useThreadFileTabs,
@@ -266,8 +265,7 @@ function resolveHostOpenContext(args: {
     hostId: args.hostId,
   };
 }
-// Fill the scroll area and center the no-projects welcome both axes.
-const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
+const ROOT_COMPOSE_FLEET_HOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
 const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
@@ -881,6 +879,7 @@ export function RootComposeView() {
   const [startedComposing, setStartedComposing] = useState(() =>
     shouldStartComposingFromLocationState(location.state),
   );
+  const [crewProjectMenuOpen, setCrewProjectMenuOpen] = useState(false);
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
@@ -3184,23 +3183,10 @@ export function RootComposeView() {
     ],
   );
   const isForkDraft = forkSeed !== null;
-  const showEmptyWelcome =
-    !isForkDraft &&
-    !startedComposing &&
-    projects !== undefined &&
-    projects.length === 0;
-  // The operator lands on their fleet, not an empty prompt: a bare composer
-  // invites starting work with nobody responsible for it, which is the habit
-  // the crew-centric rail exists to break. Only once they have a crew — before
-  // that the existing welcome is still the right first screen — and never over
-  // a fork draft, which is already a specific thing the operator asked for.
-  const { crews: homeCrews, loaded: homeCrewsLoaded } = useCrews();
-  const showFleetHome =
-    !isForkDraft &&
-    !startedComposing &&
-    !showEmptyWelcome &&
-    homeCrewsLoaded &&
-    homeCrews.length > 0;
+  // The root is a prompt-first launch surface whether the fleet is empty,
+  // loading, or already working. Forks and an explicitly requested plain chat
+  // still go straight to the full composer.
+  const showFleetHome = !isForkDraft && !startedComposing;
   const handleStartComposing = useCallback(
     (prefill?: string) => {
       if (prefill) {
@@ -3501,6 +3487,42 @@ export function RootComposeView() {
     />
   );
 
+  const landingPromptBox = (
+    <NewThreadPromptBox
+      id="fleet-home-prompt"
+      promptBoxRef={promptBoxRef}
+      value={prompt}
+      mentionRanges={promptDraft.mentions}
+      onChange={promptDraft.setTextAndMentions}
+      onSubmit={() => setCrewProjectMenuOpen(true)}
+      isSubmitting={false}
+      disabled={isSubmitDisabled}
+      zenModeStorageKey={rootComposeZenModeStorageKey}
+      placeholder="What should your new crew take on?"
+      history={historyConfig}
+      typeahead={typeaheadConfig}
+      attachments={{}}
+      modeConfig={{
+        environment: environmentConfig,
+        branch: branchConfig,
+        worktree: worktreeConfig,
+        permission: permissionConfig,
+      }}
+      execution={executionConfig}
+      showContextStrip={false}
+      showExecutionControls={false}
+      submitAction={
+        <NewCrewButton
+          variant="page"
+          openingRequest={prompt}
+          open={crewProjectMenuOpen}
+          onOpenChange={setCrewProjectMenuOpen}
+          className="h-9 shrink-0 rounded-full px-4"
+        />
+      }
+    />
+  );
+
   return (
     <>
       <RootComposePanelCommandHandlers
@@ -3509,15 +3531,15 @@ export function RootComposeView() {
         onToggle={handleToggleSecondaryPanel}
       />
       {machineSetupDialog}
-      {rootPanelToggle}
+      {showFleetHome ? null : rootPanelToggle}
       <PluginComposerHostProvider value={pluginComposerHost}>
         <RootComposeSecondaryContent
           contentClassName={
-            showEmptyWelcome
-              ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
+            showFleetHome
+              ? ROOT_COMPOSE_FLEET_HOME_CONTENT_CLASS
               : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
           }
-          isSecondaryPanelOpen={isSecondaryPanelOpen}
+          isSecondaryPanelOpen={showFleetHome ? false : isSecondaryPanelOpen}
           onToggleSecondaryPanel={handleToggleSecondaryPanel}
           panelTogglePositionClassName={panelTogglePositionClassName}
           secondaryPanel={{
@@ -3541,7 +3563,7 @@ export function RootComposeView() {
               )?.layout === "flush",
             renderBrowserDeck,
             isBrowserTabActive,
-            isOpen: isSecondaryPanelOpen,
+            isOpen: showFleetHome ? false : isSecondaryPanelOpen,
             showConversationCollapseControl: false,
             showGitDiffTab: false,
             showNewTabButton: false,
@@ -3558,10 +3580,10 @@ export function RootComposeView() {
           }}
         >
           {showFleetHome ? (
-            <FleetHome onStartThread={handleStartComposing} />
-          ) : showEmptyWelcome ? (
-            <RootComposeEmptyWelcome
-              onCompose={handleStartComposing}
+            <FleetHome
+              composer={landingPromptBox}
+              onStartThread={handleStartComposing}
+              onFocusComposer={() => promptBoxRef.current?.focusEnd()}
               onAddProject={quickCreateProject.openCreateDialog}
               addProjectDisabled={
                 !quickCreateProject.isAvailable || quickCreateProject.isCreating
