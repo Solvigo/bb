@@ -101,7 +101,12 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   // title, icon, and title-only collapse in `GeneratedConversationMessage`.
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
-  threadId: TimelineUserConversationRow["threadId"];
+  /**
+   * Thread the `localImage` attachment resolver routes host-filesystem
+   * images through. Optional because story/preview harnesses render a user
+   * message with no real thread behind it.
+   */
+  threadId?: TimelineUserConversationRow["threadId"];
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 

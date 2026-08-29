@@ -36,7 +36,7 @@ interface BuildAttachmentItemsArgs {
   attachments: TimelineConversationAttachments | null;
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
-  threadId: string;
+  threadId?: string;
 }
 
 interface ProjectAttachmentHrefArgs {
