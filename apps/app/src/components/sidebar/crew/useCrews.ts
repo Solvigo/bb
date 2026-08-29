@@ -290,12 +290,15 @@ function assembleFleet(
       attention:
         (asksOf.get(commander.id) ?? 0) +
         leads.reduce((total, lead) => total + lead.attention, 0),
+      // An agent is an agent. Depth is the only hierarchy there is, and it is
+      // shown by where a row sits — so the words here count agents rather than
+      // naming a rank the structure no longer has.
       status:
         leads.length === 0
-          ? "no leads yet"
+          ? "nothing under it yet"
           : working > 0
             ? `${working} of ${leads.length} working`
-            : `${leads.length} lead${leads.length === 1 ? "" : "s"} standing by`,
+            : `${leads.length} agent${leads.length === 1 ? "" : "s"} standing by`,
     };
   });
 
