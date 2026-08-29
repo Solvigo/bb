@@ -101,6 +101,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   // title, icon, and title-only collapse in `GeneratedConversationMessage`.
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
+  threadId: TimelineUserConversationRow["threadId"];
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
@@ -688,6 +689,7 @@ export function ConversationMessageContent(
     projectId,
     resolveUserAttachmentImageSrc,
     text,
+    threadId,
   } = props;
   const attachmentItems = useMemo(
     () =>
@@ -695,8 +697,9 @@ export function ConversationMessageContent(
         attachments,
         projectId,
         resolveUserAttachmentImageSrc,
+        threadId,
       }),
-    [attachments, projectId, resolveUserAttachmentImageSrc],
+    [attachments, projectId, resolveUserAttachmentImageSrc, threadId],
   );
   const addToChatAttachments = useMemo(
     () => buildAddToChatAttachments(attachments),

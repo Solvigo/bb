@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
+import type { TimelineConversationAttachments } from "@bb/server-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
@@ -10,7 +11,19 @@ import {
   MessageDirectiveRegistryProvider,
   type MessageDirectiveRegistry,
 } from "@/components/ui/markdown-message-directives";
+import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 import { ConversationMessageContent } from "./ConversationMessageContent";
+
+function localImageAttachment(path: string): TimelineConversationAttachments {
+  return {
+    webImages: 0,
+    localImages: 1,
+    localFiles: 0,
+    imageUrls: [],
+    localImagePaths: [path],
+    localFilePaths: [],
+  };
+}
 
 afterEach(cleanup);
 
@@ -88,6 +101,75 @@ describe("ConversationMessageContent assistant images", () => {
         .getAttribute("src"),
     ).toBe(
       "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
+    );
+  });
+});
+
+describe("ConversationMessageContent localImage attachments", () => {
+  it("routes an absolute localImage block through the thread host-file route", () => {
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={localImageAttachment(
+              "/Users/captain/Desktop/annotated-screenshot.png",
+            )}
+            childOrigin={null}
+            initiator="user"
+            mentions={[]}
+            resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text=""
+            threadId="thr_localimage"
+            turnRequest={{ kind: "message", status: "accepted" }}
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen
+        .getByRole("img", { name: "annotated-screenshot.png" })
+        .getAttribute("src"),
+    ).toBe(
+      "/api/v1/threads/thr_localimage/host-files/content?path=%2FUsers%2Fcaptain%2FDesktop%2Fannotated-screenshot.png",
+    );
+  });
+
+  it("routes a relative localImage block through the project attachment route", () => {
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={localImageAttachment("attachments/upload-1.png")}
+            childOrigin={null}
+            initiator="user"
+            mentions={[]}
+            projectId="proj_current"
+            resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text=""
+            threadId="thr_localimage"
+            turnRequest={{ kind: "message", status: "accepted" }}
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "upload-1.png" }).getAttribute("src"),
+    ).toBe(
+      "/api/v1/projects/proj_current/attachments/content?path=attachments%2Fupload-1.png",
     );
   });
 });
@@ -172,6 +254,7 @@ describe("ConversationMessageContent user thread mentions", () => {
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text="Why was @thread:thr_ti4st72wgs not a pill?"
+              threadId="thr_mentions"
               turnRequest={{ kind: "message", status: "accepted" }}
             />
           </ThreadTitleMentionResourcesProvider>
@@ -218,6 +301,7 @@ describe("ConversationMessageContent user thread mentions", () => {
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text="See @thread:thr_cross_project for the result."
+              threadId="thr_mentions"
               turnRequest={{ kind: "message", status: "accepted" }}
             />
           </ThreadTitleMentionResourcesProvider>

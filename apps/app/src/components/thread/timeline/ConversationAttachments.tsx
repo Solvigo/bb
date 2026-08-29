@@ -6,6 +6,10 @@ import {
   getWrappedImageIndex,
 } from "../../ui/image-lightbox.js";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  isAbsoluteLocalPath,
+  type PathClassificationArgs,
+} from "@/lib/attachment-path";
 import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
 import type {
   ThreadTimelineLocalFileLinkHandler,
@@ -32,6 +36,7 @@ interface BuildAttachmentItemsArgs {
   attachments: TimelineConversationAttachments | null;
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
+  threadId: string;
 }
 
 interface ProjectAttachmentHrefArgs {
@@ -39,16 +44,7 @@ interface ProjectAttachmentHrefArgs {
   projectId: string | undefined;
 }
 
-interface PathClassificationArgs {
-  path: string;
-}
-
-const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/u;
 const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
-
-function isAbsoluteLocalPath({ path }: PathClassificationArgs): boolean {
-  return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(path);
-}
 
 function isProjectAttachmentPath({ path }: PathClassificationArgs): boolean {
   return (
@@ -74,6 +70,7 @@ export function buildAttachmentItems({
   attachments,
   projectId,
   resolveUserAttachmentImageSrc,
+  threadId,
 }: BuildAttachmentItemsArgs): ConversationAttachmentItems {
   if (!attachments) {
     return {
@@ -90,7 +87,7 @@ export function buildAttachmentItems({
     ...attachments.localImagePaths.map((path) => ({
       alt: fileNameFromPath(path),
       src: resolveUserAttachmentImageSrc
-        ? resolveUserAttachmentImageSrc(path, projectId)
+        ? resolveUserAttachmentImageSrc(path, projectId, threadId)
         : path,
     })),
   ];
