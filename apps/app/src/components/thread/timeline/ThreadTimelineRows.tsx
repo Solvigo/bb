@@ -960,6 +960,7 @@ function ConversationRow({
         systemMessageSubject={row.systemMessageSubject}
         pluginActions={rowPluginActions}
         text={row.text}
+        threadId={row.threadId}
         turnRequest={row.turnRequest}
       />
     );

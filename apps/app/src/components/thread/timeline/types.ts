@@ -107,6 +107,7 @@ export type ThreadTimelineUnreadDividerPlacement =
 export type UserAttachmentImageSrcResolver = (
   pathOrUrl: string,
   projectId?: string,
+  threadId?: string,
 ) => string;
 
 export interface ThreadTimelineImageViewSrcTarget {
