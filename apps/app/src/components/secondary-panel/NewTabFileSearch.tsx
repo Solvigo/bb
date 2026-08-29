@@ -40,6 +40,7 @@ import {
 } from "./rightPanelFileVisuals";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { useStreamedBrowserSurfaceTab } from "@/lib/streamed-browser-surface";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
   LAUNCHER_ACTION_ROW_BASE_CLASS,
@@ -768,8 +769,10 @@ export function NewTabActions({
   pluginActions,
 }: NewTabActionsProps) {
   const terminalShortcut = useAppCommandShortcut("terminal.open");
+  const streamedBrowserTab = useStreamedBrowserSurfaceTab();
   const showOpenBrowserEntry =
-    onOpenBrowser !== undefined && isDesktopBrowserAvailable();
+    onOpenBrowser !== undefined &&
+    (isDesktopBrowserAvailable() || streamedBrowserTab !== null);
   const showStartTerminalEntry = onStartTerminal !== undefined;
 
   const handleOpenBrowser = useCallback(() => {

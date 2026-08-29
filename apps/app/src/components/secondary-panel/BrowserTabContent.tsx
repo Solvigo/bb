@@ -49,6 +49,13 @@ import {
   useAutomationControlledTabIds,
 } from "@/components/desktop-automation/DesktopAutomationBridge";
 import { AutomationControlBanner } from "@/components/desktop-automation/AutomationControlBanner";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { useStreamedBrowserSurfaceTab } from "@/lib/streamed-browser-surface";
+import {
+  onAgentTeardown,
+  type AgentSurfaceTab,
+} from "./tower/agentSurfaceRegistry";
+import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -458,6 +465,14 @@ export function BrowserTabContent({
     () => getDesktopBrowserApi(),
     [],
   );
+  const streamedBrowserTab = useStreamedBrowserSurfaceTab();
+  const registerStreamedBrowserTeardown = useCallback(
+    (dispose: () => void) =>
+      onAgentTeardown((agentId) => {
+        if (agentId === threadId) dispose();
+      }),
+    [threadId],
+  );
   const contentRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const isPointerCoarse = usePointerCoarse();
@@ -804,7 +819,28 @@ export function BrowserTabContent({
     : null;
 
   if (desktopBrowser === null) {
-    return <BrowserUnavailable />;
+    if (streamedBrowserTab === null) {
+      return <BrowserUnavailable />;
+    }
+    const tab: AgentSurfaceTab = {
+      id: `plugin:${streamedBrowserTab.pluginId}:${streamedBrowserTab.id}`,
+      label: streamedBrowserTab.label,
+      icon: pluginIconName(streamedBrowserTab.icon),
+      title: streamedBrowserTab.title,
+      component:
+        streamedBrowserTab.component as unknown as AgentSurfaceTab["component"],
+      pluginId: streamedBrowserTab.pluginId,
+      generation: streamedBrowserTab.generation,
+    };
+    return (
+      <AgentSurfaceTabContent
+        tab={tab}
+        agentId={threadId}
+        viewerRole="lead"
+        visible
+        onTeardown={registerStreamedBrowserTeardown}
+      />
+    );
   }
 
   return (
