@@ -18,6 +18,16 @@ import { useRouteState } from "@/hooks/useRouteState";
 import { stripRankPrefix } from "@/lib/agent-title";
 import { SecondaryPanelEmptyState } from "@/components/secondary-panel/SecondaryPanelEmptyState";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  ariaLevelFor,
+  elbowGeometry,
+  ELBOW_TOP_PX,
+  FAMILY_SPACING_CLASS,
+  railIndentPx,
+  railLeftPx,
+  spacingBetween,
+} from "./treeLayout";
 
 // The 7 chain columns (states); verbs are the transitions between them.
 const COLUMNS: { key: string; label: string; accent?: boolean }[] = [
@@ -35,6 +45,47 @@ const TERMINAL_LABEL: Record<string, string> = {
   landed: "completed",
   done: "completed",
 };
+
+// Depth-scaled chrome: a root card carries the fleet's full weight, and every
+// level below it steps down once. Depth beyond a lead's own sorties (depth
+// 2+) shares the lightest step rather than fading indefinitely — past that
+// point the rail and indent already carry the ancestry, and further fading
+// would just make deep cards hard to read.
+interface CardWeight {
+  border: string;
+  shadow: string;
+  title: string;
+  iconWrap: string;
+  icon: string;
+}
+const CARD_WEIGHT: Record<"root" | "mid" | "deep", CardWeight> = {
+  root: {
+    border: "border-tower-border-strong",
+    shadow: "shadow-sm",
+    title: "text-base font-semibold",
+    iconWrap: "size-9",
+    icon: "size-4",
+  },
+  mid: {
+    border: "border-tower-border",
+    shadow: "",
+    title: "text-sm font-semibold",
+    iconWrap: "size-8",
+    icon: "size-3.5",
+  },
+  deep: {
+    border: "border-tower-border/70",
+    shadow: "",
+    title: "text-sm font-medium",
+    iconWrap: "size-7",
+    icon: "size-3",
+  },
+};
+function cardWeightFor(depth: number): CardWeight {
+  if (depth <= 0) return CARD_WEIGHT.root;
+  if (depth === 1) return CARD_WEIGHT.mid;
+  return CARD_WEIGHT.deep;
+}
 
 interface FleetRow {
   threadId: string;
@@ -463,7 +514,7 @@ class ChatBoundary extends Component<
 }
 
 /**
- * An agent workspace card — one per lead, two per row when space allows.
+ * An agent workspace card — one per lead, stacked by reporting line.
  *
  * The agent's thread is the primary surface. Current work stays visible above
  * it, while the queue expands only when the operator asks for task detail.
@@ -473,6 +524,7 @@ function AgentCard({
   projectId,
   providerId,
   label,
+  depth,
   onOpen,
   items,
   escalated,
@@ -482,6 +534,8 @@ function AgentCard({
   projectId: string;
   providerId: string;
   label: string;
+  /** How deep this agent sits below the pilot; the card recedes as it grows. */
+  depth: number;
   onOpen?: () => void;
   items: PlacedItem[];
   escalated: boolean;
@@ -515,18 +569,29 @@ function AgentCard({
         : null;
 
   const EYE = "text-xs font-medium text-tower-fg-faint";
+  // The chrome recedes with depth so the TREE reads as the figure and the
+  // cards as its ground: a root card carries the most weight, and each level
+  // below it steps down in border strength, title size, and icon size —
+  // never color alone, so the gradation still reads in every theme.
+  const weight = cardWeightFor(depth);
 
   const identity = (
     <div className="flex min-w-0 items-center gap-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-md border border-tower-border bg-tower-input text-tower-fg-muted">
+      <span
+        className={cn(
+          "grid shrink-0 place-items-center rounded-md border bg-tower-input text-tower-fg-muted",
+          weight.border,
+          weight.iconWrap,
+        )}
+      >
         <Icon
           name={hasThread ? "Code" : "ListTodo"}
-          className="size-4"
+          className={weight.icon}
           aria-hidden
         />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-base font-semibold text-tower-fg">
+        <span className={cn("block truncate text-tower-fg", weight.title)}>
           {label}
         </span>
         <span className="mt-0.5 block text-xs text-tower-fg-faint">
@@ -541,7 +606,13 @@ function AgentCard({
   );
 
   return (
-    <article className="group/agent flex h-[510px] flex-col overflow-hidden rounded-xl border border-tower-border bg-tower-surface transition-colors hover:border-tower-border-strong">
+    <article
+      className={cn(
+        "group/agent flex h-[510px] flex-col overflow-hidden rounded-xl border bg-tower-surface transition-colors hover:border-tower-border-strong",
+        weight.border,
+        weight.shadow,
+      )}
+    >
       <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-tower-border px-3.5 py-2.5">
         {onOpen ? (
           <button
@@ -882,12 +953,15 @@ export function FleetOverviewTab({
     if (!shownIds.has(parent)) continue;
     childrenOfRow.set(parent, [...(childrenOfRow.get(parent) ?? []), r]);
   }
-  const rankedRows: { row: FleetRow; depth: number }[] = [];
-  const walkRank = (row: FleetRow, depth: number): void => {
-    rankedRows.push({ row, depth });
-    for (const child of childrenOfRow.get(row.threadId) ?? []) {
-      walkRank(child, depth + 1);
-    }
+  // isLast marks the last child among its own siblings — the drawn rail stops
+  // there instead of dangling toward a sibling that doesn't exist.
+  const rankedRows: { row: FleetRow; depth: number; isLast: boolean }[] = [];
+  const walkRank = (row: FleetRow, depth: number, isLast: boolean): void => {
+    rankedRows.push({ row, depth, isLast });
+    const children = childrenOfRow.get(row.threadId) ?? [];
+    children.forEach((child, index) =>
+      walkRank(child, depth + 1, index === children.length - 1),
+    );
   };
   // The pilot goes on top, and its crew hangs beneath it. Without it a crew of
   // three leads and no sorties is three cards at the same depth — arranged by
@@ -897,12 +971,13 @@ export function FleetOverviewTab({
     crewRootThreadId === null
       ? undefined
       : (fleet.data?.rows ?? []).find((r) => r.threadId === crewRootThreadId);
-  if (pilotRow !== undefined) rankedRows.push({ row: pilotRow, depth: 0 });
+  if (pilotRow !== undefined)
+    rankedRows.push({ row: pilotRow, depth: 0, isLast: true });
   const leadDepth = pilotRow === undefined ? 0 : 1;
-  for (const r of rows) {
-    const parent = r.parentThreadId ?? "";
-    if (!shownIds.has(parent)) walkRank(r, leadDepth);
-  }
+  const leadRows = rows.filter((r) => !shownIds.has(r.parentThreadId ?? ""));
+  leadRows.forEach((r, index) =>
+    walkRank(r, leadDepth, index === leadRows.length - 1),
+  );
 
   const unassigned = byRow.get(UNASSIGNED) ?? [];
   const chores = queue.data?.chores ?? null;
@@ -992,42 +1067,102 @@ export function FleetOverviewTab({
             </div>
             {/* One column, not a grid. Side-by-side cards buy width and cost
                 the only thing this page is for — you cannot see who reports to
-                whom in a grid, and that is what was asked for twice. */}
-            <div className="flex flex-col content-start items-stretch gap-3.5 px-4 py-4">
-              {rankedRows.map(({ row: r, depth }) => (
+                whom in a grid, and that is what was asked for twice.
+                role="tree" plus aria-level per row announces the same
+                ancestry a sighted operator reads off the rails below. */}
+            <div
+              role="tree"
+              aria-label="Coding agents by reporting line"
+              className="flex flex-col content-start items-stretch px-4 py-4"
+            >
+              {rankedRows.map(({ row: r, depth, isLast }, index) => {
+                const spacing = spacingBetween(
+                  depth,
+                  index === 0 ? null : rankedRows[index - 1].depth,
+                );
+                const elbow = depth > 0 ? elbowGeometry(depth) : null;
+                return (
+                  <div
+                    key={r.threadId}
+                    role="treeitem"
+                    aria-level={ariaLevelFor(depth)}
+                    className={cn(
+                      "relative",
+                      index > 0 && FAMILY_SPACING_CLASS[spacing],
+                    )}
+                    style={{ paddingLeft: `${railIndentPx(depth)}px` }}
+                  >
+                    {/* One rail per ancestor level, each marking the branch
+                        this row hangs off. The row's own level stops at the
+                        elbow when it is the last child, so the line ends
+                        where the tree does instead of running into open
+                        space below the card. */}
+                    {Array.from({ length: depth }, (_, level) => (
+                      <span
+                        key={level}
+                        aria-hidden
+                        className={cn(
+                          "pointer-events-none absolute top-0 w-px bg-tower-border",
+                          !(level === depth - 1 && isLast) && "h-full",
+                        )}
+                        style={{
+                          left: `${railLeftPx(level)}px`,
+                          height:
+                            level === depth - 1 && isLast
+                              ? `${ELBOW_TOP_PX}px`
+                              : undefined,
+                        }}
+                      />
+                    ))}
+                    {elbow ? (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute h-px bg-tower-border"
+                        style={{
+                          left: `${elbow.left}px`,
+                          width: `${elbow.width}px`,
+                          top: `${ELBOW_TOP_PX}px`,
+                        }}
+                      />
+                    ) : null}
+                    <AgentCard
+                      key={r.threadId}
+                      threadId={r.threadId}
+                      depth={depth}
+                      projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
+                      providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
+                      label={agentLabel(
+                        r.handle,
+                        liveIds?.get(r.threadId)?.title,
+                        r.threadId,
+                      )}
+                      onOpen={() => setFocusedSp(r.threadId)}
+                      items={byRow.get(r.threadId) ?? []}
+                      escalated={isEscalated(r.threadId)}
+                      hasThread
+                    />
+                  </div>
+                );
+              })}
+              {/* the commander's undispatched pipeline (not yet handed to a
+                  lead) — a top-level entry of its own, not anyone's child */}
+              {!crewRootThreadId && unassigned.length > 0 ? (
                 <div
-                  key={r.threadId}
-                  // Rank, as distance from the left edge.
-                  style={{ paddingLeft: `${depth * 28}px` }}
+                  role="treeitem"
+                  aria-level={1}
+                  className={rankedRows.length > 0 ? "mt-6" : undefined}
                 >
                   <AgentCard
-                    key={r.threadId}
-                    threadId={r.threadId}
-                    projectId={liveIds?.get(r.threadId)?.projectId ?? ""}
-                    providerId={liveIds?.get(r.threadId)?.providerId ?? ""}
-                    label={agentLabel(
-                      r.handle,
-                      liveIds?.get(r.threadId)?.title,
-                      r.threadId,
-                    )}
-                    onOpen={() => setFocusedSp(r.threadId)}
-                    items={byRow.get(r.threadId) ?? []}
-                    escalated={isEscalated(r.threadId)}
-                    hasThread
+                    threadId={null}
+                    depth={0}
+                    projectId=""
+                    providerId=""
+                    label="Unassigned"
+                    items={unassigned}
+                    escalated={false}
+                    hasThread={false}
                   />
                 </div>
-              ))}
-              {/* the commander's undispatched pipeline (not yet handed to a lead) */}
-              {!crewRootThreadId && unassigned.length > 0 ? (
-                <AgentCard
-                  threadId={null}
-                  projectId=""
-                  providerId=""
-                  label="Unassigned"
-                  items={unassigned}
-                  escalated={false}
-                  hasThread={false}
-                />
               ) : null}
             </div>
           </>
