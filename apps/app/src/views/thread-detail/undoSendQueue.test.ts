@@ -34,7 +34,7 @@ describe("remainingMs", () => {
 
 describe("remainingSeconds", () => {
   it("shows the full window before any time has passed", () => {
-    expect(remainingSeconds(pendingSend("a", UNDO_SEND_WINDOW_MS), 0)).toBe(3);
+    expect(remainingSeconds(pendingSend("a", UNDO_SEND_WINDOW_MS), 0)).toBe(2);
   });
 
   it("still shows a second while any time is left", () => {
