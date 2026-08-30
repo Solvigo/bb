@@ -1,11 +1,9 @@
 import {
   Component,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useAtomValue } from "jotai";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
 import { useCrewRpc } from "./useCrewRpc";
 import { useLiveThreads } from "./useLiveThreads";
@@ -13,7 +11,6 @@ import { useSortieActivity } from "./useSortieActivity";
 import { useItemTrail } from "./useItemTrail";
 import { SpFocusView } from "./SpFocusView";
 import { ageSince } from "@/lib/relative-time";
-import { towerNavAtom } from "./towerNav";
 import { useRouteState } from "@/hooks/useRouteState";
 import { stripRankPrefix } from "@/lib/agent-title";
 import { SecondaryPanelEmptyState } from "@/components/secondary-panel/SecondaryPanelEmptyState";
@@ -770,18 +767,6 @@ export function FleetOverviewTab({
   const { threadId: openInThreadId } = useRouteState();
   const crewRootThreadId = scopeThreadId ?? openInThreadId ?? null;
   const [focusedSp, setFocusedSp] = useState<string | null>(null);
-
-  // chat-link nav: bb-tower:sp/<id> focuses; bb-tower:crew returns to the board.
-  const towerNav = useAtomValue(towerNavAtom);
-  const lastNav = useRef(0);
-  if (
-    towerNav &&
-    towerNav.view === "crew" &&
-    towerNav.nonce !== lastNav.current
-  ) {
-    lastNav.current = towerNav.nonce;
-    setFocusedSp(towerNav.spThreadId ?? null);
-  }
 
   // Until the live-thread list has loaded we do not KNOW which crew is retired,
   // and treating "unknown" as "show everything" flashed archived leads onto the

@@ -475,8 +475,9 @@ export function ThreadSecondaryPanel({
   // server's strict tab contract). It shows by default and yields to any real
   // fixed view (Info/Diff) or file tab the operator opens.
   // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
-  // contract). "crew" is the default surface; the views show over the empty
-  // new-tab / info states but yield to any real content the operator opens.
+  // contract). The first registered surface tab is the default; the views show
+  // over the empty new-tab / info states but yield to any real content the
+  // operator opens.
   // The agent this panel belongs to: in this app an agent IS a thread, and the
   // panel is opened inside one. The board already resolved it this way; now the
   // whole surface does, so every tab is handed the same agent.

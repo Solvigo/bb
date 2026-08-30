@@ -26,7 +26,7 @@ import { AgentSurfaceTabContent } from "./AgentSurfaceTabContent";
  *
  * Its tabs come from a REGISTRY, not a literal, so a surface built elsewhere
  * (the embedded browser is the first) registers rather than being hardcoded
- * here. The built-in three register through the same front door.
+ * here. Built-ins register through the same front door.
  */
 export function TowerRenderSurface({
   scopeThreadId,
@@ -58,7 +58,9 @@ export function TowerRenderSurface({
     ],
     [pluginTabs],
   );
-  const [view, setView] = useState(() => tabs[0]?.id ?? "crew");
+  const [view, setView] = useState(() => tabs[0]?.id ?? null);
+  const activeView =
+    tabs.find((tab) => tab.id === view)?.id ?? tabs[0]?.id ?? null;
   // A tab is mounted once it has been opened, and stays mounted after that:
   // switching away pauses it, it does not destroy it. Tabs the operator has
   // never opened are never mounted at all, so a surface with an expensive tab
@@ -68,9 +70,16 @@ export function TowerRenderSurface({
   );
   useEffect(() => {
     setMounted((current) =>
-      current.has(view) ? current : new Set([...current, view]),
+      activeView !== null && !current.has(activeView)
+        ? new Set([...current, activeView])
+        : current,
     );
-  }, [view]);
+  }, [activeView]);
+  useEffect(() => {
+    if (activeView !== null && activeView !== view) {
+      setView(activeView);
+    }
+  }, [activeView, view]);
 
   // This surface is done with the agent: every tab holding something for it —
   // a browser context, a stream, a session — must let go.
@@ -100,7 +109,7 @@ export function TowerRenderSurface({
           <PinnedIconTab
             key={tab.id}
             ariaLabel={`Show ${tab.label.toLowerCase()}`}
-            isActive={view === tab.id}
+            isActive={activeView === tab.id}
             label={tab.label}
             leadingVisual={<Icon name={tab.icon} />}
             onClick={() => setView(tab.id)}
@@ -114,7 +123,7 @@ export function TowerRenderSurface({
         {tabs
           .filter((tab) => mounted.has(tab.id))
           .map((tab) => {
-            const isVisible = view === tab.id;
+            const isVisible = activeView === tab.id;
             return (
               <div
                 key={`${tab.id}:${tab.generation ?? 0}`}
