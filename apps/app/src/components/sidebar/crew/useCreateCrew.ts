@@ -34,6 +34,21 @@ async function readJson<T>(url: string): Promise<T | null> {
   }
 }
 
+interface ThreadRow {
+  id: string;
+  projectId?: string;
+  title?: string | null;
+  parentThreadId?: string | null;
+}
+
+/** The live thread list, whichever envelope this rig's route answers with. */
+async function readThreadRows(): Promise<ThreadRow[]> {
+  const body = await readJson<unknown>("/api/v1/threads?archived=false");
+  if (Array.isArray(body)) return body as ThreadRow[];
+  const wrapped = body as { threads?: unknown[]; data?: unknown[] } | null;
+  return (wrapped?.threads ?? wrapped?.data ?? []) as ThreadRow[];
+}
+
 /** The task id a project's root is chartered under. Deterministic on purpose:
  *  a retry after a failed charter charters the SAME work, not a second one. */
 function rootTaskId(projectId: string): string {
@@ -47,16 +62,65 @@ interface CharterOutcome {
   message: string | null;
 }
 
+interface FleetRow {
+  threadId?: string;
+  handle?: string | null;
+  parentThreadId?: string | null;
+}
+
+interface FleetEnvelope {
+  result?: { rows?: FleetRow[] };
+  rows?: FleetRow[];
+}
+
+/**
+ * Whether THIS thread is already a governed crew root on THIS project.
+ *
+ * A retry has to tell "already chartered, carry on" apart from "something else
+ * holds this project's crew slot", and the two arrive as refusals worded by
+ * the plugin. Reading the wording is how a sentence like "this project already
+ * has a crew" gets mistaken for success, so the answer is read from the fleet
+ * instead: the exact thread id, carrying a handle, parented by nothing. The
+ * fleet row records no project, so the project boundary is read where it is
+ * actually kept — on the thread.
+ */
+async function isGovernedRootFor(
+  threadId: string,
+  projectId: string,
+): Promise<boolean> {
+  let fleet: FleetEnvelope | null = null;
+  try {
+    const res = await fetch("/api/v1/plugins/crew/rpc/crew_fleet", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+    });
+    if (res.ok) fleet = (await res.json()) as FleetEnvelope;
+  } catch {
+    return false;
+  }
+  const rows = fleet?.result?.rows ?? fleet?.rows;
+  const row = rows?.find((r) => r.threadId === threadId);
+  if (!row || !row.handle || row.parentThreadId) return false;
+
+  const threads = await readThreadRows();
+  const thread = threads.find((t) => t.id === threadId);
+  if (!thread) return false;
+  return (thread.projectId ?? PERSONAL_PROJECT_ID) === projectId;
+}
+
 /**
  * Turn a standby root into a governed crew root.
  *
  * The plugin refuses rather than throwing for anything the operator can act
- * on, and wraps its payload the way every other crew verb does — so read the
- * inner result when it is there, and treat a refusal that says the thread is
- * already crew as the success it is for a retry.
+ * on, and wraps its payload the way every other crew verb does, so read the
+ * inner result when it is there. A refusal is only ever downgraded to success
+ * by the fleet confirming this exact thread is already the project's crew
+ * root — never by what the refusal says.
  */
 async function charterRoot(
   threadId: string,
+  projectId: string,
   briefText: string,
   taskId: string,
 ): Promise<CharterOutcome> {
@@ -82,20 +146,21 @@ async function charterRoot(
   } | null;
   const result = body?.result ?? body ?? {};
   const message = result.error ?? result.message ?? null;
-  // Narrow on purpose. "is already crew" is this thread, already chartered —
-  // a success for a retry. "this project already has a crew" is a different
-  // thread holding the one crew slot, and that is a refusal.
-  const already =
-    message !== null && /already crew|chartered twice/i.test(message);
-  if (already) return { ok: true, already: true, message: null };
-  if (!res.ok || result.ok === false || (result.ok === undefined && message)) {
-    return {
-      ok: false,
-      already: false,
-      message: message ?? `The crew could not be chartered (${res.status}).`,
-    };
+  const refused =
+    !res.ok || result.ok === false || (result.ok === undefined && message);
+  if (!refused) return { ok: true, already: false, message: null };
+
+  // The one thing that turns a refusal into a success: the fleet already lists
+  // this exact thread as this project's governed root, so the charter it is
+  // refusing is the charter it already has.
+  if (await isGovernedRootFor(threadId, projectId)) {
+    return { ok: true, already: true, message: null };
   }
-  return { ok: true, already: false, message: null };
+  return {
+    ok: false,
+    already: false,
+    message: message ?? `The crew could not be chartered (${res.status}).`,
+  };
 }
 
 /**
@@ -166,24 +231,10 @@ export function useCreateCrew(): {
       setError(null);
       void (async () => {
         try {
-          // IDEMPOTENCY: a second press must RESUME the unfinished setup rather
-          // than leave another husk on the rail. Three "New crew · setup" crews
-          // with no leads is what repeated presses produced before this.
-          const existing = await readJson<unknown>(
-            "/api/v1/threads?archived=false",
-          );
-          const threads = (
-            Array.isArray(existing)
-              ? existing
-              : ((existing as { threads?: unknown[] })?.threads ??
-                (existing as { data?: unknown[] })?.data ??
-                [])
-          ) as {
-            id: string;
-            projectId?: string;
-            title?: string | null;
-            parentThreadId?: string | null;
-          }[];
+          // IDEMPOTENCY: a second press must resume the root already standing
+          // rather than leave another husk on the rail. Three unnamed roots
+          // with nothing under them is what repeated presses produced before.
+          const threads = await readThreadRows();
           // Scoped to the project asked for, because a root is born on its
           // project and can never move: resuming Personal's unnamed root when
           // the press came from a repo-backed project hands back an agent that
@@ -203,6 +254,7 @@ export function useCreateCrew(): {
             const rootProjectId = unfinished.projectId ?? PERSONAL_PROJECT_ID;
             const chartered = await charterRoot(
               unfinished.id,
+              rootProjectId,
               rootBootstrap,
               rootTaskId(rootProjectId),
             );
@@ -327,6 +379,7 @@ export function useCreateCrew(): {
 
           const chartered = await charterRoot(
             thread.id,
+            rootProjectId,
             rootBootstrap,
             rootTaskId(rootProjectId),
           );

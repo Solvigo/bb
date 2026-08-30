@@ -36,15 +36,22 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 /** Every call the flow makes, in the order it made them. */
 let calls: string[] = [];
 
+interface FleetRow {
+  threadId: string;
+  handle: string | null;
+  parentThreadId: string | null;
+}
+
 interface RigOptions {
   threads?: unknown[];
   charter?: { status?: number; body?: unknown };
+  fleet?: FleetRow[];
 }
 
 /** The POST bodies the flow sent, by url, so a test can read what was asked. */
 let posted: { url: string; body: Record<string, unknown> }[] = [];
 
-function stubRig({ threads = [], charter = {} }: RigOptions = {}) {
+function stubRig({ threads = [], charter = {}, fleet = [] }: RigOptions = {}) {
   calls = [];
   posted = [];
   vi.stubGlobal(
@@ -57,6 +64,13 @@ function stubRig({ threads = [], charter = {} }: RigOptions = {}) {
         });
       }
       calls.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.includes("crew_fleet")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, result: { rows: fleet } }),
+        };
+      }
       if (url.includes("crew_charter")) {
         return {
           ok: (charter.status ?? 200) < 400,
@@ -193,10 +207,11 @@ describe("useCreateCrew", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it("does not re-brief a root that was already crew", async () => {
-    // Charter is a one-way door. A second press on a live crew resumes it and
-    // passes on what the Captain just typed — it does not read it its brief
-    // again as though it were new.
+  it("downgrades a refusal only when the fleet shows THIS thread already chartered", async () => {
+    // Charter is a one-way door, so a refusal on a root that is already crew
+    // is a successful retry. What proves it is the fleet listing this exact
+    // thread as a handled root — never the refusal's wording, which for a
+    // different reason reads almost the same.
     stubRig({
       threads: [
         {
@@ -209,9 +224,12 @@ describe("useCreateCrew", () => {
       charter: {
         status: 200,
         body: {
-          result: { ok: false, error: "charter: thr_live is already crew" },
+          result: { ok: false, error: "refused, in words nobody should parse" },
         },
       },
+      fleet: [
+        { threadId: "thr_live", handle: "AW-1", parentThreadId: null },
+      ],
     });
     const { result } = renderHook(() => useCreateCrew(), { wrapper });
 
@@ -223,8 +241,86 @@ describe("useCreateCrew", () => {
     });
 
     expect(result.current.error).toBeNull();
+    // Already chartered means already briefed: it gets the request, not the
+    // brief a second time.
     const sent = send.mock.calls[0][0] as unknown as SentTurn;
     expect(sent.input).toHaveLength(1);
     expect(sent.input[0]?.text).toContain("ship the billing page");
+  });
+
+  it("keeps the refusal when the project's crew is a DIFFERENT thread", async () => {
+    // The refusal that reads most like success: this project already has a
+    // crew — held by somebody else. The fleet has a handled root for the
+    // project, just not ours, so nothing here is a retry.
+    stubRig({
+      threads: [
+        {
+          id: "thr_ours",
+          title: "New crew",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+        {
+          id: "thr_theirs",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+      charter: {
+        status: 200,
+        body: {
+          result: {
+            ok: false,
+            error: "charter: this project already has a crew — AW-9 is live.",
+          },
+        },
+      },
+      fleet: [
+        { threadId: "thr_theirs", handle: "AW-9", parentThreadId: null },
+      ],
+    });
+    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("already has a crew");
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("keeps the refusal when the fleet knows our thread but it carries no handle", async () => {
+    // Present in the fleet is not the same as governed. A row with no handle
+    // is a thread the crew ledger has seen, not a chartered root.
+    stubRig({
+      threads: [
+        {
+          id: "thr_ours",
+          title: "New crew",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+      charter: {
+        status: 200,
+        body: { result: { ok: false, error: "charter refused" } },
+      },
+      fleet: [{ threadId: "thr_ours", handle: null, parentThreadId: null }],
+    });
+    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toBe("charter refused");
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
   });
 });
