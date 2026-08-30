@@ -416,11 +416,15 @@ function recoverableThreadId(body: unknown): string | null {
  * archive it. An orphan nobody can name is the worst outcome, so an
  * unrecoverable id is stated as exactly that.
  */
-async function cleanUpStranded(threadId: string | null): Promise<string> {
+async function cleanUpStranded(
+  threadId: string | null,
+  reason: string,
+): Promise<string> {
   if (threadId === null) {
     return (
-      "A thread was created but the rig did not name it, so it could not be " +
-      "cleaned up. Look for an unnamed root on this project and archive it."
+      `A thread was created, ${reason}, and the rig did not name it — so it ` +
+      `could not be cleaned up. Look for an unnamed root on this project and ` +
+      `archive it.`
     );
   }
   try {
@@ -430,12 +434,12 @@ async function cleanUpStranded(threadId: string | null): Promise<string> {
     );
   } catch (e) {
     return (
-      `A thread was created (${threadId}) that this crew cannot be built on, ` +
-      `and archiving it failed${e instanceof Error ? `: ${e.message}` : ""}. ` +
-      `Archive it by hand so it does not sit on the rail.`
+      `A thread was created (${threadId}), ${reason}, and archiving it ` +
+      `failed${e instanceof Error ? `: ${e.message}` : ""}. Archive it by ` +
+      `hand so it does not sit on the rail.`
     );
   }
-  return "The rig answered with a thread this crew cannot be built on, so it was archived. Try again.";
+  return `A thread was created, ${reason}, so it was archived. Try again.`;
 }
 
 /**
@@ -842,7 +846,12 @@ export function useCreateCrew(): {
             // A thread WAS created. Whether its id is recoverable from this
             // body decides whether it can be cleaned up or only named.
             const strandedId = recoverableThreadId(createdBody);
-            setError(await cleanUpStranded(strandedId));
+            setError(
+              await cleanUpStranded(
+                strandedId,
+                "but this crew cannot be built on it",
+              ),
+            );
             return;
           }
           const thread = created;
@@ -855,7 +864,12 @@ export function useCreateCrew(): {
           } catch {
             // The thread exists and nothing here can identify it later, so it
             // is cleaned up now rather than left as an unrecognisable root.
-            setError(await cleanUpStranded(thread.id));
+            setError(
+              await cleanUpStranded(
+                thread.id,
+                "but this browser could not record it",
+              ),
+            );
             return;
           }
 

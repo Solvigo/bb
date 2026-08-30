@@ -243,6 +243,10 @@ describe("useCreateCrew", () => {
   beforeEach(() => {
     send.mockClear();
     navigate.mockClear();
+    // Restore any spy a previous test installed BEFORE it could fail: a
+    // throwing localStorage left behind is invisible here and breaks every
+    // test after it with an error message from somewhere else entirely.
+    vi.restoreAllMocks();
     archive.mockClear();
     archive.mockImplementation(async () => ({ ok: true as const }));
     window.localStorage.clear();
@@ -640,15 +644,17 @@ describe("useCreateCrew", () => {
     ["another project", { id: "thr_root", projectId: "proj_elsewhere" }],
   ])("refuses to charter a created thread with %s", async (_label, created) => {
     // A root cannot move after it is made, so a thread that came back on the
-    // wrong project is not something to charter and hand over.
+    // wrong project is not something to charter and hand over. Either way a
+    // thread EXISTS, and the message says so.
     stubRig({ created });
     const { result } = await freshHook();
     act(() => {
       result.current.createCrew("proj_a");
     });
     await waitFor(() => {
-      expect(result.current.error).toContain("cannot be built on");
+      expect(result.current.error).toContain("A thread was created");
     });
+    expect(result.current.error).toContain("cannot be built on it");
     expect(calls.filter((c) => c.includes("crew_charter"))).toEqual([]);
     expect(send).not.toHaveBeenCalled();
   });
@@ -710,25 +716,23 @@ describe("useCreateCrew", () => {
     });
   });
 
-  it("does not create when this browser cannot record what it created", async () => {
+  it("archives what it created when this browser cannot record it", async () => {
     // Without the note nothing can tell the thread from an ordinary chat
-    // afterwards: no retry, no cleanup, no way back.
-    const setItem = vi
-      .spyOn(Storage.prototype, "setItem")
-      .mockImplementation(() => {
-        throw new Error("storage is full");
-      });
+    // afterwards: no retry, no cleanup, no way back. So it is undone now.
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage is full");
+    });
     stubRig();
     const { result } = await freshHook();
     act(() => {
       result.current.createCrew("proj_a");
     });
     await waitFor(() => {
-      expect(result.current.error).toContain("could not");
+      expect(result.current.error).toContain("could not record it");
     });
+    expect(archive).toHaveBeenCalledWith({ threadId: "thr_root" });
     expect(calls.filter((c) => c.includes("crew_charter"))).toEqual([]);
     expect(send).not.toHaveBeenCalled();
-    setItem.mockRestore();
   });
 
   it.each([
@@ -769,7 +773,7 @@ describe("useCreateCrew", () => {
       result.current.createCrew("proj_a");
     });
     await waitFor(() => {
-      expect(result.current.error).toContain("archived");
+      expect(result.current.error).toContain("was archived");
     });
     expect(archive).toHaveBeenCalledWith({ threadId: "thr_stranded" });
   });
