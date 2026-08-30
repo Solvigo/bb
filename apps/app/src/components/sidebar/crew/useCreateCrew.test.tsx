@@ -1046,6 +1046,12 @@ describe("useCreateCrew", () => {
       ],
     });
     const { result } = await freshHook();
+    // The brief is loaded by dynamic import, and this is the only fake-clock
+    // case that has to get PAST the charter to reach its seam — the other two
+    // stall before it. A module that has not been resolved yet cannot resolve
+    // while the clock is frozen, so it is warmed on real time first; without
+    // this the flow simply stops at the charter and nothing is ever archived.
+    await import("./rootAgentBootstrap.md?raw");
     vi.useFakeTimers();
     try {
       act(() => {
@@ -1054,11 +1060,10 @@ describe("useCreateCrew", () => {
       // The archive is several awaited legs in — create, charter, a second
       // fleet read — and its deadline timer does not exist until it is
       // reached. Spending the clock first ran the whole 20s out before there
-      // was anything to time out, which is why this read as a product bug and
-      // was not one. Drive the flow to the seam on zero virtual time, prove
-      // it arrived, THEN run out its deadline.
+      // was anything to time out. Drive the flow to the seam on zero virtual
+      // time, prove it arrived, THEN run out its deadline.
       await act(async () => {
-        for (let i = 0; i < 50 && archive.mock.calls.length === 0; i += 1) {
+        for (let i = 0; i < 200 && archive.mock.calls.length === 0; i += 1) {
           await vi.advanceTimersByTimeAsync(0);
         }
       });
