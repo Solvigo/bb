@@ -1,19 +1,22 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import charter from "./crewSetupCharter.md?raw";
+import rootBootstrap from "./rootAgentBootstrap.md?raw";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { AGENT_PROVIDER } from "@/lib/agentProvider";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { sdk } from "@/lib/sdk";
 
-/** A setup thread keeps this title until its crew is named — that is how a
- *  second press finds the unfinished interview instead of starting another. */
+/** A root thread keeps this title until its crew is named — that is how a
+ *  second press finds the unnamed root instead of starting another. The
+ *  wizard's old title is still matched so a root created before the interview
+ *  was retired is resumed rather than duplicated. */
 interface ProjectRow {
   id: string;
   kind?: string;
 }
 
-const SETUP_THREAD_TITLE = "New crew · setup";
+const ROOT_THREAD_TITLE = "New crew";
+const UNNAMED_ROOT_TITLES = [ROOT_THREAD_TITLE, "New crew · setup"];
 
 async function readJson<T>(url: string): Promise<T | null> {
   try {
@@ -26,13 +29,19 @@ async function readJson<T>(url: string): Promise<T | null> {
 }
 
 /**
- * Pressing NEW CREW spawns a fresh COMMANDER thread seeded with the setup
- * charter and lands the Captain in that chat, where the commander interviews
- * him and builds the crew for real as they agree each step.
+ * Pressing NEW CREW stands up the project's ROOT AGENT, seeded with the
+ * bootstrap brief, and lands the Captain in that chat.
  *
- * The charter lives in its own file (crewSetupCharter.md) because it IS the
- * journey — it should be iterated like any other reviewable surface, not buried
- * as a string literal in a component.
+ * STAGED: this still creates a plain thread over the threads API, which does
+ * not charter the root or mint its handle. The governed path is `crew spawn` /
+ * `crew charter` in the crew plugin, and neither is exposed on its RPC port
+ * yet. Creating a generic thread and annotating it afterwards would skip the
+ * handle, brief, ceiling and lifecycle contract, so this stays as it is until
+ * the endpoint lands rather than growing a shortcut around it.
+ *
+ * The brief lives in its own file (rootAgentBootstrap.md) because it IS the
+ * product surface — it should be iterated like any other reviewable text, not
+ * buried as a string literal in a component.
  */
 export function useCreateCrew(): {
   /** Name the project the crew is FOR; omit only when it has no code yet. */
@@ -69,15 +78,15 @@ export function useCreateCrew(): {
             title?: string | null;
             parentThreadId?: string | null;
           }[];
-          // Scoped to the project asked for, because a commander is born on its
-          // project and can never move: resuming Personal's unfinished setup
-          // when the press came from a repo-backed project hands back a crew
-          // that can talk and can never dispatch for the project clicked.
+          // Scoped to the project asked for, because a root is born on its
+          // project and can never move: resuming Personal's unnamed root when
+          // the press came from a repo-backed project hands back an agent that
+          // can talk and can never dispatch for the project clicked.
           const wantedProjectId = forProjectId ?? PERSONAL_PROJECT_ID;
           const unfinished = threads.find(
             (t) =>
               !t.parentThreadId &&
-              t.title === SETUP_THREAD_TITLE &&
+              UNNAMED_ROOT_TITLES.includes(t.title ?? "") &&
               (t.projectId ?? PERSONAL_PROJECT_ID) === wantedProjectId,
           );
           if (unfinished) {
@@ -147,7 +156,7 @@ export function useCreateCrew(): {
             body: JSON.stringify({
               projectId,
               origin: "app",
-              title: SETUP_THREAD_TITLE,
+              title: ROOT_THREAD_TITLE,
               // Provider AND model together, from the one shared path. Pinning
               // only the provider still lets the instance resolve its default
               // MODEL — which may belong to a dead provider, which is how this
@@ -177,7 +186,7 @@ export function useCreateCrew(): {
                   : { type: "unmanaged", path: null },
               },
               input: [
-                { type: "text", text: charter, mentions: [] },
+                { type: "text", text: rootBootstrap, mentions: [] },
                 ...(openingRequest?.trim()
                   ? [
                       {

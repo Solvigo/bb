@@ -13,8 +13,6 @@ import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
-import {} from "@/lib/route-paths";
-import { useCreateCrew } from "@/components/sidebar/crew/useCreateCrew";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import type {
   ProjectPathDialogSubmitHandler,
@@ -49,8 +47,6 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const hosts = hostsQuery.data ?? EMPTY_HOSTS;
   const setRootComposeProjectId = useSetRootComposeProjectId();
 
-  const { createCrew } = useCreateCrew();
-
   const submit = useCallback(
     ({ path, hostId, target, closeDialog }: LocalPathSubmitParams) => {
       if (target.kind !== "create") return;
@@ -64,20 +60,18 @@ export function useQuickCreateProject(): QuickCreateProjectController {
         },
         {
           onSuccess: (project) => {
+            // Creating a project creates a PROJECT. It does not stand up an
+            // agent: a root agent is governed — chartered, handled, bound to
+            // its project — and pressing "New project" is not consent to spawn
+            // one. The picker closes and the new project becomes the composer's
+            // target, so the next thing typed starts there.
             closeDialog();
             setRootComposeProjectId(project.id);
-            // A new project used to land on an empty compose view: the folder
-            // existed and nothing was in it. Creating a project IS starting to
-            // work on it, so it stands up the crew and drops you into that
-            // chat, ready to type. createCrew owns the navigation, and it is
-            // idempotent — a second create resumes an unfinished setup rather
-            // than leaving another husk on the rail.
-            createCrew(project.id);
           },
         },
       );
     },
-    [createCrew, mutate, setRootComposeProjectId],
+    [mutate, setRootComposeProjectId],
   );
 
   const controller = useLocalPathPicker({
