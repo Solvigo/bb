@@ -1086,11 +1086,15 @@ describe("CrewSidebarSection edit-scope guards", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
-    // Not the document body: the Projects section's own container, the one
-    // thing guaranteed to still exist.
-    expect(document.activeElement).toBe(
-      screen.getByTestId("crew-sidebar-fallback-focus"),
-    );
+    // Not the document body, and not an unnamed generic div: a real,
+    // labelled heading — the one thing in the section guaranteed to still
+    // exist — pulled out of ordinary Tab order on purpose.
+    const projectsHeading = screen.getByRole("heading", {
+      name: "Projects",
+      level: 2,
+    });
+    expect(document.activeElement).toBe(projectsHeading);
+    expect(projectsHeading.getAttribute("tabindex")).toBe("-1");
   });
 
   it("falls back to the Projects section when the edited crew disappears before Escape can find its Rearrange control", () => {
@@ -1119,8 +1123,11 @@ describe("CrewSidebarSection edit-scope guards", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
 
-    expect(document.activeElement).toBe(
-      screen.getByTestId("crew-sidebar-fallback-focus"),
-    );
+    const projectsHeading = screen.getByRole("heading", {
+      name: "Projects",
+      level: 2,
+    });
+    expect(document.activeElement).toBe(projectsHeading);
+    expect(projectsHeading.getAttribute("tabindex")).toBe("-1");
   });
 });

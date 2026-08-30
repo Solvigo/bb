@@ -329,9 +329,9 @@ interface CrewEditState {
    */
   registerDoneButton: (el: HTMLButtonElement | null) => void;
   /**
-   * Registers the deterministic fallback focus target — the Projects
-   * section's own container — for when the crew being left has disappeared
-   * or reclassified out from under its own commander thread id: there is no
+   * Registers the deterministic fallback focus target — the "Projects"
+   * heading itself — for when the crew being left has disappeared or
+   * reclassified out from under its own commander thread id: there is no
    * "that crew's Rearrange button" to hand focus back to, and the browser's
    * default (dropping it to the document body) is not a landing anyone
    * asked for.
@@ -613,10 +613,18 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   // add it" the instant it landed. Each thread gets its own counter, bumped
   // on every move() call for it; a `.then()` only touches recoverableIds if
   // its own call is still the latest one issued for that thread.
+  //
+  // Cleared on every session transition, same as recoverableIds — the
+  // session generation already rejects any completion from a session that
+  // has ended, so entries here can never affect anything past that point.
+  // Keeping them anyway would just grow this map by one dead thread id for
+  // every promotion ever made, for as long as the provider — which spans the
+  // whole sidebar's lifetime — stays mounted.
   const threadOperationGenerationRef = useRef(new Map<string, number>());
   const setEditingCrewId = useCallback((crewId: string | null) => {
     editSessionRef.current += 1;
     setRecoverableIds(new Set());
+    threadOperationGenerationRef.current.clear();
     setEditingCrewIdState(crewId);
   }, []);
   const [dragging, setDragging] = useState<{
@@ -800,9 +808,9 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   // hand focus to — the crew being left disappeared or reclassified out from
   // under its own commander thread id (a promotion, a deletion, a merge
   // elsewhere) between entering edit mode and leaving it, so rearrangeId has
-  // no button registered under `previous` any more. The Projects section's
-  // own container always exists regardless of what happened to any one
-  // crew, which is the only property this fallback actually needs.
+  // no button registered under `previous` any more. The "Projects" heading
+  // always exists regardless of what happened to any one crew, which is the
+  // only property this fallback actually needs.
   const fallbackFocusTargetRef = useRef<HTMLElement | null>(null);
   const registerFallbackFocusTarget = useCallback((el: HTMLElement | null) => {
     fallbackFocusTargetRef.current = el;
@@ -1434,18 +1442,30 @@ export function CrewSidebarSection({
   // lives. Only that one project's header may act as the drop target.
   const editingProjectId = editingCrew?.projectId ?? null;
   return (
-    <div
-      // Registered as the deterministic fallback focus target: if the crew
-      // being left has disappeared or reclassified, this container is the
-      // one thing guaranteed to still be here. tabIndex makes it a legal
-      // focus target even though it is not otherwise interactive.
-      ref={registerFallbackFocusTarget}
-      tabIndex={-1}
-      data-testid="crew-sidebar-fallback-focus"
-      className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden"
-    >
+    <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
       <div className="mb-1 mt-3 flex items-center justify-between gap-2">
-        <span className={SIDEBAR_SECTION_LABEL_CLASS}>Projects</span>
+        <span
+          // The deterministic fallback focus target: the crew being left can
+          // disappear or reclassify out from under its own Rearrange button,
+          // and this heading is the one thing in the section guaranteed to
+          // still be there. A real heading role (not a generic div) so a
+          // screen reader announces where focus landed, not just that it
+          // moved; tabIndex takes it out of ordinary Tab order — it is a
+          // landing spot for a mode change, not a stop on the way through
+          // the sidebar — while still making it a legal focus() target; the
+          // ring gives it a visible landing a sighted keyboard user can see,
+          // regardless of how focus arrived here.
+          ref={registerFallbackFocusTarget}
+          role="heading"
+          aria-level={2}
+          tabIndex={-1}
+          className={cn(
+            SIDEBAR_SECTION_LABEL_CLASS,
+            "rounded focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1",
+          )}
+        >
+          Projects
+        </span>
         {headerTrailing}
       </div>
       {editingCrewId !== null ? (
