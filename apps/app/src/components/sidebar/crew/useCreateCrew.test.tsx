@@ -95,6 +95,8 @@ interface RigOptions {
   hosts?: unknown[];
   /** The thread list answers, but its BODY never finishes arriving. */
   threadsBodyHangs?: boolean;
+  /** Whether a later read sees what the create made. Off proves fail-closed. */
+  landsCreated?: boolean;
 }
 
 /** The shape crew_charter actually answers with: a discriminated union on `ok`
@@ -125,14 +127,18 @@ function stubRig({
   fleet = [],
   fleetAfterCharter,
   projects = [{ id: "proj_a" }],
-  created = { id: "thr_root", projectId: "proj_a" },
+  // Explicit about the precondition every destructive path now demands: a
+  // live row, same project, no parent.
+  created = { id: "thr_root", projectId: "proj_a", parentThreadId: null },
   createStatus,
   createBody,
   createHangs = false,
   hosts = [{ id: "host_one" }],
   threadsBodyHangs = false,
+  landsCreated = true,
 }: RigOptions = {}) {
   let charterSeen = false;
+  const landed: unknown[] = [];
   calls = [];
   posted = [];
   vi.stubGlobal(
@@ -232,13 +238,33 @@ function stubRig({
             json: async () => createBody ?? {},
           };
         }
+        if (init?.method === "POST") {
+          // The rig LANDS what it creates: a later read sees it. Every
+          // destructive path now demands a live row that is still a root on
+          // this project, so a fixture whose created thread never appears
+          // cannot reach the archive at all — it fails closed first, which is
+          // right, and would leave the archive untested.
+          const row = created as { id?: unknown } | null;
+          if (
+            landsCreated &&
+            row !== null &&
+            typeof row === "object" &&
+            typeof row.id === "string" &&
+            !landed.some((t) => (t as { id?: unknown }).id === row.id) &&
+            !(Array.isArray(threads) ? threads : []).some(
+              (t) => (t as { id?: unknown }).id === row.id,
+            )
+          ) {
+            landed.push(row);
+          }
+          return { ok: true, status: 200, json: async () => created };
+        }
         return {
           ok: true,
           status: 200,
-          json:
-            init?.method !== "POST" && threadsBodyHangs
-              ? () => new Promise(() => {})
-              : async () => (init?.method === "POST" ? created : threads),
+          json: threadsBodyHangs
+            ? () => new Promise(() => {})
+            : async () => [...(Array.isArray(threads) ? threads : []), ...landed],
         };
       }
       if (url.includes("/api/v1/projects")) {
@@ -573,6 +599,47 @@ describe("useCreateCrew", () => {
     const sent = send.mock.calls[0]?.[0] as unknown as SentTurn | undefined;
     expect(sent?.threadId ?? "thr_winner").toBe("thr_winner");
     expect(result.current.error).toBeNull();
+  });
+
+  it("archives nothing when the thread it created never appears in the list", async () => {
+    // Fail closed: a thread created seconds ago may simply not have landed in
+    // this read yet, and nothing is destroyed on the strength of a row the rig
+    // did not mention. The note stays — it is the only handle left on it.
+    stubRig({
+      charter: {
+        status: 200,
+        body: {
+          ok: true,
+          result: { ok: false, error: "this project already has a crew" },
+        },
+      },
+      fleetAfterCharter: [
+        { threadId: "thr_winner", handle: "AW-9", parentThreadId: null },
+      ],
+      threads: [
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+      // The create answers, but the rig never lists what it made.
+      landsCreated: false,
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("already has a crew");
+    });
+
+    expect(archive).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem("bb.crew.standby-roots")).toContain(
+      "thr_root",
+    );
   });
 
   it("names the orphan out loud when archiving the loser fails", async () => {
