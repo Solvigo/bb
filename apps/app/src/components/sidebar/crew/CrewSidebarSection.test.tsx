@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 
-import { render, fireEvent, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, fireEvent, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CrewSidebarSection, CrewEditProvider } from "./CrewSidebarSection";
 import * as useCrewsModule from "./useCrews";
@@ -24,6 +24,13 @@ vi.mock("./useCreateCrew", () => ({
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useProjectNames: vi.fn(),
 }));
+
+// Each `it` below renders its own tree; without this, unmounted trees from
+// earlier tests stay in the jsdom document and `getByRole` queries that
+// matched one row uniquely start matching the same row N times over.
+afterEach(() => {
+  cleanup();
+});
 
 describe("CrewSidebarSection drag boundary", () => {
   it("refuses dropping an ancestor into a descendant's gap", async () => {
