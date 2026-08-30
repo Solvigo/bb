@@ -306,9 +306,11 @@ export interface FixedSecondaryPanelTabGroupState extends FixedPanelTabGroupStat
   isOpen: boolean;
   /**
    * Agent-surface views the operator opened on this thread, in strip order,
-   * and which one is showing. Optional because a state written before surfaces
-   * were opt-in genuinely does not carry them; the schema defaults both on
-   * parse, so anything read back from storage always has them.
+   * and which one is showing. Required, not optional: a state written before
+   * surfaces were opt-in genuinely does not carry them, but the parsing
+   * schema fills in the "nothing open" default for both fields on the way in,
+   * so every `FixedSecondaryPanelTabGroupState` in memory has them regardless
+   * of what shape the stored value predates.
    */
   surfaceTabIds: readonly string[];
   activeSurfaceTabId: string | null;

@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NewTabPage } from "./NewTabPage";
+import { NewTabPage, type NewTabPageProps } from "./NewTabPage";
 
 vi.mock("./NewTabFileSearch", () => ({
   NewTabFileSearch: () => <div data-testid="new-tab-file-search" />,
@@ -14,7 +20,13 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 
 afterEach(cleanup);
 
-function renderPage() {
+function renderPage({
+  surfaces,
+  onOpenSurface,
+}: {
+  surfaces?: NewTabPageProps["surfaces"];
+  onOpenSurface?: NewTabPageProps["onOpenSurface"];
+} = {}) {
   return render(
     <NewTabPage
       currentThreadId="thr_1"
@@ -23,7 +35,9 @@ function renderPage() {
       onSelect={() => undefined}
       onOpenBrowser={() => undefined}
       onOpenReview={() => undefined}
+      onOpenSurface={onOpenSurface}
       onStartTerminal={() => undefined}
+      surfaces={surfaces}
       pluginActions={[
         {
           id: "tower",
@@ -68,5 +82,29 @@ describe("NewTabPage", () => {
 
     expect(screen.getByTestId("new-tab-file-search")).toBeTruthy();
     expect(screen.getByRole("button", { name: "All tools" })).toBeTruthy();
+  });
+
+  it("gives the agent's own Files action a programmatic group distinct from the identically-named row above it", () => {
+    const onOpenSurface = vi.fn();
+    renderPage({
+      surfaces: [{ id: "files", label: "Files", icon: "Folder" }],
+      onOpenSurface,
+    });
+
+    // Two "Files" buttons now exist on the page — the file-search launcher
+    // above, and this agent's own Files surface — with no way to tell them
+    // apart from their accessible name alone.
+    expect(screen.getAllByRole("button", { name: "Files" })).toHaveLength(2);
+
+    const agentGroup = screen.getByRole("group", { name: "This agent" });
+    const agentFilesButton = within(agentGroup).getByRole("button", {
+      name: "Files",
+    });
+
+    fireEvent.click(agentFilesButton);
+    expect(onOpenSurface).toHaveBeenCalledWith("files");
+    // The launcher-row Files button (outside the group) never fired the
+    // agent-surface handler.
+    expect(screen.queryByTestId("new-tab-file-search")).toBeNull();
   });
 });

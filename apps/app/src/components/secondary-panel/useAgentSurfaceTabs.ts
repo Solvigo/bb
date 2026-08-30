@@ -157,12 +157,16 @@ export function useAgentSurfaceTabs(
   // Durable across reload. The thread's panel record is session state that the
   // server sync rebuilds from its tab LIST, so a field outside that list never
   // survives a refresh; the open set is kept beside it, per thread, instead.
+  // `stored === null` means nothing was ever written for this thread (the
+  // in-memory default stands); a stored EMPTY array means the operator closed
+  // everything, and that has to apply too — treating it like "nothing stored"
+  // would resurrect whatever the default happened to be on every reload.
   const hydratedFor = useRef<string | null>(null);
   useEffect(() => {
     if (threadId === null || hydratedFor.current === threadId) return;
     hydratedFor.current = threadId;
     const stored = readStored(threadId);
-    if (stored === null || stored.openTabIds.length === 0) return;
+    if (stored === null) return;
     update((current) => ({
       ...current,
       secondary: {

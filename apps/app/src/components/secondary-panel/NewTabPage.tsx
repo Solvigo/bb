@@ -124,22 +124,37 @@ function NewTabLauncher({
             thread; opening one is a choice now, and this is where it is made.
             Headed, because "Browser" and "Files" exist on both sides of this
             list and mean different things: above opens a tab, below opens the
-            agent's own view of itself. */}
+            agent's own view of itself — same accessible name, different
+            action, so the group carries the distinction programmatically
+            (`aria-labelledby`) rather than only in the visible heading a
+            screen reader user tabbing through buttons never lands on. The
+            `contents` wrapper keeps these two elements as direct flex
+            children of the launcher list, exactly as if the group boundary
+            were not there, so it changes nothing about the layout. */}
         {surfaces.length > 0 ? (
-          <p className="px-1 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            This agent
-          </p>
+          <div
+            role="group"
+            aria-labelledby="new-tab-agent-surfaces-heading"
+            className="contents"
+          >
+            <p
+              id="new-tab-agent-surfaces-heading"
+              className="px-1 pb-1 pt-3 text-2xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+            >
+              This agent
+            </p>
+            {surfaces.map((surface) => (
+              <LauncherAction
+                key={surface.id}
+                icon={surface.icon}
+                label={surface.label}
+                onSelect={
+                  onOpenSurface ? () => onOpenSurface(surface.id) : undefined
+                }
+              />
+            ))}
+          </div>
         ) : null}
-        {surfaces.map((surface) => (
-          <LauncherAction
-            key={surface.id}
-            icon={surface.icon}
-            label={surface.label}
-            onSelect={
-              onOpenSurface ? () => onOpenSurface(surface.id) : undefined
-            }
-          />
-        ))}
         <LauncherAction
           icon="SideChat"
           label="Side chat"
