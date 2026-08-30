@@ -2,7 +2,7 @@ import type { PromptInput } from "@bb/domain";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 import type { SendMessageMutationRequest } from "./threadDetailMutationTypes";
 
-export const UNDO_SEND_WINDOW_MS = 3000;
+export const UNDO_SEND_WINDOW_MS = 1500;
 
 /**
  * How the entry reaches the agent once its window closes.
