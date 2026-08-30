@@ -1003,6 +1003,88 @@ describe("useCreateCrew", () => {
     );
   });
 
+  it("never archives its own standby once something has adopted it", async () => {
+    // Between our charter losing and this cleanup, the thread we made can have
+    // been reparented into a crew. It is a live governed descendant then, not
+    // a loose standby, and archiving it would destroy somebody's agent.
+    stubRig({
+      charter: {
+        status: 200,
+        body: {
+          ok: true,
+          result: { ok: false, error: "this project already has a crew" },
+        },
+      },
+      fleetAfterCharter: [
+        { threadId: "thr_winner", handle: "AW-9", parentThreadId: null },
+      ],
+      threads: [
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+        // Ours, adopted since it was created.
+        {
+          id: "thr_root",
+          title: "New crew",
+          projectId: "proj_a",
+          parentThreadId: "thr_winner",
+        },
+      ],
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("already has a crew");
+    });
+
+    expect(archive).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    // No longer a standby of ours, so the note goes without destroying it.
+    expect(window.localStorage.getItem("bb.crew.standby-roots")).not.toContain(
+      "thr_root",
+    );
+  });
+
+  it("clears busy with an honest error when the brief never arrives", async () => {
+    // The brief gates the repair, the retry and every new charter. A lazy
+    // chunk that never resolves left the button spinning with nothing said.
+    vi.doMock("./rootAgentBootstrap.md?raw", () => new Promise(() => {}));
+    stubRig();
+    const { result } = await freshHook();
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        result.current.createCrew("proj_a");
+      });
+      // Up to the point the brief is asked for, on no virtual time.
+      await act(async () => {
+        for (
+          let i = 0;
+          i < 200 && !calls.includes("POST /api/v1/threads");
+          i += 1
+        ) {
+          await vi.advanceTimersByTimeAsync(0);
+        }
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+
+      expect(result.current.error).toContain("crew brief");
+      expect(result.current.creatingFor("proj_a")).toBe(false);
+      // Nothing was chartered on a brief that never arrived.
+      expect(calls.filter((c) => c.includes("crew_charter"))).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+      vi.doUnmock("./rootAgentBootstrap.md?raw");
+    }
+  });
+
   it("clears busy when a response BODY never finishes arriving", async () => {
     // Aborting the request does not bound the read of its body; only the
     // deadline does.

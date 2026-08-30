@@ -36,7 +36,15 @@ function parseHostId(row: unknown): string | null {
  * there is nothing to hold up: it is awaited inside the flow that needs it.
  */
 async function loadRootBootstrap(): Promise<string> {
-  return (await import("./rootAgentBootstrap.md?raw")).default;
+  // Bounded like every network leg, because it gates the same things they do:
+  // the existing-root repair, the standby retry and every new charter all wait
+  // on this. A lazy chunk that never arrives left the button spinning with
+  // nothing said, which is the one outcome none of this is allowed to have.
+  const module = await withDeadline(
+    import("./rootAgentBootstrap.md?raw"),
+    "The crew brief",
+  );
+  return module.default;
 }
 
 /** The root's first input, before it is anything. It is not the brief: the
@@ -502,10 +510,23 @@ async function recoverLostRace({
   if (answer.status !== "root" || answer.thread.id === ourThreadId) {
     return { outcome: "error", message: refusal ?? UNREADABLE_CREW };
   }
-  // Same rule on this path: the rig decides what may be destroyed, not a
-  // record of what was intended.
+  // Same rule on this path, and the same three ways a record can be wrong.
+  // The rig decides what may be destroyed, not a record of what was intended.
   const ours = threads.find((t) => t.id === ourThreadId);
-  if (ours !== undefined && projectOf(ours) !== projectId) {
+  if (ours === undefined) {
+    // Not in the list this read returned. It may simply not have landed yet —
+    // it was created seconds ago — so nothing is destroyed on the strength of
+    // a thread the rig did not mention, and the record stays as the only
+    // handle anything still has on it.
+    return { outcome: "error", message: refusal ?? UNREADABLE_CREW };
+  }
+  if (ours.parentThreadId) {
+    // It has been adopted since: a live agent inside somebody's crew, not a
+    // loose standby. Archiving it here would destroy a governed descendant.
+    forgetStandbyRoot(ourThreadId);
+    return { outcome: "error", message: refusal ?? UNREADABLE_CREW };
+  }
+  if (projectOf(ours) !== projectId) {
     forgetStandbyRoot(ourThreadId);
     return { outcome: "error", message: refusal ?? UNREADABLE_CREW };
   }
