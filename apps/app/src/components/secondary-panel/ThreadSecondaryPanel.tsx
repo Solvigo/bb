@@ -5,6 +5,7 @@ import {
   type TransitionEvent,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -32,6 +33,7 @@ import { towerNavAtom } from "./tower/towerNav";
 import {
   listAgentSurfaceTabs,
   onAgentTeardown,
+  resolveAgentSurfaceTabId,
   type AgentSurfaceTab,
 } from "./tower/agentSurfaceRegistry";
 import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
@@ -474,8 +476,9 @@ export function ThreadSecondaryPanel({
   // server's strict tab contract). It shows by default and yields to any real
   // fixed view (Info/Diff) or file tab the operator opens.
   // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
-  // contract). "crew" is the default surface; the views show over the empty
-  // new-tab / info states but yield to any real content the operator opens.
+  // contract). The first registered surface tab is the default; the views show
+  // over the empty new-tab / info states but yield to any real content the
+  // operator opens.
   // The agent this panel belongs to: in this app an agent IS a thread, and the
   // panel is opened inside one. The board already resolved it this way; now the
   // whole surface does, so every tab is handed the same agent.
@@ -500,9 +503,10 @@ export function ThreadSecondaryPanel({
     ],
     [pluginSurfaceTabs],
   );
-  const [towerView, setTowerView] = useState<string | null>(
-    () => towerTabs[0]?.id ?? null,
+  const [towerView, setTowerView] = useState<string | null>(() =>
+    resolveAgentSurfaceTabId(null, towerTabs),
   );
+  const resolvedTowerView = resolveAgentSurfaceTabId(towerView, towerTabs);
   // Same contract the per-agent surface gives a tab: a disposer narrowed to
   // this agent, so a tab never tears down its context because a different
   // agent's surface closed.
@@ -518,15 +522,20 @@ export function ThreadSecondaryPanel({
   const lastNavNonce = useRef(0);
   if (towerNav && towerNav.nonce !== lastNavNonce.current) {
     lastNavNonce.current = towerNav.nonce;
-    if (towerNav.view !== towerView) setTowerView(towerNav.view);
+    if (towerNav.view !== resolvedTowerView) setTowerView(towerNav.view);
   }
+  useEffect(() => {
+    if (resolvedTowerView !== null && resolvedTowerView !== towerView) {
+      setTowerView(resolvedTowerView);
+    }
+  }, [resolvedTowerView, towerView]);
   const activeTabKind = activeTab?.kind ?? null;
   // Tower views default over the empty/info state, but yield to a new-tab the
   // operator explicitly opened (and to any real file/diff/terminal content).
   const towerViewCanShow =
     activeTabKind === null || activeTabKind === "thread-info";
   const activeTowerTab = towerViewCanShow
-    ? (towerTabs.find((tab) => tab.id === towerView) ?? towerTabs[0] ?? null)
+    ? (towerTabs.find((tab) => tab.id === resolvedTowerView) ?? null)
     : null;
   const isTowerViewActive = activeTowerTab !== null;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
