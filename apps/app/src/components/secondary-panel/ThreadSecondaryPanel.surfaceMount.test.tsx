@@ -55,7 +55,13 @@ function stubOpenSurfaces(openTabIds: string[], activeTabId: string | null) {
   });
 }
 
-function Harness({ activeTab }: { activeTab: SecondaryFixedPanelTab }) {
+function Harness({
+  activeTab,
+  isBrowserTabActive = false,
+}: {
+  activeTab: SecondaryFixedPanelTab;
+  isBrowserTabActive?: boolean;
+}) {
   return (
     <MemoryRouter>
       <TooltipProvider>
@@ -64,6 +70,7 @@ function Harness({ activeTab }: { activeTab: SecondaryFixedPanelTab }) {
             activeTab={activeTab}
             threadId="thr_a"
             canUseGitUi={false}
+            isBrowserTabActive={isBrowserTabActive}
             isOpen
             metadataContent={null}
             onClose={noop}
@@ -141,6 +148,62 @@ describe("ThreadSecondaryPanel surface mounting", () => {
     );
     // Still mounted underneath the diff view, not torn down.
     expect(mountCounts).toEqual({ "test-tab-a": 1, "test-tab-b": 1 });
+  });
+
+  it("keeps an open surface mounted (just hidden) when the operator switches to the Browser tab", () => {
+    const mountCounts: Record<string, number> = {};
+    registerTrackerTab("test-tab-browser", mountCounts);
+    stubOpenSurfaces(["test-tab-browser"], "test-tab-browser");
+
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const view = render(
+      <Wrapper>
+        <Harness activeTab={createThreadInfoFixedPanelTab()} />
+      </Wrapper>,
+    );
+
+    expect(
+      view
+        .getByTestId("tab-content-test-tab-browser")
+        .getAttribute("data-visible"),
+    ).toBe("true");
+    expect(mountCounts).toEqual({ "test-tab-browser": 1 });
+
+    // The operator selects the ordinary Browser fixed tab.
+    view.rerender(
+      <Wrapper>
+        <Harness
+          activeTab={createThreadInfoFixedPanelTab()}
+          isBrowserTabActive
+        />
+      </Wrapper>,
+    );
+
+    expect(
+      view
+        .getByTestId("tab-content-test-tab-browser")
+        .getAttribute("data-visible"),
+    ).toBe("false");
+    expect(
+      view.getByTestId("tab-content-test-tab-browser").parentElement
+        ?.className,
+    ).toContain("hidden");
+    // Still mounted underneath the browser deck, not torn down.
+    expect(mountCounts).toEqual({ "test-tab-browser": 1 });
+
+    // Leaving Browser reveals the same surface again, still never remounted.
+    view.rerender(
+      <Wrapper>
+        <Harness activeTab={createThreadInfoFixedPanelTab()} />
+      </Wrapper>,
+    );
+
+    expect(
+      view
+        .getByTestId("tab-content-test-tab-browser")
+        .getAttribute("data-visible"),
+    ).toBe("true");
+    expect(mountCounts).toEqual({ "test-tab-browser": 1 });
   });
 
   it("shows nothing tower-related and no stale content when the open set is empty", () => {

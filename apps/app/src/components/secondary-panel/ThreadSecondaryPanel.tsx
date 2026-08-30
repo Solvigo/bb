@@ -926,84 +926,81 @@ export function ThreadSecondaryPanel({
           suppressed in that case because the deck fills the region.
         */}
         {browserDeck}
-        {isBrowserTabActive ? null : (
-          <>
-            {/*
-              Every surface the operator opened stays mounted — switching
-              between two open tower tabs (or away to a file/diff and back)
-              must not tear down and remount them, which would drop scroll
-              position, in-flight streams, or a running terminal. Only
-              `close()` unmounts a tab; visibility is CSS + the `visible` prop.
-            */}
-            {openInThreadId && openTowerTabs.length > 0 ? (
-              <WorktreeFileActionsProvider
-                addPathToChat={onAddPathToChat ?? null}
-              >
-                {openTowerTabs.map((tab) => {
-                  const isVisible =
-                    isTowerViewActive && activeTowerTab?.id === tab.id;
-                  return (
-                    <div
-                      key={`${tab.id}:${tab.generation ?? 0}`}
-                      className={
-                        isVisible ? "flex min-h-0 flex-1 flex-col" : "hidden"
-                      }
-                      aria-hidden={isVisible ? undefined : true}
-                    >
-                      <AgentSurfaceTabContent
-                        tab={tab}
-                        agentId={openInThreadId}
-                        onTeardown={registerTowerTeardown}
-                        viewerRole="commander"
-                        visible={isVisible}
-                      />
-                    </div>
-                  );
-                })}
-              </WorktreeFileActionsProvider>
-            ) : null}
-            {isTowerViewActive ? null : hasActiveFileTab ? (
-              <div
-                className={
-                  isTerminalTabActive || fileTabContentFillsRegion
-                    ? "min-h-0 flex-1 overflow-hidden"
-                    : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
-                }
-                data-file-preview-scroll-container={
-                  isTerminalTabActive || fileTabContentFillsRegion
-                    ? undefined
-                    : ""
-                }
-              >
-                {shouldRenderFileTabContent
-                  ? (fileTabContent ?? (
-                      <SecondaryPanelEmptyState
-                        icon="FileText"
-                        title="No preview available"
-                        description="This file tab does not have any preview content to show."
-                      />
-                    ))
-                  : null}
-              </div>
-            ) : isDiffPanelActive ? (
-              <GitDiffTabContent
-                environmentId={environmentId}
-                target={gitDiffTarget}
-                isDiffPanelActive={isDiffPanelActive}
-                gitDiffViewOptions={gitDiffViewOptions}
-                onOpenFileInEditor={onOpenFileInEditor}
-                onOpenFilePreview={onOpenFilePreview}
-                onSelectionAddToChat={onSelectionAddToChat}
-                workspaceRootPath={workspaceRootPath}
-              />
-            ) : (
-              <SecondaryPanelEmptyState
-                icon="Layers"
-                title="No lead views available"
-                description="Lead views will appear here when they are available."
-              />
-            )}
-          </>
+        {/*
+          Every surface the operator opened stays mounted — switching between
+          two open tower tabs, away to a file/diff/browser and back, must not
+          tear down and remount them, which would drop scroll position,
+          in-flight streams, or a running terminal. This has to render
+          regardless of `isBrowserTabActive`: gating the whole subtree on it
+          (as the file/diff/empty slot below correctly is) unmounted every
+          opened surface the instant the operator picked the Browser tab. Only
+          `close()` unmounts a tab; visibility is CSS + the `visible` prop.
+        */}
+        {openInThreadId && openTowerTabs.length > 0 ? (
+          <WorktreeFileActionsProvider addPathToChat={onAddPathToChat ?? null}>
+            {openTowerTabs.map((tab) => {
+              const isVisible =
+                !isBrowserTabActive &&
+                isTowerViewActive &&
+                activeTowerTab?.id === tab.id;
+              return (
+                <div
+                  key={`${tab.id}:${tab.generation ?? 0}`}
+                  className={
+                    isVisible ? "flex min-h-0 flex-1 flex-col" : "hidden"
+                  }
+                  aria-hidden={isVisible ? undefined : true}
+                >
+                  <AgentSurfaceTabContent
+                    tab={tab}
+                    agentId={openInThreadId}
+                    onTeardown={registerTowerTeardown}
+                    viewerRole="commander"
+                    visible={isVisible}
+                  />
+                </div>
+              );
+            })}
+          </WorktreeFileActionsProvider>
+        ) : null}
+        {isBrowserTabActive || isTowerViewActive ? null : hasActiveFileTab ? (
+          <div
+            className={
+              isTerminalTabActive || fileTabContentFillsRegion
+                ? "min-h-0 flex-1 overflow-hidden"
+                : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
+            }
+            data-file-preview-scroll-container={
+              isTerminalTabActive || fileTabContentFillsRegion ? undefined : ""
+            }
+          >
+            {shouldRenderFileTabContent
+              ? (fileTabContent ?? (
+                  <SecondaryPanelEmptyState
+                    icon="FileText"
+                    title="No preview available"
+                    description="This file tab does not have any preview content to show."
+                  />
+                ))
+              : null}
+          </div>
+        ) : isDiffPanelActive ? (
+          <GitDiffTabContent
+            environmentId={environmentId}
+            target={gitDiffTarget}
+            isDiffPanelActive={isDiffPanelActive}
+            gitDiffViewOptions={gitDiffViewOptions}
+            onOpenFileInEditor={onOpenFileInEditor}
+            onOpenFilePreview={onOpenFilePreview}
+            onSelectionAddToChat={onSelectionAddToChat}
+            workspaceRootPath={workspaceRootPath}
+          />
+        ) : (
+          <SecondaryPanelEmptyState
+            icon="Layers"
+            title="No lead views available"
+            description="Lead views will appear here when they are available."
+          />
         )}
       </div>
     </aside>
