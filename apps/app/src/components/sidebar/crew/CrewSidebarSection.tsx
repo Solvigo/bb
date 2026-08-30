@@ -1,4 +1,5 @@
 import {
+  Fragment,
   createContext,
   useCallback,
   useContext,
@@ -43,8 +44,9 @@ function CrewEntry({
   crew: Crew;
   onNavigate?: () => void;
 }) {
-  const { editing, beginDrag, endDrag, justMovedId } =
+  const { editingCrewId, setEditingCrewId, beginDrag, endDrag, justMovedId } =
     useContext(CrewEditContext);
+  const editing = editingCrewId === crew.commanderThreadId;
   const drop = useAgentDrop({ agentId: crew.commanderThreadId });
   const anyWorking = crew.leads.some((l) => l.working);
   const justMoved = justMovedId === crew.commanderThreadId;
@@ -63,88 +65,120 @@ function CrewEntry({
   const threadPath = (threadId: string) =>
     getThreadRoutePath({ projectId: crew.projectId, threadId });
   return (
-    <li>
-      <div className="flex items-center">
-        <NavLink
-          to={threadPath(crew.commanderThreadId)}
-          onClick={(event) => {
-            // In edit mode a row is a handle, not a link.
-            if (editing) event.preventDefault();
-            else onNavigate?.();
-          }}
-          draggable={editing}
-          onDragStart={(event) => {
-            event.dataTransfer.setData(AGENT_DRAG_TYPE, crew.commanderThreadId);
-            event.dataTransfer.effectAllowed = "move";
-            setAgentDragImage(event.dataTransfer, crew.name);
-            beginDrag(movable);
-          }}
-          onDragEnd={endDrag}
-          {...drop.handlers}
-          className={({ isActive }) =>
-            cn(
-              "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
-              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
-              // Where the agent would land, said loudly enough to see.
-              drop.isOver && "bg-primary/20 ring-2 ring-inset ring-primary",
-              drop.isForbidden && "cursor-not-allowed opacity-40",
-              justMoved && "bg-primary/25 ring-2 ring-inset ring-primary/70",
-            )
-          }
-        >
-          {editing ? (
+    <CrewScopeContext.Provider value={crew.commanderThreadId}>
+      <li
+        className={cn(
+          "transition-opacity",
+          // Editing one crew dims the rest, so the operator can see the boundary
+          // of what they are rearranging rather than inferring it.
+          editingCrewId !== null &&
+            !editing &&
+            "pointer-events-none opacity-40",
+        )}
+      >
+        <div className="group/crew flex items-center">
+          <NavLink
+            to={threadPath(crew.commanderThreadId)}
+            onClick={(event) => {
+              // In edit mode a row is a handle, not a link.
+              if (editing) event.preventDefault();
+              else onNavigate?.();
+            }}
+            draggable={editing}
+            onDragStart={(event) => {
+              event.dataTransfer.setData(
+                AGENT_DRAG_TYPE,
+                crew.commanderThreadId,
+              );
+              event.dataTransfer.effectAllowed = "move";
+              setAgentDragImage(event.dataTransfer, crew.name);
+              beginDrag(movable);
+            }}
+            onDragEnd={endDrag}
+            {...drop.handlers}
+            className={({ isActive }) =>
+              cn(
+                "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
+                isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+                // Where the agent would land, said loudly enough to see.
+                drop.isOver && "bg-primary/20 ring-2 ring-inset ring-primary",
+                drop.isForbidden && "cursor-not-allowed opacity-40",
+                justMoved && "bg-primary/25 ring-2 ring-inset ring-primary/70",
+              )
+            }
+          >
+            {editing ? (
+              <Icon
+                name="DragDropVertical"
+                className="size-3 shrink-0 text-subtle-foreground"
+                aria-hidden
+              />
+            ) : null}
             <Icon
-              name="DragDropVertical"
-              className="size-3 shrink-0 text-subtle-foreground"
+              // The folder belongs to the project above it. A commander is an
+              // agent — the one you talk to — and drawing it as a folder too made
+              // the two tiers read as one.
+              name="UserRound"
+              className={cn(
+                "size-4 shrink-0",
+                anyWorking ? "text-muted-foreground" : "text-subtle-foreground",
+              )}
               aria-hidden
             />
-          ) : null}
-          <Icon
-            // The folder belongs to the project above it. A commander is an
-            // agent — the one you talk to — and drawing it as a folder too made
-            // the two tiers read as one.
-            name="UserRound"
-            className={cn(
-              "size-4 shrink-0",
-              anyWorking ? "text-muted-foreground" : "text-subtle-foreground",
-            )}
-            aria-hidden
-          />
-          <span className="flex min-w-0 flex-col">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-sm font-medium text-foreground">
-                {crew.name}
+            <span className="flex min-w-0 flex-col">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-sm font-medium text-foreground">
+                  {crew.name}
+                </span>
+                <LivenessDot liveness={crew.liveness} />
+                <AttentionBadge count={crew.attention} name={crew.name} />
               </span>
-              <LivenessDot liveness={crew.liveness} />
-              <AttentionBadge count={crew.attention} name={crew.name} />
+              {crew.leads.length === 0 ? (
+                // Only worth a line when there is no tree to read instead. With
+                // leads on screen, "4 leads standing by" restates what the rows
+                // below it already say.
+                <span className="truncate text-xs text-muted-foreground">
+                  {crew.status}
+                </span>
+              ) : null}
             </span>
-            {crew.leads.length === 0 ? (
-              // Only worth a line when there is no tree to read instead. With
-              // leads on screen, "4 leads standing by" restates what the rows
-              // below it already say.
-              <span className="truncate text-xs text-muted-foreground">
-                {crew.status}
-              </span>
-            ) : null}
-          </span>
-        </NavLink>
-        {editing ? <AgentMoveMenu agent={movable} /> : null}
-      </div>
-      {crew.leads.length === 0 ? null : (
-        <ul className="flex flex-col">
-          {crew.leads.map((lead, index) => (
-            <AgentTreeRow
-              key={lead.threadId}
-              agent={lead}
-              depth={1}
-              isLast={index === crew.leads.length - 1}
-              onNavigate={onNavigate}
-              projectId={crew.projectId}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
+          </NavLink>
+          {editing ? <AgentMoveMenu agent={movable} /> : null}
+          {editingCrewId === null ? (
+            // Where edit mode is entered: on the crew it will act on, not on a
+            // global switch that arms the whole rail.
+            <button
+              type="button"
+              aria-label={`Rearrange ${crew.name}`}
+              onClick={(event) => {
+                event.preventDefault();
+                setEditingCrewId(crew.commanderThreadId);
+              }}
+              className="grid size-5 shrink-0 place-items-center rounded text-subtle-foreground opacity-0 transition-opacity hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 group-hover/crew:opacity-100"
+            >
+              <Icon name="Edit" className="size-3.5" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+        {crew.leads.length === 0 ? null : (
+          <ul className="flex flex-col">
+            {crew.leads.map((lead, index) => (
+              <Fragment key={lead.threadId}>
+                <InsertionZone parentId={crew.commanderThreadId} />
+                <AgentTreeRow
+                  agent={lead}
+                  depth={1}
+                  isLast={index === crew.leads.length - 1}
+                  onNavigate={onNavigate}
+                  projectId={crew.projectId}
+                />
+              </Fragment>
+            ))}
+            <InsertionZone parentId={crew.commanderThreadId} />
+          </ul>
+        )}
+      </li>
+    </CrewScopeContext.Provider>
   );
 }
 
@@ -165,8 +199,15 @@ interface CrewEditState {
   draggingSubtree: ReadonlySet<string>;
   beginDrag: (agent: MovableAgent) => void;
   endDrag: () => void;
-  /** Edit mode: grips out, drop zones shown, navigation held back. */
-  editing: boolean;
+  /**
+   * The crew being edited, by its commander's thread id, or null when none is.
+   *
+   * Scoped to ONE crew on purpose. Edit mode used to arm the whole rail at
+   * once: every agent and every loose chat grew a grip, so the operator was
+   * offered a hundred moves when they wanted one, and the surrounding tree
+   * gave no clue which part of it they were rearranging.
+   */
+  editingCrewId: string | null;
   announce: (message: string) => void;
   /** A refusal the operator should read, not just hear. */
   reportRefusal: (message: string) => void;
@@ -187,11 +228,24 @@ interface CrewEditState {
    * happen; the row flashes at its new home so the eye is told where to go.
    */
   justMovedId: string | null;
-  setEditing: (on: boolean | ((was: boolean) => boolean)) => void;
+  setEditingCrewId: (crewId: string | null) => void;
   /** The last refusal, still on screen. */
   refusal: string | null;
   /** What to say in the live region. */
   moveMessage: string;
+}
+
+/**
+ * The crew a row belongs to, so any row at any depth can answer "am I part of
+ * the crew being edited?" without threading the answer down by hand.
+ */
+const CrewScopeContext = createContext<string | null>(null);
+
+/** True when this row is inside the crew currently being edited. */
+function useInEditScope(): boolean {
+  const { editingCrewId } = useContext(CrewEditContext);
+  const crewId = useContext(CrewScopeContext);
+  return editingCrewId !== null && crewId === editingCrewId;
 }
 
 /** One possible new parent, with enough depth to read as a tree in a menu. */
@@ -206,13 +260,13 @@ const CrewEditContext = createContext<CrewEditState>({
   draggingSubtree: new Set<string>(),
   beginDrag: () => {},
   endDrag: () => {},
-  editing: false,
+  editingCrewId: null,
   announce: () => {},
   reportRefusal: () => {},
   destinations: [],
   move: () => {},
   justMovedId: null,
-  setEditing: () => {},
+  setEditingCrewId: () => {},
   refusal: null,
   moveMessage: "",
 });
@@ -371,7 +425,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
     setRefusal(message);
     window.setTimeout(() => setRefusal(null), 6000);
   }, []);
-  const [editing, setEditing] = useState(false);
+  const [editingCrewId, setEditingCrewId] = useState<string | null>(null);
   const [dragging, setDragging] = useState<{
     id: string;
     subtree: ReadonlySet<string>;
@@ -382,13 +436,13 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   const endDrag = useCallback(() => setDragging(null), []);
   // Esc leaves the mode, because a mode you cannot back out of is a trap.
   useEffect(() => {
-    if (!editing) return;
+    if (editingCrewId === null) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setEditing(false);
+      if (event.key === "Escape") setEditingCrewId(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing]);
+  }, [editingCrewId]);
   // Every agent, flat and in tree order, so the move menu can name a
   // destination the operator would otherwise have to drag to.
   const destinations = useMemo(() => {
@@ -435,7 +489,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       draggingSubtree: dragging?.subtree ?? new Set<string>(),
       beginDrag,
       endDrag,
-      editing,
+      editingCrewId,
       announce,
       reportRefusal,
       destinations,
@@ -447,7 +501,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       beginDrag,
       destinations,
       dragging,
-      editing,
+      editingCrewId,
       endDrag,
       justMovedId,
       move,
@@ -456,7 +510,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ ...editState, setEditing, refusal, moveMessage }),
+    () => ({ ...editState, setEditingCrewId, refusal, moveMessage }),
     [editState, moveMessage, refusal],
   );
   return (
@@ -574,6 +628,57 @@ function AgentMoveMenu({
 }
 
 /**
+ * The gap between two rows, as a place you can drop.
+ *
+ * A row is a 28px target and the operator has to hit the RIGHT one; the whole
+ * complaint about this mode being hard to use is that everything worth aiming
+ * at was small. A gap says "put it here, alongside these" — which in a tree
+ * whose only structure is a parent pointer means "give it the same parent" —
+ * and it can be made as large as it needs to be, because a gap costs nothing
+ * when nothing is being dragged.
+ */
+function InsertionZone({ parentId }: { parentId: string | null }) {
+  const { draggingId, move, editingCrewId } = useContext(CrewEditContext);
+  const inScope = useInEditScope();
+  const [isOver, setIsOver] = useState(false);
+  const armed = draggingId !== null && (editingCrewId === null || inScope);
+  if (!armed) return <div className="h-0" aria-hidden />;
+  return (
+    <div
+      aria-hidden
+      onDragEnter={(event) => {
+        if (!carriesAgent(event.dataTransfer)) return;
+        event.preventDefault();
+        setIsOver(true);
+      }}
+      onDragOver={(event) => {
+        if (!carriesAgent(event.dataTransfer)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setIsOver(true);
+      }}
+      onDragLeave={() => setIsOver(false)}
+      onDrop={(event) => {
+        setIsOver(false);
+        const moving = readAgentDrag(event.dataTransfer);
+        if (moving === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        move(moving, parentId);
+      }}
+      className="relative -my-1 flex h-4 items-center py-1.5"
+    >
+      <span
+        className={cn(
+          "h-0.5 w-full rounded-full transition-colors",
+          isOver ? "bg-primary" : "bg-transparent",
+        )}
+      />
+    </div>
+  );
+}
+
+/**
  * One agent in the crew tree, and whatever reports to it.
  *
  * The sidebar answers "where can I go", so every agent is a destination and the
@@ -601,8 +706,9 @@ function AgentTreeRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasChildren = agent.sorties.length > 0;
-  const { editing, beginDrag, endDrag, move, justMovedId } =
+  const { beginDrag, endDrag, move, justMovedId, draggingId } =
     useContext(CrewEditContext);
+  const editing = useInEditScope();
   const drop = useAgentDrop({ agentId: agent.threadId });
   const justMoved = justMovedId === agent.threadId;
 
@@ -694,7 +800,10 @@ function AgentTreeRow({
           }}
           className={({ isActive }) =>
             cn(
-              "flex min-h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left transition-colors",
+              "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left transition-[background-color,padding,min-height]",
+              // A row grows while something is in the air: the target the
+              // operator has to hit is the thing they said was hard to use.
+              draggingId !== null ? "min-h-9 py-2" : "min-h-7 py-0.5",
               isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
               drop.isOver && "bg-primary/20 ring-2 ring-inset ring-primary",
               drop.isForbidden && "cursor-not-allowed opacity-40",
@@ -720,15 +829,18 @@ function AgentTreeRow({
       {hasChildren && expanded ? (
         <ul className="flex flex-col">
           {agent.sorties.map((sortie, index) => (
-            <AgentTreeRow
-              key={sortie.threadId}
-              agent={sortie}
-              depth={depth + 1}
-              isLast={index === agent.sorties.length - 1}
-              onNavigate={onNavigate}
-              projectId={projectId}
-            />
+            <Fragment key={sortie.threadId}>
+              <InsertionZone parentId={agent.threadId} />
+              <AgentTreeRow
+                agent={sortie}
+                depth={depth + 1}
+                isLast={index === agent.sorties.length - 1}
+                onNavigate={onNavigate}
+                projectId={projectId}
+              />
+            </Fragment>
           ))}
+          <InsertionZone parentId={agent.threadId} />
         </ul>
       ) : null}
     </li>
@@ -885,39 +997,49 @@ export function CrewSidebarSection({
   const projectNameOf = useProjectNames();
   const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
   const { createCrew, creating: creatingCrew } = useCreateCrew();
-  const { editing, setEditing, refusal, moveMessage } =
+  const { editingCrewId, setEditingCrewId, refusal, moveMessage } =
     useContext(CrewEditContext);
+  const editingCrewName =
+    crews.find((crew) => crew.commanderThreadId === editingCrewId)?.name ??
+    null;
   return (
     <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
       <div className="mb-1 mt-3 flex items-center justify-between gap-2">
         <span className={SIDEBAR_SECTION_LABEL_CLASS}>Projects</span>
-        {/* The discoverable way in. Dragging still works without it, but a
-            gesture nobody can see is not a feature anybody has. */}
-        <button
-          type="button"
-          aria-pressed={editing}
-          aria-label={editing ? "Done editing the crew" : "Edit the crew"}
-          onClick={() => setEditing((on) => !on)}
-          className={cn(
-            "ml-auto grid size-5 shrink-0 place-items-center rounded transition-colors",
-            editing
-              ? "bg-sidebar-accent text-foreground"
-              : "text-subtle-foreground hover:bg-sidebar-accent hover:text-foreground",
-          )}
-        >
-          <Icon
-            name={editing ? "Check" : "Edit"}
-            className="size-3.5"
-            aria-hidden
-          />
-        </button>
         {headerTrailing}
       </div>
-      {editing ? (
-        <p className="px-2 pb-1 text-[11px] text-muted-foreground">
-          Drag an agent onto another to move it under it, or onto a project to
-          make it a root. Esc when you are done.
-        </p>
+      {editingCrewId !== null ? (
+        // A MODE has to announce itself. The old hint was a grey paragraph
+        // under the heading, which is indistinguishable from help text — the
+        // operator could not tell the rail was armed, or what it was armed on.
+        <div
+          role="status"
+          data-testid="crew-edit-bar"
+          className="mb-2 flex flex-col gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-1.5"
+        >
+          <div className="flex items-center gap-1.5">
+            <Icon
+              name="Edit"
+              className="size-3.5 shrink-0 text-primary"
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+              {`Editing ${editingCrewName ?? "this crew"}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => setEditingCrewId(null)}
+              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15"
+            >
+              Done
+            </button>
+          </div>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Drag an agent onto another to put it under that one, into a gap to
+            make it a sibling, or onto the project to make it a root. Esc when
+            you are done.
+          </p>
+        </div>
       ) : null}
       {refusal !== null ? (
         // The reason, where the operator is already looking.
@@ -1009,15 +1131,24 @@ function ChatRow({
   chat: LooseChat;
   onNavigate?: () => void;
 }) {
-  const { editing, beginDrag, endDrag, justMovedId } =
+  const { editingCrewId, beginDrag, endDrag, justMovedId } =
     useContext(CrewEditContext);
+  // A loose chat belongs to no crew, so it is never part of the crew being
+  // edited — and while one is being edited it steps out of the way entirely.
+  const editing = false;
+  const dimmed = editingCrewId !== null;
   const movable: MovableAgent = {
     threadId: chat.threadId,
     name: chat.name,
     sorties: [],
   };
   return (
-    <li>
+    <li
+      className={cn(
+        "transition-opacity",
+        dimmed && "pointer-events-none opacity-40",
+      )}
+    >
       <div className="flex items-center">
         <NavLink
           to={getThreadRoutePath({
