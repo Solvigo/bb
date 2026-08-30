@@ -452,6 +452,9 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       for (const child of agent.sorties) walk(child, depth + 1);
     };
     for (const crew of crews) {
+      if (editingCrewId !== null && crew.commanderThreadId !== editingCrewId) {
+        continue;
+      }
       out.push({
         threadId: crew.commanderThreadId,
         name: crew.name,
@@ -460,7 +463,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       for (const lead of crew.leads) walk(lead, 1);
     }
     return out;
-  }, [crews]);
+  }, [crews, editingCrewId]);
 
   const [justMovedId, setJustMovedId] = useState<string | null>(null);
   const move = useCallback(
@@ -638,10 +641,13 @@ function AgentMoveMenu({
  * when nothing is being dragged.
  */
 function InsertionZone({ parentId }: { parentId: string | null }) {
-  const { draggingId, move, editingCrewId } = useContext(CrewEditContext);
+  const { draggingId, draggingSubtree, move, editingCrewId } =
+    useContext(CrewEditContext);
   const inScope = useInEditScope();
   const [isOver, setIsOver] = useState(false);
   const armed = draggingId !== null && (editingCrewId === null || inScope);
+  const isForbidden =
+    draggingId !== null && parentId !== null && draggingSubtree.has(parentId);
   if (!armed) return null;
   return (
     <div
@@ -649,11 +655,16 @@ function InsertionZone({ parentId }: { parentId: string | null }) {
       onDragEnter={(event) => {
         if (!carriesAgent(event.dataTransfer)) return;
         event.preventDefault();
+        if (isForbidden) return;
         setIsOver(true);
       }}
       onDragOver={(event) => {
         if (!carriesAgent(event.dataTransfer)) return;
         event.preventDefault();
+        if (isForbidden) {
+          event.dataTransfer.dropEffect = "none";
+          return;
+        }
         event.dataTransfer.dropEffect = "move";
         setIsOver(true);
       }}
@@ -661,17 +672,20 @@ function InsertionZone({ parentId }: { parentId: string | null }) {
       onDrop={(event) => {
         setIsOver(false);
         const moving = readAgentDrag(event.dataTransfer);
-        if (moving === null) return;
+        if (moving === null || isForbidden) return;
         event.preventDefault();
         event.stopPropagation();
         move(moving, parentId);
       }}
-      className="relative -my-1 flex h-4 items-center py-1.5"
+      className={cn(
+        "relative -my-1 flex h-4 items-center py-1.5",
+        isForbidden && "cursor-not-allowed opacity-40",
+      )}
     >
       <span
         className={cn(
           "h-0.5 w-full rounded-full transition-colors",
-          isOver ? "bg-primary" : "bg-transparent",
+          isOver && !isForbidden ? "bg-primary" : "bg-transparent",
         )}
       />
     </div>
