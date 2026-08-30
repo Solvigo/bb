@@ -526,7 +526,7 @@ export function ThreadSecondaryPanel({
   const lastNavNonce = useRef(0);
   if (towerNav && towerNav.nonce !== lastNavNonce.current) {
     lastNavNonce.current = towerNav.nonce;
-    if (towerNav.view !== towerView) setTowerView(towerNav.view);
+    surfaces.open(towerNav.view);
   }
   const activeTabKind = activeTab?.kind ?? null;
   // Tower views default over the empty/info state, but yield to a new-tab the
