@@ -47,7 +47,14 @@ function CrewEntry({
   const { editingCrewId, setEditingCrewId, beginDrag, endDrag, justMovedId } =
     useContext(CrewEditContext);
   const editing = editingCrewId === crew.commanderThreadId;
-  const drop = useAgentDrop({ agentId: crew.commanderThreadId });
+  // Not useInEditScope(): this component renders the CrewScopeContext
+  // Provider below, so a hook called up here — before that provider exists —
+  // would read the ambient value from OUTSIDE this crew, which is never this
+  // crew's own id. `editing` is the same fact, computed directly.
+  const drop = useAgentDrop({
+    agentId: crew.commanderThreadId,
+    inScope: editing,
+  });
   const anyWorking = crew.leads.some((l) => l.working);
   const justMoved = justMovedId === crew.commanderThreadId;
   // A commander is an agent like any other — it can be moved under another
@@ -104,9 +111,7 @@ function CrewEntry({
             onDragEnd={endDrag}
             // Dimmed for every crew but the one being edited; pointer-events
             // stops the mouse but not Tab, so keyboard focus is pulled too.
-            tabIndex={
-              editingCrewId !== null && !editing ? -1 : undefined
-            }
+            tabIndex={editingCrewId !== null && !editing ? -1 : undefined}
             {...drop.handlers}
             className={({ isActive }) =>
               cn(
@@ -359,7 +364,7 @@ function readAgentDrag(dataTransfer: DataTransfer | null): string | null {
  * `announce` is not decoration: a drag is invisible to a screen reader, and a
  * refusal that only shows as a row springing back is a refusal nobody heard.
  */
-function useAgentDrop(args: { agentId: string }): {
+function useAgentDrop(args: { agentId: string; inScope: boolean }): {
   isOver: boolean;
   /** A drag is in the air and this row cannot take it. */
   isForbidden: boolean;
@@ -370,23 +375,23 @@ function useAgentDrop(args: { agentId: string }): {
     onDrop: (event: React.DragEvent) => void;
   };
 } {
-  const { agentId } = args;
+  const { agentId, inScope } = args;
   const { draggingId, draggingSubtree, endDrag, move, editingCrewId } =
     useContext(CrewEditContext);
-  const inScope = useInEditScope();
-  // The project-root zone (agentId === "") is not inside any crew, so it is
-  // exempt from the scope check below — it is the one destination that is
-  // always reachable regardless of which crew is being edited.
-  const isRoot = agentId === "";
   const [isOver, setIsOver] = useState(false);
   // An agent cannot be dropped on itself or on anything inside its own branch,
-  // nor onto a row outside the crew currently being edited. The row that owns
-  // the drop already dims and disables pointer events for out-of-scope crews,
-  // but that is presentation, not the guarantee: the handler refuses the drop
-  // itself so a bypassed or future style change cannot reopen the hole.
+  // nor onto a target outside the scope the caller has computed for it (a row
+  // outside the crew being edited, or a project header that isn't the edited
+  // crew's own). `inScope` is passed in rather than read from context here,
+  // because a row that OWNS a CrewScopeContext provider — the commander row —
+  // renders that provider below itself; reading the context in the same hook
+  // call would see the ambient value from OUTSIDE the crew, never its own.
+  // The row that owns the drop already dims and disables pointer events for
+  // out-of-scope targets, but that is presentation, not the guarantee: the
+  // handler refuses the drop itself so a bypassed or future style change
+  // cannot reopen the hole.
   const isForbidden =
-    draggingId !== null &&
-    (draggingSubtree.has(agentId) || (!isRoot && !inScope));
+    draggingId !== null && (draggingSubtree.has(agentId) || !inScope);
   return {
     isOver: isOver && !isForbidden,
     isForbidden,
@@ -572,11 +577,24 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
  * upward, finds nothing under the cursor, and concludes the feature is broken;
  * so the header lights up like any other target, and says what it is while a
  * drag is in the air.
+ *
+ * `reparentAgent` takes no project — a root is a root, not a root OF a
+ * project — so only the header for the project the edited crew actually
+ * lives in may accept the drop. Every other project's header would perform
+ * the exact same "make root" whichever one you dropped it on, which is not
+ * what dropping it on THAT header implies.
  */
-function ProjectRootDropZone({ name }: { name: string }) {
-  const { draggingId } = useContext(CrewEditContext);
-  const drop = useAgentDrop({ agentId: "" });
-  const armed = draggingId !== null;
+function ProjectRootDropZone({
+  name,
+  inScope,
+}: {
+  name: string;
+  inScope: boolean;
+}) {
+  const { draggingId, editingCrewId } = useContext(CrewEditContext);
+  const drop = useAgentDrop({ agentId: "", inScope });
+  const armed = draggingId !== null && inScope;
+  const dimmed = editingCrewId !== null && !inScope;
   return (
     <div
       {...drop.handlers}
@@ -584,6 +602,7 @@ function ProjectRootDropZone({ name }: { name: string }) {
         "flex min-h-6 items-center gap-1.5 rounded px-2 transition-colors",
         armed && "ring-1 ring-inset ring-border",
         drop.isOver && "bg-primary/20 ring-2 ring-primary",
+        dimmed && "pointer-events-none opacity-40",
       )}
     >
       <Icon
@@ -777,7 +796,7 @@ function AgentTreeRow({
   // honor either — a keyboard user could still land here and fire the Shift
   // shortcut below. Pulling it out of the tab order is the real fix.
   const outOfScope = editingCrewId !== null && !editing;
-  const drop = useAgentDrop({ agentId: agent.threadId });
+  const drop = useAgentDrop({ agentId: agent.threadId, inScope: editing });
   const justMoved = justMovedId === agent.threadId;
 
   return (
@@ -825,6 +844,11 @@ function AgentTreeRow({
             }
             aria-expanded={expanded}
             onClick={() => setExpanded((open) => !open)}
+            // Same reasoning as the row's own tabIndex: the enclosing crew's
+            // pointer-events-none dims this visually but does not pull it out
+            // of Tab, so a keyboard user editing a DIFFERENT crew could still
+            // reach it.
+            tabIndex={outOfScope ? -1 : undefined}
             className="flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground transition-colors hover:text-foreground"
           >
             <Icon
@@ -1078,9 +1102,14 @@ export function CrewSidebarSection({
   const { createCrew, creating: creatingCrew } = useCreateCrew();
   const { editingCrewId, setEditingCrewId, endDrag, refusal, moveMessage } =
     useContext(CrewEditContext);
-  const editingCrewName =
-    crews.find((crew) => crew.commanderThreadId === editingCrewId)?.name ??
-    null;
+  const editingCrew = crews.find(
+    (crew) => crew.commanderThreadId === editingCrewId,
+  );
+  const editingCrewName = editingCrew?.name ?? null;
+  // reparentAgent takes no project, so "make root" is not scoped to a
+  // project the operator picks — it lands wherever the edited crew already
+  // lives. Only that one project's header may act as the drop target.
+  const editingProjectId = editingCrew?.projectId ?? null;
   return (
     <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
       <div className="mb-1 mt-3 flex items-center justify-between gap-2">
@@ -1164,7 +1193,10 @@ export function CrewSidebarSection({
           {groupByProject(crews, projectNameOf, projectIds).map((group) => (
             <li key={group.projectId}>
               {group.name === null ? null : (
-                <ProjectRootDropZone name={group.name} />
+                <ProjectRootDropZone
+                  name={group.name}
+                  inScope={group.projectId === editingProjectId}
+                />
               )}
               {group.crews.length === 0 ? (
                 <button
@@ -1217,18 +1249,20 @@ function ChatRow({
   // edited — and while one is being edited it steps out of the way entirely.
   const editing = false;
   const dimmed = editingCrewId !== null;
+  // Dragging a chat is closed off entirely (see draggable={false} below), but
+  // that must not be the only way back INTO a crew: "make root" turned a leaf
+  // into exactly this row, and a chat with no drag and no menu had no way to
+  // undo that short of the server-side move tooling. The dropdown is a plain
+  // click calling `move` directly — no dataTransfer to spoof — so offering it
+  // during edit mode reopens a recovery path without reopening the drag hole.
+  const canMove = editingCrewId !== null;
   const movable: MovableAgent = {
     threadId: chat.threadId,
     name: chat.name,
     sorties: [],
   };
   return (
-    <li
-      className={cn(
-        "transition-opacity",
-        dimmed && "pointer-events-none opacity-40",
-      )}
-    >
+    <li className="transition-opacity">
       <div className="flex items-center">
         <NavLink
           to={getThreadRoutePath({
@@ -1252,10 +1286,15 @@ function ChatRow({
             event.preventDefault();
           }}
           onDragEnd={endDrag}
+          // Dimming lives on the link itself, not an ancestor, because the
+          // move-menu button beside it has to stay reachable — pointer-events
+          // and Tab both, not just the pointer.
+          tabIndex={dimmed ? -1 : undefined}
           className={({ isActive }) =>
             cn(
               "flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 transition-colors",
               isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+              dimmed && "pointer-events-none opacity-40",
               justMovedId === chat.threadId &&
                 "bg-primary/25 ring-2 ring-inset ring-primary/70",
             )
@@ -1278,7 +1317,7 @@ function ChatRow({
           </span>
           <LivenessDot liveness={chat.liveness} />
         </NavLink>
-        {editing ? <AgentMoveMenu agent={movable} /> : null}
+        {canMove ? <AgentMoveMenu agent={movable} /> : null}
       </div>
     </li>
   );

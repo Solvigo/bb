@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-
 import { cleanup, render, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -38,7 +37,9 @@ afterEach(() => {
 
 describe("CrewSidebarSection drag boundary", () => {
   it("refuses dropping an ancestor into a descendant's gap", async () => {
-    vi.mocked(queryHooks.useProjectNames).mockReturnValue(new Map([["p1", "Project 1"]]));
+    vi.mocked(queryHooks.useProjectNames).mockReturnValue(
+      new Map([["p1", "Project 1"]]),
+    );
 
     const mockCrews = [
       {
@@ -82,7 +83,7 @@ describe("CrewSidebarSection drag boundary", () => {
         <CrewEditProvider>
           <CrewSidebarSection />
         </CrewEditProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     // Expand edit mode by clicking edit on root
@@ -90,7 +91,9 @@ describe("CrewSidebarSection drag boundary", () => {
     fireEvent.click(editBtn);
 
     // Expand the child lead so we can see its gaps
-    const expandBtn = screen.getByRole("button", { name: "Show the agents under Child Lead" });
+    const expandBtn = screen.getByRole("button", {
+      name: "Show the agents under Child Lead",
+    });
     fireEvent.click(expandBtn);
 
     // The ancestor is the root crew link.
@@ -139,8 +142,15 @@ describe("CrewSidebarSection edit-scope guards", () => {
   }
 
   function renderTwoCrewsAndAChat() {
+    // Crew B lives in a SECOND project on purpose: the make-root scoping
+    // tests need two distinct project headers, and every other test in this
+    // suite treats Crew B purely as "the crew not being edited" regardless of
+    // which project it is in.
     vi.mocked(queryHooks.useProjectNames).mockReturnValue(
-      new Map([["p1", "Project 1"]]),
+      new Map([
+        ["p1", "Project 1"],
+        ["p2", "Project 2"],
+      ]),
     );
 
     const mockCrews = [
@@ -162,7 +172,7 @@ describe("CrewSidebarSection edit-scope guards", () => {
         ],
       },
       {
-        projectId: "p1",
+        projectId: "p2",
         commanderThreadId: "cmd_b",
         name: "Crew B",
         status: "idle",
@@ -174,7 +184,18 @@ describe("CrewSidebarSection edit-scope guards", () => {
             name: "Lead B",
             liveness: null,
             attention: 0,
-            sorties: [],
+            // A child of its own, so a test can reach Lead B's expand/collapse
+            // toggle — the "other-crew expansion button" keyboard-isolation
+            // coverage needs one to exist while Crew B is out of scope.
+            sorties: [
+              {
+                threadId: "sortie_b",
+                name: "Sortie B",
+                liveness: null,
+                attention: 0,
+                sorties: [],
+              },
+            ],
           },
         ],
       },
@@ -326,5 +347,101 @@ describe("CrewSidebarSection edit-scope guards", () => {
     editCrew("Crew B");
 
     expect(document.querySelectorAll(".relative.-my-1").length).toBe(0);
+  });
+
+  it("allows dropping an agent directly under its own crew's commander", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    // Lead A's own commander is the one target every earlier "out of scope"
+    // check would also reject if the commander row read its own scope wrong
+    // — this is the positive case those checks must not have broken.
+    const leadALink = screen.getByRole("link", { name: /Lead A/ });
+    const dataTransfer = makeDataTransfer("lead_a");
+    fireEvent.dragStart(leadALink, { dataTransfer });
+
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    fireEvent.dragOver(crewALink, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("move");
+
+    fireEvent.drop(crewALink, { dataTransfer });
+    expect(useCrewsModule.reparentAgent).toHaveBeenCalledWith(
+      "lead_a",
+      "cmd_a",
+    );
+  });
+
+  it("restricts the make-root drop to the edited crew's own project header", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    const dataTransfer = makeDataTransfer("cmd_a");
+    fireEvent.dragStart(crewALink, { dataTransfer });
+
+    // Crew A lives in Project 1. reparentAgent takes no project, so Project
+    // 2's header would perform the identical "make root" — but offering it
+    // there implies something the drop cannot actually do.
+    const otherProjectHeader = screen.getByText("Project 2");
+    fireEvent.dragOver(otherProjectHeader, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("none");
+    expect(otherProjectHeader.closest("div")?.className).toContain(
+      "pointer-events-none",
+    );
+
+    fireEvent.drop(otherProjectHeader, { dataTransfer });
+    expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
+
+    // A drop — refused or not — ends the drag, so the positive case needs a
+    // fresh one.
+    fireEvent.dragStart(crewALink, { dataTransfer });
+    const ownProjectHeader = screen.getByText("Project 1");
+    fireEvent.dragOver(ownProjectHeader, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("move");
+
+    fireEvent.drop(ownProjectHeader, { dataTransfer });
+    expect(useCrewsModule.reparentAgent).toHaveBeenCalledWith("cmd_a", null);
+  });
+
+  it("pulls out-of-scope interactive elements out of the tab order, not just out of pointer reach", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    // In scope: Crew A's own lead stays reachable.
+    const leadALink = screen.getByRole("link", { name: /Lead A/ });
+    expect(leadALink.getAttribute("tabindex")).not.toBe("-1");
+
+    // Out of scope: Crew B's lead and its own expand/collapse toggle are both
+    // dimmed by the same ancestor's pointer-events-none, which Tab ignores.
+    const leadBLink = screen.getByRole("link", { name: /Lead B/ });
+    expect(leadBLink.getAttribute("tabindex")).toBe("-1");
+
+    const leadBExpandButton = screen.getByRole("button", {
+      name: "Show the agents under Lead B",
+    });
+    expect(leadBExpandButton.getAttribute("tabindex")).toBe("-1");
+
+    // A loose chat is dimmed for every crew's edit, not only a foreign one.
+    const chatLink = screen.getByRole("link", { name: /Loose Chat/ });
+    expect(chatLink.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("offers a move-menu recovery path for a loose chat while a crew is being edited", async () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    // Promoting a leaf to root is what turns it into a row exactly like this
+    // one; drag stays closed off for a loose chat, so the recovery back into
+    // the crew being edited has to be this menu, not a dataTransfer.
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Move Loose Chat" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Lead A" }));
+
+    expect(useCrewsModule.reparentAgent).toHaveBeenCalledWith(
+      "chat_1",
+      "lead_a",
+    );
   });
 });
