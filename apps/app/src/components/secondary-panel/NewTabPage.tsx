@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
@@ -97,6 +97,11 @@ function NewTabLauncher({
   const reviewShortcut = useAppCommandShortcut("diff.toggle");
   const terminalShortcut = useAppCommandShortcut("terminal.open");
   const filesShortcut = useAppCommandShortcut("file.quickOpen");
+  // Generated, not a literal: a split view can mount this page more than
+  // once, and a literal id would collide across instances — duplicate DOM
+  // ids resolve `aria-labelledby` unpredictably (typically to whichever
+  // instance's element happens to be first in the document).
+  const agentSurfacesHeadingId = useId();
 
   return (
     <div className="grid min-h-full place-items-center bg-tower-surface px-8 py-12">
@@ -134,11 +139,11 @@ function NewTabLauncher({
         {surfaces.length > 0 ? (
           <div
             role="group"
-            aria-labelledby="new-tab-agent-surfaces-heading"
+            aria-labelledby={agentSurfacesHeadingId}
             className="contents"
           >
             <p
-              id="new-tab-agent-surfaces-heading"
+              id={agentSurfacesHeadingId}
               className="px-1 pb-1 pt-3 text-2xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
             >
               This agent

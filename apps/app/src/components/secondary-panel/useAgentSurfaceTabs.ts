@@ -5,6 +5,7 @@ import {
   type FixedPanelTabsPanelStateId,
   type FixedPanelTabsSyncThreadId,
 } from "@/lib/fixed-panel-tabs";
+import { getFixedPanelTabsStateStorageKey } from "@/lib/fixed-panel-tabs-state";
 
 export interface AgentSurfaceTabsState {
   /** Ids of the surfaces this thread has open, in strip order. */
@@ -42,10 +43,31 @@ function storageKey(threadId: string): string {
   return `${STORAGE_PREFIX}-${threadId}-${STORAGE_VERSION}`;
 }
 
+function threadIdFromStorageKey(key: string): string | null {
+  const prefix = `${STORAGE_PREFIX}-`;
+  const suffix = `-${STORAGE_VERSION}`;
+  if (!key.startsWith(prefix) || !key.endsWith(suffix)) return null;
+  return key.slice(prefix.length, key.length - suffix.length);
+}
+
 function readStored(threadId: string): StoredSurfaceTabs | null {
   try {
     const raw = window.localStorage.getItem(storageKey(threadId));
     if (raw === null) return null;
+    // This key rides beside the thread's fixed-panel-tabs record (every
+    // open/close/show write goes through the SAME update() that touches
+    // that record too — see the writes below), so the record is the one
+    // canonical answer for whether this thread's panel state is still live.
+    // Without this check, a thread idle long enough for that record to be
+    // pruned (14+ days — see FIXED_PANEL_TABS_IDLE_EXPIRY_MS) could still
+    // resurrect its old open surfaces from this second, unpruned key.
+    if (
+      window.localStorage.getItem(
+        getFixedPanelTabsStateStorageKey({ threadId }),
+      ) === null
+    ) {
+      return null;
+    }
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
     const { openTabIds, activeTabId } = parsed as Partial<StoredSurfaceTabs>;
@@ -178,4 +200,54 @@ export function useAgentSurfaceTabs(
   }, [threadId, update]);
 
   return { openTabIds, activeTabId, open, close, show };
+}
+
+/**
+ * Deletes this hook's own storage entries once their owning fixed-panel-tabs
+ * record is gone — pruned for 14+ days idle, or never existed. `readStored`
+ * already refuses to resurrect an orphan (the owning record is the one
+ * canonical answer for whether a thread's panel state is still live), so
+ * this is pure hygiene: without it an orphan would sit in storage forever,
+ * unreadable but never removed either.
+ */
+export function pruneOrphanedAgentSurfaceTabsStorage(): void {
+  let storage: Storage;
+  try {
+    storage = window.localStorage;
+  } catch {
+    return;
+  }
+
+  const orphanedKeys: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (key === null) continue;
+    const threadId = threadIdFromStorageKey(key);
+    if (threadId === null) continue;
+    if (storage.getItem(getFixedPanelTabsStateStorageKey({ threadId })) === null) {
+      orphanedKeys.push(key);
+    }
+  }
+
+  for (const key of orphanedKeys) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // Best-effort cleanup; nothing depends on this succeeding.
+    }
+  }
+}
+
+/**
+ * Sweeps orphaned agent-surface-tabs storage entries on the same cadence the
+ * owning fixed-panel-tabs record is pruned on — see
+ * useFixedPanelTabsStorageMaintenance, which this is meant to be called
+ * alongside.
+ */
+export function useAgentSurfaceTabsStorageMaintenance(
+  panelStateId: FixedPanelTabsPanelStateId,
+): void {
+  useEffect(() => {
+    pruneOrphanedAgentSurfaceTabsStorage();
+  }, [panelStateId]);
 }

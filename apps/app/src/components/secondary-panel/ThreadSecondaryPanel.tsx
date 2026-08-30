@@ -808,10 +808,14 @@ export function ThreadSecondaryPanel({
                 }
                 label="Diff"
                 leadingVisual={<Icon name="FileDiff" />}
-                onClick={() => {
-                  setTowerView(null);
-                  onPanelChange("git-diff");
-                }}
+                // Switching the fixed panel to Diff already hides the tower
+                // content — `towerViewCanShow` gates on `activeTab.kind`, not
+                // on which surface is persisted as active — so this must NOT
+                // also clear the persisted active surface id. Doing so forgot
+                // which of two-or-more open surfaces was showing: coming back
+                // to Info (or reloading) fell through to the first open tab
+                // instead of the one the operator actually had up.
+                onClick={() => onPanelChange("git-diff")}
                 title="Diff"
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"

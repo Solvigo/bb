@@ -158,7 +158,10 @@ import {
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { useAgentSurfaceTabs } from "@/components/secondary-panel/useAgentSurfaceTabs";
+import {
+  useAgentSurfaceTabs,
+  useAgentSurfaceTabsStorageMaintenance,
+} from "@/components/secondary-panel/useAgentSurfaceTabs";
 import { listAgentSurfaceTabs } from "@/components/secondary-panel/tower/agentSurfaceRegistry";
 import { registerBuiltInAgentSurfaceTabs } from "@/components/secondary-panel/tower/builtInAgentSurfaceTabs";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
@@ -466,6 +469,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     usePaneContext();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
+  useAgentSurfaceTabsStorageMaintenance(threadId);
   const systemConfigQuery = useSystemConfig();
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;

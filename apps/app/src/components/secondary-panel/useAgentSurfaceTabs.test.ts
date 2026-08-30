@@ -9,7 +9,10 @@ import {
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
-import { useAgentSurfaceTabs } from "./useAgentSurfaceTabs";
+import {
+  pruneOrphanedAgentSurfaceTabsStorage,
+  useAgentSurfaceTabs,
+} from "./useAgentSurfaceTabs";
 
 const apiMocks = vi.hoisted(() => ({
   getThreadTabs: vi.fn(),
@@ -178,6 +181,59 @@ describe("useAgentSurfaceTabs persistence", () => {
       expect(result.current.openTabIds).toEqual([]);
     });
     expect(result.current.activeTabId).toBeNull();
+  });
+
+  it("does not resurrect a stored open set once the owning fixed-panel-tabs record is gone", () => {
+    // No owning fixed-panel-tabs record exists for this thread — as if it
+    // had been idle-pruned (14+ days — FIXED_PANEL_TABS_IDLE_EXPIRY_MS), or
+    // the thread was visited just long enough to open a surface and its
+    // panel state was never otherwise touched before this reload.
+    const threadId = "thr_orphan_hydrate";
+    window.localStorage.setItem(
+      agentSurfaceStorageKey(threadId),
+      JSON.stringify({ openTabIds: ["brief"], activeTabId: "brief" }),
+    );
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => useAgentSurfaceTabs(threadId, threadId),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+
+    // Hydration is synchronous (a plain localStorage read, no network round
+    // trip), so if it were going to resurrect the orphan it would have
+    // already happened by the time render settles.
+    expect(result.current.openTabIds).toEqual([]);
+    expect(result.current.activeTabId).toBeNull();
+  });
+
+  describe("pruneOrphanedAgentSurfaceTabsStorage", () => {
+    it("removes a companion key whose owning record is gone, keeps one whose owner still exists", () => {
+      const orphanThreadId = "thr_prune_orphan";
+      const liveThreadId = "thr_prune_live";
+      window.localStorage.setItem(
+        agentSurfaceStorageKey(orphanThreadId),
+        JSON.stringify({ openTabIds: ["brief"], activeTabId: "brief" }),
+      );
+      window.localStorage.setItem(
+        agentSurfaceStorageKey(liveThreadId),
+        JSON.stringify({ openTabIds: ["files"], activeTabId: "files" }),
+      );
+      window.localStorage.setItem(
+        getFixedPanelTabsStateStorageKey({ threadId: liveThreadId }),
+        serializeFixedPanelTabsState({
+          state: createEmptyFixedPanelTabsState({ lastUsedAt: Date.now() }),
+        }),
+      );
+
+      pruneOrphanedAgentSurfaceTabsStorage();
+
+      expect(
+        window.localStorage.getItem(agentSurfaceStorageKey(orphanThreadId)),
+      ).toBeNull();
+      expect(
+        window.localStorage.getItem(agentSurfaceStorageKey(liveThreadId)),
+      ).not.toBeNull();
+    });
   });
 
   it("keeps two threads' open sets independent", () => {

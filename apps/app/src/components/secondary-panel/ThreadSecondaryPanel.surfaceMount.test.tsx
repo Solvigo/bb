@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { useEffect } from "react";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
@@ -11,6 +11,7 @@ import {
   createThreadInfoFixedPanelTab,
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
 import { useAgentSurfaceTabs } from "./useAgentSurfaceTabs";
@@ -46,21 +47,27 @@ function registerTrackerTab(id: string, mountCounts: Record<string, number>) {
 }
 
 function stubOpenSurfaces(openTabIds: string[], activeTabId: string | null) {
-  vi.mocked(useAgentSurfaceTabs).mockReturnValue({
+  const surfaces = {
     openTabIds,
     activeTabId,
     open: vi.fn(),
     close: vi.fn(),
     show: vi.fn(),
-  });
+  };
+  vi.mocked(useAgentSurfaceTabs).mockReturnValue(surfaces);
+  return surfaces;
 }
 
 function Harness({
   activeTab,
   isBrowserTabActive = false,
+  canUseGitUi = false,
+  onPanelChange = noop,
 }: {
   activeTab: SecondaryFixedPanelTab;
   isBrowserTabActive?: boolean;
+  canUseGitUi?: boolean;
+  onPanelChange?: (panel: ThreadSecondaryPanelTab) => void;
 }) {
   return (
     <MemoryRouter>
@@ -69,7 +76,7 @@ function Harness({
           <ThreadSecondaryPanel
             activeTab={activeTab}
             threadId="thr_a"
-            canUseGitUi={false}
+            canUseGitUi={canUseGitUi}
             isBrowserTabActive={isBrowserTabActive}
             isOpen
             metadataContent={null}
@@ -77,7 +84,7 @@ function Harness({
             onCollapse={noop}
             onFileTabReorder={noop}
             onOpenNewTab={noop}
-            onPanelChange={noop}
+            onPanelChange={onPanelChange}
             onPanelFocus={noop}
             renderAsDrawer={false}
             isConversationCollapsed={false}
@@ -148,6 +155,43 @@ describe("ThreadSecondaryPanel surface mounting", () => {
     );
     // Still mounted underneath the diff view, not torn down.
     expect(mountCounts).toEqual({ "test-tab-a": 1, "test-tab-b": 1 });
+  });
+
+  it("switching to Diff does not clear which of two open surfaces was active", () => {
+    const mountCounts: Record<string, number> = {};
+    registerTrackerTab("test-tab-diff-1", mountCounts);
+    registerTrackerTab("test-tab-diff-2", mountCounts);
+    // The SECOND surface is the one showing before Diff is clicked.
+    const surfaces = stubOpenSurfaces(
+      ["test-tab-diff-1", "test-tab-diff-2"],
+      "test-tab-diff-2",
+    );
+
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const view = render(
+      <Wrapper>
+        <Harness activeTab={createThreadInfoFixedPanelTab()} canUseGitUi />
+      </Wrapper>,
+    );
+
+    expect(
+      view
+        .getByTestId("tab-content-test-tab-diff-2")
+        .getAttribute("data-visible"),
+    ).toBe("true");
+
+    fireEvent.click(view.getByRole("button", { name: "Show diff panel" }));
+
+    // The fixed panel already hides tower content while a real view (Diff,
+    // a file, ...) is active — `towerViewCanShow` gates on the active FIXED
+    // panel, not on the persisted active surface id — so the Diff click has
+    // no business touching persisted surface state at all. Calling
+    // `show(null)` here was what silently forgot which surface (of two or
+    // more) was active: the next time Info showed again, or after a reload,
+    // it fell back to the first open tab instead of the one actually shown.
+    expect(surfaces.show).not.toHaveBeenCalled();
+    expect(surfaces.open).not.toHaveBeenCalled();
+    expect(surfaces.close).not.toHaveBeenCalled();
   });
 
   it("keeps an open surface mounted (just hidden) when the operator switches to the Browser tab", () => {
