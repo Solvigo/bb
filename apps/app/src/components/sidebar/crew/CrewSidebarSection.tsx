@@ -642,7 +642,7 @@ function InsertionZone({ parentId }: { parentId: string | null }) {
   const inScope = useInEditScope();
   const [isOver, setIsOver] = useState(false);
   const armed = draggingId !== null && (editingCrewId === null || inScope);
-  if (!armed) return <div className="h-0" aria-hidden />;
+  if (!armed) return null;
   return (
     <div
       aria-hidden
@@ -800,7 +800,7 @@ function AgentTreeRow({
           }}
           className={({ isActive }) =>
             cn(
-              "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left transition-[background-color,padding,min-height]",
+              "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left transition-all",
               // A row grows while something is in the air: the target the
               // operator has to hit is the thing they said was hard to use.
               draggingId !== null ? "min-h-9 py-2" : "min-h-7 py-0.5",
@@ -1035,9 +1035,8 @@ export function CrewSidebarSection({
             </button>
           </div>
           <p className="text-[11px] leading-snug text-muted-foreground">
-            Drag an agent onto another to put it under that one, into a gap to
-            make it a sibling, or onto the project to make it a root. Esc when
-            you are done.
+            Drag onto an agent to nest it, into a gap to make it a sibling, or
+            onto the project to make it a root. Esc to finish.
           </p>
         </div>
       ) : null}
