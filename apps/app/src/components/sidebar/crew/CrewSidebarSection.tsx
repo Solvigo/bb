@@ -51,7 +51,8 @@ function CrewEntry({
     beginDrag,
     endDrag,
     justMovedId,
-    recoverable,
+    recoverableIds,
+    registerRearrangeButton,
   } = useContext(CrewEditContext);
   const editing = editingCrewId === crew.commanderThreadId;
   // A different crew is being edited. Dimmed by the ancestor's
@@ -64,10 +65,10 @@ function CrewEntry({
   // crew-spawned lead always does — so it comes back as a brand new root
   // CREW with no leads, not a loose chat. Without this it would render as
   // any other out-of-scope crew: dimmed, inert, and offering no way back.
+  // Every crew promoted this session is independently recoverable, not just
+  // the most recently settled one.
   const isRecoverable =
-    recoverable !== null &&
-    recoverable.threadId === crew.commanderThreadId &&
-    recoverable.fromCrewId === editingCrewId;
+    editingCrewId !== null && recoverableIds.has(crew.commanderThreadId);
   // Not useInEditScope(): this component renders the CrewScopeContext
   // Provider below, so a hook called up here — before that provider exists —
   // would read the ambient value from OUTSIDE this crew, which is never this
@@ -204,6 +205,11 @@ function CrewEntry({
             <button
               type="button"
               aria-label={`Rearrange ${crew.name}`}
+              // Registered so Done/Escape can hand focus back to THIS crew's
+              // own button once the edit bar unmounts and this one remounts
+              // — otherwise focus drops to the document body the instant the
+              // control it was on (Done) disappears.
+              ref={(el) => registerRearrangeButton(crew.commanderThreadId, el)}
               onClick={(event) => {
                 event.preventDefault();
                 setEditingCrewId(crew.commanderThreadId);
@@ -288,22 +294,40 @@ interface CrewEditState {
   /** What to say in the live region. */
   moveMessage: string;
   /**
-   * The thread a leaf was JUST promoted into, out of the crew it names —
-   * the one promoted agent, if any, allowed a move-menu back in.
+   * Every thread promoted out of the crew being edited THIS session, still
+   * waiting for a move back in.
    *
    * A normal crew-spawned leaf keeps its crew handle across the promotion, so
    * `assembleFleet` renders it as a brand new root CREW with no leads, not a
    * loose chat — a handle-less thread is the rarer case that actually becomes
-   * one. Either shape checks this the same way: by thread id. `fromCrewId` is
-   * the crew it left, so a later, unrelated edit session — even one that
-   * resolves to the very same crew again — never inherits someone else's
-   * recovery. Only ever set from the resolution of the reparent call that
-   * caused it, and only if that edit session is still the current one when it
-   * resolves: a Done or a switch to a different crew before the network
-   * answers must not let a stale promise plant a recovery in whatever session
-   * is running when it finally lands.
+   * one. Either shape checks this the same way: by thread id. A single "last
+   * one" slot made every promotion but the most recently SETTLED one a
+   * one-way door — a second promotion made the first unrecoverable the
+   * instant its own network reply landed, not because the operator did
+   * anything to it. Every promotion this session stays recoverable
+   * independently until it is either moved back (removed on its own) or the
+   * session ends (the whole set clears): unrelated roots are never in it.
+   * Only ever ADDED from the resolution of the reparent call that caused it,
+   * and only if that edit session is still the current one when it resolves
+   * — a Done or a switch to a different crew before the network answers must
+   * not let a stale promise plant a recovery in whatever session is running
+   * when it finally lands.
    */
-  recoverable: { threadId: string; fromCrewId: string } | null;
+  recoverableIds: ReadonlySet<string>;
+  /**
+   * Registers a crew's "Rearrange" button so focus can return to it after
+   * Done/Escape unmounts the edit bar and remounts this button — without it,
+   * the browser drops focus to the document body the moment the focused
+   * control (Done, wherever the operator left it) disappears.
+   */
+  registerRearrangeButton: (crewId: string, el: HTMLButtonElement | null) => void;
+  /**
+   * Registers the "Done" button so entering edit mode can move focus onto it
+   * — the "Rearrange" button the operator just clicked unmounts the instant
+   * editingCrewId is set, and a click target that vanishes out from under
+   * focus is exactly the same lost-focus problem as leaving edit mode.
+   */
+  registerDoneButton: (el: HTMLButtonElement | null) => void;
 }
 
 /**
@@ -340,7 +364,9 @@ const CrewEditContext = createContext<CrewEditState>({
   setEditingCrewId: () => {},
   refusal: null,
   moveMessage: "",
-  recoverable: null,
+  recoverableIds: new Set<string>(),
+  registerRearrangeButton: () => {},
+  registerDoneButton: () => {},
 });
 
 /** Every id in an agent's branch, so a drop onto its own descendant is refused
@@ -556,19 +582,20 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
     window.setTimeout(() => setRefusal(null), 6000);
   }, []);
   const [editingCrewId, setEditingCrewIdState] = useState<string | null>(null);
-  // The recovery binding is good for ONE edit session. Bumped every time the
-  // session changes — entering, leaving, or switching crews — so an async
-  // reparent's `.then()` can tell, when it finally resolves, whether the
-  // session that started it is still the one running. A stale resolution
-  // must not plant a recovery in whatever session happens to be current.
+  // The recovery set is good for ONE edit session — every entry in it was
+  // promoted out of THAT session's crew, so the set itself needs no per-entry
+  // record of which crew. Bumped every time the session changes — entering,
+  // leaving, or switching crews — so an async reparent's `.then()` can tell,
+  // when it finally resolves, whether the session that started it is still
+  // the one running. A stale resolution must not plant a recovery in
+  // whatever session happens to be current.
   const editSessionRef = useRef(0);
-  const [recoverable, setRecoverable] = useState<{
-    threadId: string;
-    fromCrewId: string;
-  } | null>(null);
+  const [recoverableIds, setRecoverableIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const setEditingCrewId = useCallback((crewId: string | null) => {
     editSessionRef.current += 1;
-    setRecoverable(null);
+    setRecoverableIds(new Set());
     setEditingCrewIdState(crewId);
   }, []);
   const [dragging, setDragging] = useState<{
@@ -622,19 +649,16 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   }, [reportRefusal]);
   const move = useCallback(
     (movingId: string, newParentId: string | null) => {
-      // `destinations` and `recoverable` are both live — recomputed whenever
-      // the fetched fleet or the edit session changes — so this is membership
-      // as of NOW, not as of whenever a drag started or a menu opened.
-      // draggingId/dataTransfer only prove a drag was real when it began;
-      // they say nothing about whether the fleet still agrees the source
-      // belongs where the caller thinks it does. A background refresh that
-      // reparented or removed it mid-drag must not let a stale drop or a
+      // `destinations` and `recoverableIds` are both live — recomputed
+      // whenever the fetched fleet or the edit session changes — so this is
+      // membership as of NOW, not as of whenever a drag started or a menu
+      // opened. draggingId/dataTransfer only prove a drag was real when it
+      // began; they say nothing about whether the fleet still agrees the
+      // source belongs where the caller thinks it does. A background refresh
+      // that reparented or removed it mid-drag must not let a stale drop or a
       // stale menu selection through.
       const crewMemberIds = new Set(destinations.map((d) => d.threadId));
-      const isRecoveredSource =
-        recoverable !== null &&
-        recoverable.threadId === movingId &&
-        recoverable.fromCrewId === editingCrewId;
+      const isRecoveredSource = recoverableIds.has(movingId);
       if (
         editingCrewId === null ||
         (!crewMemberIds.has(movingId) && !isRecoveredSource)
@@ -665,7 +689,6 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       // Captured now, not read fresh inside `.then()`: the whole point is to
       // compare the session THIS call started under against whatever is
       // current when the network answers.
-      const originatingCrewId = editingCrewId;
       const sessionAtCallTime = editSessionRef.current;
       void reparentAgent(movingId, newParentId).then((outcome) => {
         if (outcome.ok) {
@@ -679,15 +702,27 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
             if (promotingCrewMember) {
               // A crew member just left the crew being edited — however
               // assembleFleet ends up classifying it, this is the one
-              // recovery path back in.
-              setRecoverable({
-                threadId: movingId,
-                fromCrewId: originatingCrewId,
+              // recovery path back in. The functional updater matters: two
+              // promotions can each hold their OWN stale closure over
+              // recoverableIds, and whichever settles second must not
+              // silently drop the first's addition by rebuilding the set
+              // from an outdated snapshot.
+              setRecoverableIds((prev) => {
+                const next = new Set(prev);
+                next.add(movingId);
+                return next;
               });
             } else if (newParentId !== null && isRecoveredSource) {
               // The recovered thread just moved back into a crew; it is no
-              // longer stranded, so the menu that recovered it goes with it.
-              setRecoverable(null);
+              // longer stranded, so it comes out of the set on its own —
+              // every OTHER thread still promoted this session stays exactly
+              // as recoverable as it was.
+              setRecoverableIds((prev) => {
+                if (!prev.has(movingId)) return prev;
+                const next = new Set(prev);
+                next.delete(movingId);
+                return next;
+              });
             }
           }
           return;
@@ -702,11 +737,45 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       crews,
       destinations,
       editingCrewId,
-      recoverable,
+      recoverableIds,
       refuseStaleSource,
       reportRefusal,
     ],
   );
+
+  // Focus follows the mode, not just the data. Entering edit mode unmounts
+  // the exact button the operator's focus was on (every "Rearrange" affords
+  // only while editingCrewId is null); leaving it unmounts Done and remounts
+  // every "Rearrange" button, INCLUDING the one for the crew just edited.
+  // Neither transition is a re-render the browser can carry focus through on
+  // its own — the focused element is gone, so focus drops to the document
+  // body unless something claims it.
+  const doneButtonRef = useRef<HTMLButtonElement | null>(null);
+  const registerDoneButton = useCallback((el: HTMLButtonElement | null) => {
+    doneButtonRef.current = el;
+  }, []);
+  const rearrangeButtonsRef = useRef(new Map<string, HTMLButtonElement>());
+  const registerRearrangeButton = useCallback(
+    (crewId: string, el: HTMLButtonElement | null) => {
+      if (el) rearrangeButtonsRef.current.set(crewId, el);
+      else rearrangeButtonsRef.current.delete(crewId);
+    },
+    [],
+  );
+  const previousEditingCrewIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousEditingCrewIdRef.current;
+    previousEditingCrewIdRef.current = editingCrewId;
+    if (editingCrewId !== null && previous === null) {
+      // The clicked Rearrange button just unmounted under the operator's
+      // focus; Done is the one control guaranteed to exist in its place.
+      doneButtonRef.current?.focus();
+    } else if (editingCrewId === null && previous !== null) {
+      // Done just unmounted; that crew's OWN Rearrange button just
+      // remounted in its place, if the crew still exists to have one.
+      rearrangeButtonsRef.current.get(previous)?.focus();
+    }
+  }, [editingCrewId]);
 
   const editState = useMemo(
     () => ({
@@ -720,7 +789,9 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       destinations,
       move,
       justMovedId,
-      recoverable,
+      recoverableIds,
+      registerRearrangeButton,
+      registerDoneButton,
     }),
     [
       announce,
@@ -731,7 +802,9 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       endDrag,
       justMovedId,
       move,
-      recoverable,
+      recoverableIds,
+      registerDoneButton,
+      registerRearrangeButton,
       reportRefusal,
     ],
   );
@@ -1292,8 +1365,14 @@ export function CrewSidebarSection({
   const projectNameOf = useProjectNames();
   const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
   const { createCrew, creating: creatingCrew } = useCreateCrew();
-  const { editingCrewId, setEditingCrewId, endDrag, refusal, moveMessage } =
-    useContext(CrewEditContext);
+  const {
+    editingCrewId,
+    setEditingCrewId,
+    endDrag,
+    refusal,
+    moveMessage,
+    registerDoneButton,
+  } = useContext(CrewEditContext);
   const editingCrew = crews.find(
     (crew) => crew.commanderThreadId === editingCrewId,
   );
@@ -1328,6 +1407,11 @@ export function CrewSidebarSection({
             </span>
             <button
               type="button"
+              // Registered so entering edit mode can move focus here — the
+              // Rearrange button the operator just clicked unmounts the
+              // instant editingCrewId is set, and Done is the one control
+              // guaranteed to exist in its place.
+              ref={registerDoneButton}
               onClick={() => {
                 endDrag();
                 setEditingCrewId(null);
@@ -1454,7 +1538,7 @@ function ChatRow({
   chat: LooseChat;
   onNavigate?: () => void;
 }) {
-  const { editingCrewId, endDrag, justMovedId, recoverable } =
+  const { editingCrewId, endDrag, justMovedId, recoverableIds } =
     useContext(CrewEditContext);
   // A loose chat belongs to no crew, so it is never part of the crew being
   // edited — and while one is being edited it steps out of the way entirely.
@@ -1466,14 +1550,11 @@ function ChatRow({
   // menu had no way to undo that short of the server-side move tooling. The
   // dropdown is a plain click calling `move` directly — no dataTransfer to
   // spoof — so it reopens a recovery path without reopening the drag hole.
-  // Bound to the ONE thread THIS edit session just promoted, though: every
+  // Bound to whichever threads THIS edit session promoted, though: every
   // other loose chat, same project or not, has no crew affiliation to recover
   // into, and offering the menu there would just be a way to reparent an
   // unrelated thread by accident.
-  const canMove =
-    recoverable !== null &&
-    recoverable.threadId === chat.threadId &&
-    recoverable.fromCrewId === editingCrewId;
+  const canMove = editingCrewId !== null && recoverableIds.has(chat.threadId);
   const movable: MovableAgent = {
     threadId: chat.threadId,
     name: chat.name,

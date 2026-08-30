@@ -660,7 +660,7 @@ describe("CrewSidebarSection edit-scope guards", () => {
     ).toBeNull();
   });
 
-  it("resolves multiple in-flight promotions deterministically — the most recently settled one wins", async () => {
+  it("keeps every leaf promoted this session independently recoverable, however they settle, and clears each on its own move back", async () => {
     vi.mocked(queryHooks.useProjectNames).mockReturnValue(
       new Map([["p1", "Project 1"]]),
     );
@@ -714,8 +714,7 @@ describe("CrewSidebarSection edit-scope guards", () => {
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Make root" }));
 
-    // The SECOND call resolves first; the FIRST call resolves last. Whoever
-    // settles LAST is the one left standing, regardless of call order.
+    // Resolve OUT OF ORDER: the SECOND call settles first.
     await act(async () => {
       resolveSecond({ ok: true });
       await second;
@@ -734,14 +733,33 @@ describe("CrewSidebarSection edit-scope guards", () => {
     );
     rerender(renderTree());
 
-    // Lead A resolved last, so it is the one with a recovery menu; Lead A2
-    // resolved first and was superseded, so it has none.
+    // Both are independently recoverable — a single "last one wins" slot
+    // would have left whichever settled first (Lead A2) as a permanent,
+    // one-way root the instant the SECOND promotion's own reply landed, with
+    // nothing the operator did to it.
     expect(
       screen.queryByRole("button", { name: "Move Lead A" }),
     ).not.toBeNull();
     expect(
       screen.queryByRole("button", { name: "Move Lead A2" }),
-    ).toBeNull();
+    ).not.toBeNull();
+
+    // Recover Lead A specifically.
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Move Lead A" }), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Crew A" }));
+    expect(useCrewsModule.reparentAgent).toHaveBeenCalledWith(
+      "lead_a",
+      "cmd_a",
+    );
+
+    // Lead A's own recovery clears; Lead A2's is untouched by it.
+    await screen.findByText("Moved.");
+    expect(screen.queryByRole("button", { name: "Move Lead A" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Move Lead A2" }),
+    ).not.toBeNull();
   });
 
   it("rejects a drop whose source is no longer part of the edited crew after a fleet refresh", () => {
@@ -891,5 +909,50 @@ describe("CrewSidebarSection edit-scope guards", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     editCrew("Crew B");
     expect(document.querySelectorAll(".relative.-my-1").length).toBe(0);
+  });
+
+  it("moves focus to Done when entering edit mode, since the clicked Rearrange button unmounts", () => {
+    renderTwoCrewsAndAChat();
+
+    const rearrangeButton = screen.getByRole("button", {
+      name: "Rearrange Crew A",
+    });
+    rearrangeButton.focus();
+    fireEvent.click(rearrangeButton);
+
+    // The button focus was just on no longer exists — editingCrewId !== null
+    // hides every Rearrange button — so the browser would otherwise drop
+    // focus to the document body.
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Done" }),
+    );
+  });
+
+  it("restores focus to that crew's own Rearrange control when Done leaves edit mode", () => {
+    renderTwoCrewsAndAChat();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Rearrange Crew A" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    // Done just unmounted; the remounted button has to be the SAME crew's,
+    // not merely some focusable element.
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Rearrange Crew A" }),
+    );
+  });
+
+  it("restores focus to that crew's own Rearrange control when Escape leaves edit mode", () => {
+    renderTwoCrewsAndAChat();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Rearrange Crew A" }),
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Rearrange Crew A" }),
+    );
   });
 });
