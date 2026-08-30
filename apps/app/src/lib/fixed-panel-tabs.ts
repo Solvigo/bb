@@ -170,6 +170,7 @@ function openFixedSecondaryPanelState(
   return {
     ...current,
     secondary: {
+      ...current.secondary,
       tabs,
       activeTabId,
       isOpen: true,
@@ -333,6 +334,7 @@ export function useSetFixedSecondaryPanelTab(
         return {
           ...current,
           secondary: {
+            ...current.secondary,
             tabs,
             activeTabId,
             isOpen: true,
@@ -406,6 +408,7 @@ export function useSetFixedRightTerminalActiveTerminal(
         return {
           ...current,
           secondary: {
+            ...current.secondary,
             tabs,
             activeTabId,
             isOpen: true,

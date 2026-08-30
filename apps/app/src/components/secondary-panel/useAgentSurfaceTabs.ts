@@ -79,7 +79,7 @@ export function useAgentSurfaceTabs(
   const threadId = typeof panelStateId === "string" ? panelStateId : null;
 
   const openTabIds = useMemo(
-    () => state.secondary.surfaceTabIds ?? [],
+    () => state.secondary.surfaceTabIds,
     [state.secondary.surfaceTabIds],
   );
   const activeTabId = state.secondary.activeSurfaceTabId ?? null;
@@ -87,7 +87,7 @@ export function useAgentSurfaceTabs(
   const open = useCallback(
     (tabId: string) => {
       update((current) => {
-        const ids = current.secondary.surfaceTabIds ?? [];
+        const ids = current.secondary.surfaceTabIds;
         const next = ids.includes(tabId) ? ids : [...ids, tabId];
         if (threadId !== null) {
           writeStored(threadId, { openTabIds: [...next], activeTabId: tabId });
@@ -108,7 +108,7 @@ export function useAgentSurfaceTabs(
   const close = useCallback(
     (tabId: string) => {
       update((current) => {
-        const ids = (current.secondary.surfaceTabIds ?? []).filter(
+        const ids = current.secondary.surfaceTabIds.filter(
           (id) => id !== tabId,
         );
         // Closing the surface you were looking at falls back to whatever is
@@ -141,7 +141,7 @@ export function useAgentSurfaceTabs(
       update((current) => {
         if (threadId !== null) {
           writeStored(threadId, {
-            openTabIds: [...(current.secondary.surfaceTabIds ?? [])],
+            openTabIds: [...current.secondary.surfaceTabIds],
             activeTabId: tabId,
           });
         }

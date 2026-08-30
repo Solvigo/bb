@@ -310,8 +310,8 @@ export interface FixedSecondaryPanelTabGroupState extends FixedPanelTabGroupStat
    * were opt-in genuinely does not carry them; the schema defaults both on
    * parse, so anything read back from storage always has them.
    */
-  surfaceTabIds?: readonly string[];
-  activeSurfaceTabId?: string | null;
+  surfaceTabIds: readonly string[];
+  activeSurfaceTabId: string | null;
 }
 
 export interface FixedPanelTabsState {
