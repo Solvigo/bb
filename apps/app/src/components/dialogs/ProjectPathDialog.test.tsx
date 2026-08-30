@@ -131,6 +131,70 @@ describe("ProjectPathDialog machine selection", () => {
     );
   });
 
+  it("names the folder it will act on, not just the project name it derives", () => {
+    // Two sibling checkouts derive the same project name, so "Project name:
+    // givecare" confirmed nothing about which one was chosen.
+    render(
+      <ProjectPathDialog
+        target={{ kind: "create" }}
+        platform="linux"
+        hostId={atum.id}
+        hostName={atum.name}
+        hosts={[atum]}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("project-path-destination")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Choose folder on host_atum" }),
+    );
+    expect(
+      screen.getByTestId("project-path-destination").textContent,
+    ).toContain("/home/deploy/repos/givecare");
+  });
+
+  it("says so in the dialog when the create itself is refused", () => {
+    // The dialog is the only surface on screen. A refusal that never reaches
+    // it leaves the button live again and nothing said.
+    render(
+      <ProjectPathDialog
+        target={{ kind: "create" }}
+        platform="linux"
+        hostId={atum.id}
+        hostName={atum.name}
+        hosts={[atum]}
+        submitError="That folder is already a project."
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("project-path-submit-error").textContent).toBe(
+      "That folder is already a project.",
+    );
+  });
+
+  it("says it is working while the create is in flight", () => {
+    render(
+      <ProjectPathDialog
+        target={{ kind: "create" }}
+        platform="linux"
+        pending
+        hostId={atum.id}
+        hostName={atum.name}
+        hosts={[atum]}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Adding project…" });
+    expect(submit.hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Add project" })).toBeNull();
+  });
+
   it("constrains long project names to the dialog width", () => {
     const longProjectName = "long-project-name-".repeat(20);
     render(

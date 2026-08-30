@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 import { deriveProjectNameFromPath, type Host } from "@bb/domain";
@@ -28,6 +29,8 @@ export interface QuickCreateProjectDialogState {
 export interface QuickCreateProjectController {
   isAvailable: boolean;
   isCreating: boolean;
+  /** Why the last create failed, for the dialog that is still open on it. */
+  createError: string | null;
   openCreateDialog: () => void;
   platform: HostPlatform | null;
   hostId: string | null;
@@ -46,6 +49,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const hostsQuery = useHosts();
   const hosts = hostsQuery.data ?? EMPTY_HOSTS;
   const setRootComposeProjectId = useSetRootComposeProjectId();
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const submit = useCallback(
     ({ path, hostId, target, closeDialog }: LocalPathSubmitParams) => {
@@ -53,6 +57,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       const name = deriveProjectNameFromPath(path).trim();
       if (!name) return;
 
+      setCreateError(null);
       mutate(
         {
           name,
@@ -68,6 +73,16 @@ export function useQuickCreateProject(): QuickCreateProjectController {
             closeDialog();
             setRootComposeProjectId(project.id);
           },
+          // A failed create used to leave the dialog sitting there with the
+          // button live again and nothing said. The picker is the only surface
+          // on screen, so the refusal has to arrive in it.
+          onError: (failure: unknown) => {
+            setCreateError(
+              failure instanceof Error && failure.message
+                ? failure.message
+                : "Could not create the project.",
+            );
+          },
         },
       );
     },
@@ -80,6 +95,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   });
 
   const openCreateDialog = useCallback(() => {
+    setCreateError(null);
     controller.openPathEntry({ kind: "create" });
   }, [controller]);
 
@@ -87,6 +103,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
     () => ({
       isAvailable: controller.isAvailable,
       isCreating: isPending,
+      createError,
       openCreateDialog,
       platform: controller.platform,
       hostId: controller.hostId,
@@ -95,7 +112,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
     }),
-    [controller, hosts, isPending, openCreateDialog],
+    [controller, createError, hosts, isPending, openCreateDialog],
   );
 }
 

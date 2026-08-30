@@ -53,6 +53,8 @@ export type ProjectPathDialogSubmitHandler = (
 interface ProjectPathDialogProps {
   target: ProjectPathDialogTarget | null;
   pending?: boolean;
+  /** A refusal from the create itself, as opposed to the path being wrong. */
+  submitError?: string | null;
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
@@ -64,6 +66,7 @@ interface ProjectPathDialogProps {
 export function ProjectPathDialog({
   target,
   pending = false,
+  submitError = null,
   platform,
   hostId,
   hostName,
@@ -79,6 +82,7 @@ export function ProjectPathDialog({
             key={target.kind === "create" ? "create" : target.projectId}
             target={target}
             pending={pending}
+            submitError={submitError}
             platform={platform}
             hostId={hostId}
             hostName={hostName}
@@ -94,6 +98,7 @@ export function ProjectPathDialog({
 export interface ProjectPathDialogContentProps {
   target: ProjectPathDialogTarget;
   pending: boolean;
+  submitError?: string | null;
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
@@ -128,6 +133,18 @@ function getDialogSubmitLabel(kind: ProjectPathDialogTarget["kind"]): string {
   }
 }
 
+/** What the button says while the work is actually running. */
+function getDialogPendingLabel(kind: ProjectPathDialogTarget["kind"]): string {
+  switch (kind) {
+    case "create":
+      return "Adding project…";
+    case "update":
+      return "Saving path…";
+    case "add-source":
+      return "Adding source…";
+  }
+}
+
 function getPlatformCopy(
   platform: HostPlatform | null,
   hostName: string | null,
@@ -151,6 +168,7 @@ function getPlatformCopy(
 export function ProjectPathDialogContent({
   target,
   pending,
+  submitError = null,
   platform,
   hostId,
   hostName,
@@ -343,9 +361,25 @@ export function ProjectPathDialogContent({
             }}
           />
         )}
-        {(derivedProjectName && target.kind === "create") ||
-        validationMessage ? (
+        {selectedPath || validationMessage || submitError ? (
           <div className="space-y-1">
+            {/* The folder actually being used, spelled out. The browser shows
+                where you have navigated TO; it does not say which row the
+                button will act on, and "Project name: repo" was the only
+                confirmation — a name half a dozen sibling folders share. */}
+            {selectedPath ? (
+              <p
+                data-testid="project-path-destination"
+                className="flex min-w-0 gap-1 text-sm text-muted-foreground"
+              >
+                <span className="shrink-0">
+                  {target.kind === "create" ? "Folder:" : "Path:"}
+                </span>
+                <span className="min-w-0 truncate font-medium text-foreground">
+                  {selectedPath}
+                </span>
+              </p>
+            ) : null}
             {target.kind === "create" && derivedProjectName ? (
               <p className="flex min-w-0 gap-1 text-sm text-muted-foreground">
                 <span className="shrink-0">Project name:</span>
@@ -356,6 +390,15 @@ export function ProjectPathDialogContent({
             ) : null}
             {validationMessage ? (
               <p className="text-sm text-destructive">{validationMessage}</p>
+            ) : null}
+            {submitError ? (
+              <p
+                role="alert"
+                data-testid="project-path-submit-error"
+                className="text-sm text-destructive"
+              >
+                {submitError}
+              </p>
             ) : null}
           </div>
         ) : null}
@@ -369,7 +412,9 @@ export function ProjectPathDialogContent({
               noMachineAvailable
             }
           >
-            {getDialogSubmitLabel(target.kind)}
+            {pending
+              ? getDialogPendingLabel(target.kind)
+              : getDialogSubmitLabel(target.kind)}
           </Button>
         </DialogFooter>
       </form>
