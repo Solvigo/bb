@@ -182,7 +182,14 @@ describe("useCreateCrew", () => {
     archive.mockImplementation(async () => ({ ok: true as const }));
     window.localStorage.clear();
   });
-  afterEach(() => {
+  afterEach(async () => {
+    // Let a flow that is still unwinding finish against ITS OWN module
+    // instance. `freshHook` re-imports per test, so an unfinished flow from
+    // the previous one keeps running — and calls the SHARED navigate/send
+    // spies while the next test is asserting they were never touched.
+    for (let i = 0; i < 10; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
     vi.unstubAllGlobals();
   });
 
@@ -251,8 +258,13 @@ describe("useCreateCrew", () => {
   });
 
   it("retries the charter on the same standby root instead of making a second", async () => {
-    // The root left behind by a failed charter is found by title and chartered
-    // again — one root per project, however many times the button is pressed.
+    // The root left behind by a failed charter is found by what this client
+    // RECORDED creating — never by its title — and chartered again: one root
+    // per project, however many times the button is pressed.
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_standby", projectId: "proj_a" }]),
+    );
     stubRig({
       threads: [
         {
@@ -301,9 +313,11 @@ describe("useCreateCrew", () => {
       expect(navigate).toHaveBeenCalled();
     });
 
-    // Nothing created, nothing chartered: it is already a crew.
+    // Nothing CREATED. Chartered once, though: a handle proves a charter
+    // started, not that its brief landed, so the repair runs before this root
+    // is opened as if it were whole.
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
-    expect(calls.filter((c) => c.includes("crew_charter"))).toEqual([]);
+    expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
     // Already briefed when it was chartered; it gets the request only.
     const sent = send.mock.calls[0][0] as unknown as SentTurn;
     expect(sent.threadId).toBe("thr_live");

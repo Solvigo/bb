@@ -815,9 +815,10 @@ describe("CrewSidebarSection edit-scope guards", () => {
   it("disables Add a crew for an empty project while a different crew is being edited", () => {
     renderTwoCrewsAndAChat();
 
-    // Project 3 is the only empty one, so this is unambiguous.
+    // Named for its project: every card carries an "Add a crew" control, so
+    // the bare label said which action and never which project it acts on.
     const addCrewButton = screen.getByRole("button", {
-      name: "Add a crew",
+      name: "Add a crew to Project 3",
     }) as HTMLButtonElement;
     expect(addCrewButton.disabled).toBe(false);
 
