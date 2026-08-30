@@ -6,6 +6,7 @@ import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcut
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { SIDE_CHAT_PLUGIN_ID } from "@/lib/side-chat-plugin";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   NewTabFileSearch,
   type NewTabFileSearchProps,
@@ -80,6 +81,7 @@ function NewTabLauncher({
   onOpenSideChat,
   onOpenSurface,
   onStartTerminal,
+  pluginActions = [],
   surfaces = [],
 }: {
   canSearchFiles: boolean;
@@ -89,6 +91,7 @@ function NewTabLauncher({
   onOpenSideChat?: () => void;
   onOpenSurface?: (tabId: string) => void;
   onStartTerminal?: StartTerminalHandler;
+  pluginActions?: readonly PluginPanelActionEntry[];
   surfaces?: readonly NewTabSurfaceOption[];
 }) {
   const reviewShortcut = useAppCommandShortcut("diff.toggle");
@@ -142,6 +145,20 @@ function NewTabLauncher({
           label="Side chat"
           onSelect={onOpenSideChat}
         />
+        {/* Panels contributed by plugins. Side chat has its own row above, so
+            it is not repeated here. Without this the only plugin panel the
+            page could ever open was side chat — every other one was
+            registered, listed by the host, and unreachable. */}
+        {pluginActions
+          .filter((action) => action.pluginId !== SIDE_CHAT_PLUGIN_ID)
+          .map((action) => (
+            <LauncherAction
+              key={action.id}
+              icon={pluginIconName(action.icon)}
+              label={action.title}
+              onSelect={action.onSelect}
+            />
+          ))}
       </div>
     </div>
   );
@@ -191,6 +208,7 @@ export function NewTabPage({
         onOpenSideChat={sideChatAction?.onSelect}
         onOpenSurface={onOpenSurface}
         onStartTerminal={onStartTerminal}
+        pluginActions={pluginActions}
         surfaces={surfaces}
       />
     );
