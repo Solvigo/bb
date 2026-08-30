@@ -1943,12 +1943,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       // Tower links navigate the right pane instead of opening a URL.
       const nav = parseTowerLink(href);
       if (nav) {
-        setTowerNav({ ...nav, nonce: nextNavNonce() });
+        setTowerNav({ ...nav, threadId, nonce: nextNavNonce() });
         return true;
       }
       return handleOpenUrlByPreference(href);
     },
-    [handleOpenUrlByPreference, setTowerNav],
+    [handleOpenUrlByPreference, setTowerNav, threadId],
   );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
@@ -2604,6 +2604,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           }}
           secondaryPanel={{
             activeTab: activeFixedSecondaryTab,
+            threadId,
             canUseGitUi,
             defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
             environmentId: thread.environmentId ?? undefined,

@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import type { DiffFileEntry } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
@@ -29,7 +29,7 @@ import {
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
-import { towerNavAtom } from "./tower/towerNav";
+import { towerNavAtom, towerNavHandledNonceAtomFamily } from "./tower/towerNav";
 import {
   listAgentSurfaceTabs,
   onAgentTeardown,
@@ -41,7 +41,6 @@ import { WorktreeFileActionsProvider } from "./tower/worktree-file-actions";
 import { registerBuiltInAgentSurfaceTabs } from "./tower/builtInAgentSurfaceTabs";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useAgentSurfaceTabs } from "./useAgentSurfaceTabs";
-import { useRouteState } from "@/hooks/useRouteState";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
@@ -225,6 +224,14 @@ export function resolveSecondaryPanelHideControl() {
 
 export interface ThreadSecondaryPanelProps {
   activeTab: SecondaryFixedPanelTab | null;
+  /**
+   * The agent (thread) this panel belongs to. Agent-surface state — the open
+   * set, the active view, and the tower-nav target — is keyed to this id, so
+   * a chat-link navigation or a surface toggle in one pane can never reach a
+   * different pane's thread. `undefined` outside a thread (e.g. root
+   * compose): agent surfaces are simply unavailable there.
+   */
+  threadId?: string;
   canUseGitUi: boolean;
   defaultMergeBaseBranch?: string;
   environmentId?: string;
@@ -342,6 +349,7 @@ function resolveActiveFixedPanel({
 
 export function ThreadSecondaryPanel({
   activeTab,
+  threadId,
   canUseGitUi,
   defaultMergeBaseBranch,
   environmentId,
@@ -473,18 +481,14 @@ export function ThreadSecondaryPanel({
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
-  // Tower fleet overview is a CLIENT-ONLY view (never synced to the pinned
-  // server's strict tab contract). It shows by default and yields to any real
-  // fixed view (Info/Diff) or file tab the operator opens.
-  // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
-  // contract). The first registered surface tab is the default; the views show
-  // over the empty new-tab / info states but yield to any real content the
-  // operator opens.
+  // Tower views are CLIENT-ONLY (never synced to the pinned server's strict
+  // tab contract) and opt-in: nothing shows until the operator opens it, and
+  // an opened one yields to any real fixed view (Info/Diff) or file tab.
   // The agent this panel belongs to: in this app an agent IS a thread, and the
   // panel is opened inside one. The board already resolved it this way; now the
   // whole surface does, so every tab is handed the same agent.
   registerBuiltInAgentSurfaceTabs();
-  const { threadId: openInThreadId } = useRouteState();
+  const openInThreadId = threadId;
   // The commander's own rendering surface takes its tabs from the SAME registry
   // the per-agent surface uses, so a tab registered once — by a built-in or by a
   // plugin — appears at every level instead of only the two below this one.
@@ -532,15 +536,38 @@ export function ThreadSecondaryPanel({
       }),
     [openInThreadId],
   );
-  // Chat-link navigation: a bb-tower: link in the commander chat sets this atom.
+  // Chat-link navigation: a bb-tower: link in the commander chat sets this
+  // atom. It is a single fleet-wide slot, so every request carries its target
+  // thread id — a request for a different thread is not this panel's to act
+  // on. The handled nonce lives in the Jotai store (not a ref) so a panel that
+  // unmounts and remounts never replays a request it already delivered.
   const towerNav = useAtomValue(towerNavAtom);
-  const lastNavNonce = useRef(0);
+  const [handledTowerNavNonce, setHandledTowerNavNonce] = useAtom(
+    towerNavHandledNonceAtomFamily(openInThreadId ?? ""),
+  );
   useEffect(() => {
-    if (towerNav && towerNav.nonce !== lastNavNonce.current) {
-      lastNavNonce.current = towerNav.nonce;
-      surfaces.open(towerNav.view);
+    if (
+      !towerNav ||
+      towerNav.threadId !== openInThreadId ||
+      towerNav.nonce <= handledTowerNavNonce
+    ) {
+      return;
     }
-  }, [towerNav, surfaces]);
+    setHandledTowerNavNonce(towerNav.nonce);
+    // The requested surface must actually become visible even when a file,
+    // terminal, diff, plugin panel, or the new-tab page is currently active —
+    // switch the fixed panel back to thread-info so the tower view is not
+    // shown behind whatever else was open.
+    onPanelChange("thread-info");
+    surfaces.open(towerNav.view);
+  }, [
+    towerNav,
+    openInThreadId,
+    handledTowerNavNonce,
+    setHandledTowerNavNonce,
+    onPanelChange,
+    surfaces,
+  ]);
   const activeTabKind = activeTab?.kind ?? null;
   // Tower views default over the empty/info state, but yield to a new-tab the
   // operator explicitly opened (and to any real file/diff/terminal content).
@@ -899,55 +926,84 @@ export function ThreadSecondaryPanel({
           suppressed in that case because the deck fills the region.
         */}
         {browserDeck}
-        {isBrowserTabActive ? null : activeTowerTab && openInThreadId ? (
-          <WorktreeFileActionsProvider addPathToChat={onAddPathToChat ?? null}>
-            <AgentSurfaceTabContent
-              key={`${activeTowerTab.id}:${activeTowerTab.generation ?? 0}`}
-              tab={activeTowerTab}
-              agentId={openInThreadId}
-              onTeardown={registerTowerTeardown}
-              viewerRole="commander"
-              visible
-            />
-          </WorktreeFileActionsProvider>
-        ) : hasActiveFileTab ? (
-          <div
-            className={
-              isTerminalTabActive || fileTabContentFillsRegion
-                ? "min-h-0 flex-1 overflow-hidden"
-                : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
-            }
-            data-file-preview-scroll-container={
-              isTerminalTabActive || fileTabContentFillsRegion ? undefined : ""
-            }
-          >
-            {shouldRenderFileTabContent
-              ? (fileTabContent ?? (
-                  <SecondaryPanelEmptyState
-                    icon="FileText"
-                    title="No preview available"
-                    description="This file tab does not have any preview content to show."
-                  />
-                ))
-              : null}
-          </div>
-        ) : isDiffPanelActive ? (
-          <GitDiffTabContent
-            environmentId={environmentId}
-            target={gitDiffTarget}
-            isDiffPanelActive={isDiffPanelActive}
-            gitDiffViewOptions={gitDiffViewOptions}
-            onOpenFileInEditor={onOpenFileInEditor}
-            onOpenFilePreview={onOpenFilePreview}
-            onSelectionAddToChat={onSelectionAddToChat}
-            workspaceRootPath={workspaceRootPath}
-          />
-        ) : (
-          <SecondaryPanelEmptyState
-            icon="Layers"
-            title="No lead views available"
-            description="Lead views will appear here when they are available."
-          />
+        {isBrowserTabActive ? null : (
+          <>
+            {/*
+              Every surface the operator opened stays mounted — switching
+              between two open tower tabs (or away to a file/diff and back)
+              must not tear down and remount them, which would drop scroll
+              position, in-flight streams, or a running terminal. Only
+              `close()` unmounts a tab; visibility is CSS + the `visible` prop.
+            */}
+            {openInThreadId && openTowerTabs.length > 0 ? (
+              <WorktreeFileActionsProvider
+                addPathToChat={onAddPathToChat ?? null}
+              >
+                {openTowerTabs.map((tab) => {
+                  const isVisible =
+                    isTowerViewActive && activeTowerTab?.id === tab.id;
+                  return (
+                    <div
+                      key={`${tab.id}:${tab.generation ?? 0}`}
+                      className={
+                        isVisible ? "flex min-h-0 flex-1 flex-col" : "hidden"
+                      }
+                      aria-hidden={isVisible ? undefined : true}
+                    >
+                      <AgentSurfaceTabContent
+                        tab={tab}
+                        agentId={openInThreadId}
+                        onTeardown={registerTowerTeardown}
+                        viewerRole="commander"
+                        visible={isVisible}
+                      />
+                    </div>
+                  );
+                })}
+              </WorktreeFileActionsProvider>
+            ) : null}
+            {isTowerViewActive ? null : hasActiveFileTab ? (
+              <div
+                className={
+                  isTerminalTabActive || fileTabContentFillsRegion
+                    ? "min-h-0 flex-1 overflow-hidden"
+                    : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
+                }
+                data-file-preview-scroll-container={
+                  isTerminalTabActive || fileTabContentFillsRegion
+                    ? undefined
+                    : ""
+                }
+              >
+                {shouldRenderFileTabContent
+                  ? (fileTabContent ?? (
+                      <SecondaryPanelEmptyState
+                        icon="FileText"
+                        title="No preview available"
+                        description="This file tab does not have any preview content to show."
+                      />
+                    ))
+                  : null}
+              </div>
+            ) : isDiffPanelActive ? (
+              <GitDiffTabContent
+                environmentId={environmentId}
+                target={gitDiffTarget}
+                isDiffPanelActive={isDiffPanelActive}
+                gitDiffViewOptions={gitDiffViewOptions}
+                onOpenFileInEditor={onOpenFileInEditor}
+                onOpenFilePreview={onOpenFilePreview}
+                onSelectionAddToChat={onSelectionAddToChat}
+                workspaceRootPath={workspaceRootPath}
+              />
+            ) : (
+              <SecondaryPanelEmptyState
+                icon="Layers"
+                title="No lead views available"
+                description="Lead views will appear here when they are available."
+              />
+            )}
+          </>
         )}
       </div>
     </aside>
