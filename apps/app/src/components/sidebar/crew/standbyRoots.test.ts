@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from "vitest";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   purgeStandbyRoots,
   recordedStandbyRoots,
@@ -18,7 +19,7 @@ describe("standby root provenance", () => {
     // The thread list omits projectId for a personal thread while the flow
     // says PERSONAL: two spellings of one project never match each other.
     rememberStandbyRoot("thr_a", "");
-    expect(recordedStandbyRoots().get("thr_a")).toBe("personal");
+    expect(recordedStandbyRoots().get("thr_a")).toBe(PERSONAL_PROJECT_ID);
   });
 
   it("says so when the note cannot be kept", () => {

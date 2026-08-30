@@ -163,10 +163,20 @@ function stubRig({
       }
       if (url.includes("crew_charter")) {
         charterSeen = true;
+        // The real verb answers ABOUT the thread it was asked about, and the
+        // flow refuses a success that names a different one — so the stub has
+        // to echo it rather than assert a fixed id.
+        const askedFor = JSON.parse(init?.body ?? "{}") as {
+          threadId?: string;
+        };
         return {
           ok: (charter.status ?? 200) < 400,
           status: charter.status ?? 200,
-          json: async () => charter.body ?? CHARTERED,
+          json: async () =>
+            charter.body ?? {
+              ok: true,
+              result: { ...CHARTERED.result, threadId: askedFor.threadId },
+            },
         };
       }
       if (url.includes("/api/v1/threads")) {
