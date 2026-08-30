@@ -27,6 +27,8 @@ function makeInitialState(): FixedPanelTabsState {
       tabs: [],
       activeTabId: null,
       isOpen: false,
+      surfaceTabIds: [],
+      activeSurfaceTabId: null,
     },
     lastUsedAt: 0,
   };
@@ -149,6 +151,8 @@ describe("workspace file preview fixed panel tabs", () => {
         activeTabId: projectTab.id,
         isOpen: true,
         tabs: [projectTab],
+        surfaceTabIds: [],
+        activeSurfaceTabId: null,
       },
       lastUsedAt: NOW,
     });
@@ -216,6 +220,8 @@ describe("thread-owned file preview fixed panel tabs", () => {
         activeTabId: storageTab.id,
         isOpen: true,
         tabs: [hostTab, storageTab],
+        surfaceTabIds: [],
+        activeSurfaceTabId: null,
       },
       lastUsedAt: NOW,
     });

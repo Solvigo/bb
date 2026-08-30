@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import type { DiffFileEntry } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
@@ -29,7 +29,7 @@ import {
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
-import { towerNavAtom } from "./tower/towerNav";
+import { towerNavAtom, towerNavHandledNonceAtomFamily } from "./tower/towerNav";
 import {
   listAgentSurfaceTabs,
   onAgentTeardown,
@@ -40,7 +40,7 @@ import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
 import { WorktreeFileActionsProvider } from "./tower/worktree-file-actions";
 import { registerBuiltInAgentSurfaceTabs } from "./tower/builtInAgentSurfaceTabs";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { useRouteState } from "@/hooks/useRouteState";
+import { useAgentSurfaceTabs } from "./useAgentSurfaceTabs";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
@@ -224,6 +224,14 @@ export function resolveSecondaryPanelHideControl() {
 
 export interface ThreadSecondaryPanelProps {
   activeTab: SecondaryFixedPanelTab | null;
+  /**
+   * The agent (thread) this panel belongs to. Agent-surface state — the open
+   * set, the active view, and the tower-nav target — is keyed to this id, so
+   * a chat-link navigation or a surface toggle in one pane can never reach a
+   * different pane's thread. `undefined` outside a thread (e.g. root
+   * compose): agent surfaces are simply unavailable there.
+   */
+  threadId?: string;
   canUseGitUi: boolean;
   defaultMergeBaseBranch?: string;
   environmentId?: string;
@@ -341,6 +349,7 @@ function resolveActiveFixedPanel({
 
 export function ThreadSecondaryPanel({
   activeTab,
+  threadId,
   canUseGitUi,
   defaultMergeBaseBranch,
   environmentId,
@@ -472,18 +481,14 @@ export function ThreadSecondaryPanel({
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
-  // Tower fleet overview is a CLIENT-ONLY view (never synced to the pinned
-  // server's strict tab contract). It shows by default and yields to any real
-  // fixed view (Info/Diff) or file tab the operator opens.
-  // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
-  // contract). The first registered surface tab is the default; the views show
-  // over the empty new-tab / info states but yield to any real content the
-  // operator opens.
+  // Tower views are CLIENT-ONLY (never synced to the pinned server's strict
+  // tab contract) and opt-in: nothing shows until the operator opens it, and
+  // an opened one yields to any real fixed view (Info/Diff) or file tab.
   // The agent this panel belongs to: in this app an agent IS a thread, and the
   // panel is opened inside one. The board already resolved it this way; now the
   // whole surface does, so every tab is handed the same agent.
   registerBuiltInAgentSurfaceTabs();
-  const { threadId: openInThreadId } = useRouteState();
+  const openInThreadId = threadId;
   // The commander's own rendering surface takes its tabs from the SAME registry
   // the per-agent surface uses, so a tab registered once — by a built-in or by a
   // plugin — appears at every level instead of only the two below this one.
@@ -503,10 +508,24 @@ export function ThreadSecondaryPanel({
     ],
     [pluginSurfaceTabs],
   );
-  const [towerView, setTowerView] = useState<string | null>(() =>
-    resolveAgentSurfaceTabId(null, towerTabs),
+  // Which surfaces this thread has open, and which is showing — remembered per
+  // thread rather than defaulted, so a thread opens the way it was left instead
+  // of mounting every registered surface at once.
+  const surfaces = useAgentSurfaceTabs(openInThreadId, openInThreadId);
+  const openTowerTabs = useMemo(
+    () => towerTabs.filter((tab) => surfaces.openTabIds.includes(tab.id)),
+    [surfaces.openTabIds, towerTabs],
   );
-  const resolvedTowerView = resolveAgentSurfaceTabId(towerView, towerTabs);
+  // The persisted active id can point at a surface that no longer exists — a
+  // stale `crew` id from before that built-in was removed, or a plugin tab
+  // that has not registered yet — so resolve it against what is actually open
+  // instead of letting the panel go blank while a valid open surface sits
+  // right there. An empty open set still resolves to null: nothing auto-mounts.
+  const towerView = resolveAgentSurfaceTabId(
+    surfaces.activeTabId,
+    openTowerTabs,
+  );
+  const setTowerView = surfaces.show;
   // Same contract the per-agent surface gives a tab: a disposer narrowed to
   // this agent, so a tab never tears down its context because a different
   // agent's surface closed.
@@ -517,25 +536,45 @@ export function ThreadSecondaryPanel({
       }),
     [openInThreadId],
   );
-  // Chat-link navigation: a bb-tower: link in the commander chat sets this atom.
+  // Chat-link navigation: a bb-tower: link in the commander chat sets this
+  // atom. It is a single fleet-wide slot, so every request carries its target
+  // thread id — a request for a different thread is not this panel's to act
+  // on. The handled nonce lives in the Jotai store (not a ref) so a panel that
+  // unmounts and remounts never replays a request it already delivered.
   const towerNav = useAtomValue(towerNavAtom);
-  const lastNavNonce = useRef(0);
-  if (towerNav && towerNav.nonce !== lastNavNonce.current) {
-    lastNavNonce.current = towerNav.nonce;
-    if (towerNav.view !== resolvedTowerView) setTowerView(towerNav.view);
-  }
+  const [handledTowerNavNonce, setHandledTowerNavNonce] = useAtom(
+    towerNavHandledNonceAtomFamily(openInThreadId ?? ""),
+  );
   useEffect(() => {
-    if (resolvedTowerView !== null && resolvedTowerView !== towerView) {
-      setTowerView(resolvedTowerView);
+    if (
+      !towerNav ||
+      towerNav.threadId !== openInThreadId ||
+      towerNav.nonce <= handledTowerNavNonce
+    ) {
+      return;
     }
-  }, [resolvedTowerView, towerView]);
+    setHandledTowerNavNonce(towerNav.nonce);
+    // The requested surface must actually become visible even when a file,
+    // terminal, diff, plugin panel, or the new-tab page is currently active —
+    // switch the fixed panel back to thread-info so the tower view is not
+    // shown behind whatever else was open.
+    onPanelChange("thread-info");
+    surfaces.open(towerNav.view);
+  }, [
+    towerNav,
+    openInThreadId,
+    handledTowerNavNonce,
+    setHandledTowerNavNonce,
+    onPanelChange,
+    surfaces,
+  ]);
   const activeTabKind = activeTab?.kind ?? null;
   // Tower views default over the empty/info state, but yield to a new-tab the
   // operator explicitly opened (and to any real file/diff/terminal content).
   const towerViewCanShow =
     activeTabKind === null || activeTabKind === "thread-info";
   const activeTowerTab = towerViewCanShow
-    ? (towerTabs.find((tab) => tab.id === resolvedTowerView) ?? null)
+    ? (openTowerTabs.find((tab) => tab.id === towerView) ?? null)
     : null;
   const isTowerViewActive = activeTowerTab !== null;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
@@ -738,7 +777,7 @@ export function ThreadSecondaryPanel({
             aria-label="Right panel views"
             // header tab-button icon color
           >
-            {towerTabs.map((tab) => (
+            {openTowerTabs.map((tab) => (
               <PinnedIconTab
                 key={tab.id}
                 ariaLabel={`Show ${tab.label.toLowerCase()}`}
@@ -749,6 +788,8 @@ export function ThreadSecondaryPanel({
                   onPanelChange("thread-info");
                   setTowerView(tab.id);
                 }}
+                onClose={() => surfaces.close(tab.id)}
+                closeAriaLabel={`Close ${tab.label.toLowerCase()}`}
                 title={tab.title}
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"
@@ -767,10 +808,14 @@ export function ThreadSecondaryPanel({
                 }
                 label="Diff"
                 leadingVisual={<Icon name="FileDiff" />}
-                onClick={() => {
-                  setTowerView(null);
-                  onPanelChange("git-diff");
-                }}
+                // Switching the fixed panel to Diff already hides the tower
+                // content — `towerViewCanShow` gates on `activeTab.kind`, not
+                // on which surface is persisted as active — so this must NOT
+                // also clear the persisted active surface id. Doing so forgot
+                // which of two-or-more open surfaces was showing: coming back
+                // to Info (or reloading) fell through to the first open tab
+                // instead of the one the operator actually had up.
+                onClick={() => onPanelChange("git-diff")}
                 title="Diff"
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"
@@ -885,18 +930,44 @@ export function ThreadSecondaryPanel({
           suppressed in that case because the deck fills the region.
         */}
         {browserDeck}
-        {isBrowserTabActive ? null : activeTowerTab && openInThreadId ? (
+        {/*
+          Every surface the operator opened stays mounted — switching between
+          two open tower tabs, away to a file/diff/browser and back, must not
+          tear down and remount them, which would drop scroll position,
+          in-flight streams, or a running terminal. This has to render
+          regardless of `isBrowserTabActive`: gating the whole subtree on it
+          (as the file/diff/empty slot below correctly is) unmounted every
+          opened surface the instant the operator picked the Browser tab. Only
+          `close()` unmounts a tab; visibility is CSS + the `visible` prop.
+        */}
+        {openInThreadId && openTowerTabs.length > 0 ? (
           <WorktreeFileActionsProvider addPathToChat={onAddPathToChat ?? null}>
-            <AgentSurfaceTabContent
-              key={`${activeTowerTab.id}:${activeTowerTab.generation ?? 0}`}
-              tab={activeTowerTab}
-              agentId={openInThreadId}
-              onTeardown={registerTowerTeardown}
-              viewerRole="commander"
-              visible
-            />
+            {openTowerTabs.map((tab) => {
+              const isVisible =
+                !isBrowserTabActive &&
+                isTowerViewActive &&
+                activeTowerTab?.id === tab.id;
+              return (
+                <div
+                  key={`${tab.id}:${tab.generation ?? 0}`}
+                  className={
+                    isVisible ? "flex min-h-0 flex-1 flex-col" : "hidden"
+                  }
+                  aria-hidden={isVisible ? undefined : true}
+                >
+                  <AgentSurfaceTabContent
+                    tab={tab}
+                    agentId={openInThreadId}
+                    onTeardown={registerTowerTeardown}
+                    viewerRole="commander"
+                    visible={isVisible}
+                  />
+                </div>
+              );
+            })}
           </WorktreeFileActionsProvider>
-        ) : hasActiveFileTab ? (
+        ) : null}
+        {isBrowserTabActive || isTowerViewActive ? null : hasActiveFileTab ? (
           <div
             className={
               isTerminalTabActive || fileTabContentFillsRegion

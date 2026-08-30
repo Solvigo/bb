@@ -160,6 +160,7 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
+import { useAgentSurfaceTabsStorageMaintenance } from "@/components/secondary-panel/useAgentSurfaceTabs";
 import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
@@ -1932,6 +1933,7 @@ export function RootComposeView() {
     },
   );
   useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
+  useAgentSurfaceTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
   const fixedPanelTabsState = useFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,

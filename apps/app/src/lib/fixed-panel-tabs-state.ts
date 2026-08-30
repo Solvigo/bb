@@ -169,6 +169,12 @@ const secondaryFixedPanelTabGroupStateSchema = z
     tabs: secondaryFixedPanelTabsSchema,
     activeTabId: z.string().min(1).nullable(),
     isOpen: z.boolean(),
+    // Which agent-surface views this thread has OPEN, and which one is showing.
+    // Defaulted rather than versioned: a state written before surfaces were
+    // opt-in still parses, and simply arrives with nothing open — which is the
+    // correct reading of a thread the operator never opened a surface on.
+    surfaceTabIds: z.array(z.string().min(1)).default([]),
+    activeSurfaceTabId: z.string().min(1).nullable().default(null),
   })
   .strict();
 const fixedPanelTabsStateSchema = z
@@ -298,6 +304,16 @@ export interface FixedPanelTabGroupState {
 
 export interface FixedSecondaryPanelTabGroupState extends FixedPanelTabGroupState {
   isOpen: boolean;
+  /**
+   * Agent-surface views the operator opened on this thread, in strip order,
+   * and which one is showing. Required, not optional: a state written before
+   * surfaces were opt-in genuinely does not carry them, but the parsing
+   * schema fills in the "nothing open" default for both fields on the way in,
+   * so every `FixedSecondaryPanelTabGroupState` in memory has them regardless
+   * of what shape the stored value predates.
+   */
+  surfaceTabIds: readonly string[];
+  activeSurfaceTabId: string | null;
 }
 
 export interface FixedPanelTabsState {
@@ -751,6 +767,12 @@ function normalizeFixedSecondaryPanelTabGroupState(
       group,
     }),
     isOpen: group.isOpen,
+    // Carried through explicitly. The normalizer REBUILDS this object from the
+    // fields it names rather than spreading, so anything not named here is
+    // dropped on every update — which silently erased the open surface set on
+    // the way to the atom while storage held the right answer all along.
+    surfaceTabIds: group.surfaceTabIds ?? [],
+    activeSurfaceTabId: group.activeSurfaceTabId ?? null,
   };
 }
 
@@ -811,6 +833,8 @@ export function createEmptyFixedPanelTabsState(
         tabs: [],
         activeTabId: null,
         isOpen: false,
+        surfaceTabIds: [],
+        activeSurfaceTabId: null,
       },
       lastUsedAt: args.lastUsedAt ?? 0,
     },

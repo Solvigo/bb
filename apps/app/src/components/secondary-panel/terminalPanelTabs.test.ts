@@ -258,8 +258,10 @@ describe("terminalPanelTabs", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: fileTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [fileTab],
       },
     });
@@ -289,8 +291,10 @@ describe("terminalPanelTabs", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: staleTerminalTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [staleTerminalTab, currentTerminalTab],
       },
     });
@@ -310,8 +314,10 @@ describe("terminalPanelTabs", () => {
     const terminalTab = createTerminalFixedPanelTab({ terminalId: "term_1" });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: terminalTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [terminalTab],
       },
     });
@@ -334,8 +340,10 @@ describe("terminalPanelTabs", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: disconnectedTerminal.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [disconnectedTerminal, unretainedTerminal],
       },
     });

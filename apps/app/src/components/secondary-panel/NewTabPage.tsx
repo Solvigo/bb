@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
-import {
-  AppCommandShortcutPill,
-} from "@/components/commands/AppCommandShortcutHint";
+import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { SIDE_CHAT_PLUGIN_ID } from "@/lib/side-chat-plugin";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   NewTabFileSearch,
   type NewTabFileSearchProps,
@@ -17,11 +16,20 @@ import {
 
 type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "idleActions">;
 
+/** An agent surface offered on this page, so opening one is a deliberate act. */
+export interface NewTabSurfaceOption {
+  id: string;
+  label: string;
+  icon: IconName;
+}
+
 export interface NewTabPageProps extends NewTabPageFileSearchProps {
   onOpenBrowser?: OpenBrowserHandler;
   onOpenReview?: () => void;
+  onOpenSurface?: (tabId: string) => void;
   onStartTerminal?: StartTerminalHandler;
   pluginActions?: readonly PluginPanelActionEntry[];
+  surfaces?: readonly NewTabSurfaceOption[];
 }
 
 interface LauncherActionProps {
@@ -71,18 +79,29 @@ function NewTabLauncher({
   onOpenFiles,
   onOpenReview,
   onOpenSideChat,
+  onOpenSurface,
   onStartTerminal,
+  pluginActions = [],
+  surfaces = [],
 }: {
   canSearchFiles: boolean;
   onOpenBrowser?: OpenBrowserHandler;
   onOpenFiles: () => void;
   onOpenReview?: () => void;
   onOpenSideChat?: () => void;
+  onOpenSurface?: (tabId: string) => void;
   onStartTerminal?: StartTerminalHandler;
+  pluginActions?: readonly PluginPanelActionEntry[];
+  surfaces?: readonly NewTabSurfaceOption[];
 }) {
   const reviewShortcut = useAppCommandShortcut("diff.toggle");
   const terminalShortcut = useAppCommandShortcut("terminal.open");
   const filesShortcut = useAppCommandShortcut("file.quickOpen");
+  // Generated, not a literal: a split view can mount this page more than
+  // once, and a literal id would collide across instances — duplicate DOM
+  // ids resolve `aria-labelledby` unpredictably (typically to whichever
+  // instance's element happens to be first in the document).
+  const agentSurfacesHeadingId = useId();
 
   return (
     <div className="grid min-h-full place-items-center bg-tower-surface px-8 py-12">
@@ -99,22 +118,67 @@ function NewTabLauncher({
           onSelect={onStartTerminal}
           shortcut={terminalShortcut}
         />
-        <LauncherAction
-          icon="Globe"
-          label="Browser"
-          onSelect={onOpenBrowser}
-        />
+        <LauncherAction icon="Globe" label="Browser" onSelect={onOpenBrowser} />
         <LauncherAction
           icon="Folder"
           label="Files"
           onSelect={canSearchFiles ? onOpenFiles : undefined}
           shortcut={filesShortcut}
         />
+        {/* The agent's own surfaces. They used to mount themselves on every
+            thread; opening one is a choice now, and this is where it is made.
+            Headed, because "Browser" and "Files" exist on both sides of this
+            list and mean different things: above opens a tab, below opens the
+            agent's own view of itself — same accessible name, different
+            action, so the group carries the distinction programmatically
+            (`aria-labelledby`) rather than only in the visible heading a
+            screen reader user tabbing through buttons never lands on. The
+            `contents` wrapper keeps these two elements as direct flex
+            children of the launcher list, exactly as if the group boundary
+            were not there, so it changes nothing about the layout. */}
+        {surfaces.length > 0 ? (
+          <div
+            role="group"
+            aria-labelledby={agentSurfacesHeadingId}
+            className="contents"
+          >
+            <p
+              id={agentSurfacesHeadingId}
+              className="px-1 pb-1 pt-3 text-2xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+            >
+              This agent
+            </p>
+            {surfaces.map((surface) => (
+              <LauncherAction
+                key={surface.id}
+                icon={surface.icon}
+                label={surface.label}
+                onSelect={
+                  onOpenSurface ? () => onOpenSurface(surface.id) : undefined
+                }
+              />
+            ))}
+          </div>
+        ) : null}
         <LauncherAction
           icon="SideChat"
           label="Side chat"
           onSelect={onOpenSideChat}
         />
+        {/* Panels contributed by plugins. Side chat has its own row above, so
+            it is not repeated here. Without this the only plugin panel the
+            page could ever open was side chat — every other one was
+            registered, listed by the host, and unreachable. */}
+        {pluginActions
+          .filter((action) => action.pluginId !== SIDE_CHAT_PLUGIN_ID)
+          .map((action) => (
+            <LauncherAction
+              key={action.id}
+              icon={pluginIconName(action.icon)}
+              label={action.title}
+              onSelect={action.onSelect}
+            />
+          ))}
       </div>
     </div>
   );
@@ -129,12 +193,14 @@ export function NewTabPage({
   initialQuery,
   onOpenBrowser,
   onOpenReview,
+  onOpenSurface,
   onSelect,
   onStartTerminal,
   pluginActions,
   projectId,
   recentItemsThreadId,
   showFileSearch = true,
+  surfaces,
 }: NewTabPageProps) {
   const [isSearchingFiles, setIsSearchingFiles] = useState(
     () => (initialQuery?.trim().length ?? 0) > 0,
@@ -142,9 +208,7 @@ export function NewTabPage({
   const previousFocusRequestRef = useRef(focusRequest);
   const sideChatAction = useMemo(
     () =>
-      pluginActions?.find(
-        (action) => action.pluginId === SIDE_CHAT_PLUGIN_ID,
-      ),
+      pluginActions?.find((action) => action.pluginId === SIDE_CHAT_PLUGIN_ID),
     [pluginActions],
   );
 
@@ -162,7 +226,10 @@ export function NewTabPage({
         onOpenFiles={() => setIsSearchingFiles(true)}
         onOpenReview={onOpenReview}
         onOpenSideChat={sideChatAction?.onSelect}
+        onOpenSurface={onOpenSurface}
         onStartTerminal={onStartTerminal}
+        pluginActions={pluginActions}
+        surfaces={surfaces}
       />
     );
   }

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { PinnedIconTab } from "../PinnedIconTab";
+import { SecondaryPanelEmptyState } from "../SecondaryPanelEmptyState";
+import { useAgentSurfaceTabs } from "../useAgentSurfaceTabs";
 import {
   emitAgentTeardown,
   listAgentSurfaceTabs,
@@ -60,30 +62,17 @@ export function TowerRenderSurface({
     ],
     [pluginTabs],
   );
-  const [view, setView] = useState(() =>
-    resolveAgentSurfaceTabId(null, tabs),
+  // The SAME per-agent persisted open set the top-level surface uses — this
+  // surface is recursive precisely so a drilled-down agent is not a
+  // lookalike, and that only holds if it remembers what was opened on it the
+  // same way its own top-level surface would. An empty open set shows
+  // nothing; nothing auto-opens just because it is first in the registry.
+  const surfaces = useAgentSurfaceTabs(scopeThreadId, scopeThreadId);
+  const openTabs = useMemo(
+    () => tabs.filter((tab) => surfaces.openTabIds.includes(tab.id)),
+    [tabs, surfaces.openTabIds],
   );
-  const activeView = resolveAgentSurfaceTabId(view, tabs);
-  // A tab is mounted once it has been opened, and stays mounted after that:
-  // switching away pauses it, it does not destroy it. Tabs the operator has
-  // never opened are never mounted at all, so a surface with an expensive tab
-  // does not pay for it until it is asked for.
-  const [mounted, setMounted] = useState<ReadonlySet<string>>(() => {
-    const initial = resolveAgentSurfaceTabId(null, tabs);
-    return new Set(initial ? [initial] : []);
-  });
-  useEffect(() => {
-    setMounted((current) =>
-      activeView !== null && !current.has(activeView)
-        ? new Set([...current, activeView])
-        : current,
-    );
-  }, [activeView]);
-  useEffect(() => {
-    if (activeView !== null && activeView !== view) {
-      setView(activeView);
-    }
-  }, [activeView, view]);
+  const activeView = resolveAgentSurfaceTabId(surfaces.activeTabId, openTabs);
 
   // This surface is done with the agent: every tab holding something for it —
   // a browser context, a stream, a session — must let go.
@@ -109,24 +98,34 @@ export function TowerRenderSurface({
         role="toolbar"
         aria-label="Agent panel views"
       >
-        {tabs.map((tab) => (
-          <PinnedIconTab
-            key={tab.id}
-            ariaLabel={`Show ${tab.label.toLowerCase()}`}
-            isActive={activeView === tab.id}
-            label={tab.label}
-            leadingVisual={<Icon name={tab.icon} />}
-            onClick={() => setView(tab.id)}
-            title={tab.title}
-            usesDesktopChrome={false}
-            activeTreatment="fill"
-          />
-        ))}
+        {tabs.map((tab) => {
+          const isOpen = surfaces.openTabIds.includes(tab.id);
+          return (
+            <PinnedIconTab
+              key={tab.id}
+              ariaLabel={`Show ${tab.label.toLowerCase()}`}
+              isActive={activeView === tab.id}
+              label={tab.label}
+              leadingVisual={<Icon name={tab.icon} />}
+              onClick={() => surfaces.open(tab.id)}
+              onClose={isOpen ? () => surfaces.close(tab.id) : undefined}
+              closeAriaLabel={`Close ${tab.label.toLowerCase()}`}
+              title={tab.title}
+              usesDesktopChrome={false}
+              activeTreatment="fill"
+            />
+          );
+        })}
       </div>
       <div className="relative min-h-0 flex-1">
-        {tabs
-          .filter((tab) => mounted.has(tab.id))
-          .map((tab) => {
+        {openTabs.length === 0 ? (
+          <SecondaryPanelEmptyState
+            icon="Layers"
+            title="Nothing open"
+            description="Open a view above to bring it up for this agent."
+          />
+        ) : (
+          openTabs.map((tab) => {
             const isVisible = activeView === tab.id;
             return (
               <div
@@ -143,7 +142,8 @@ export function TowerRenderSurface({
                 />
               </div>
             );
-          })}
+          })
+        )}
       </div>
     </div>
   );

@@ -120,8 +120,10 @@ describe("useThreadFileTabs terminal pruning", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: runningTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [disconnectedTab, runningTab],
       },
       lastUsedAt: Date.now(),
@@ -167,8 +169,10 @@ describe("useThreadFileTabs terminal pruning", () => {
       serializeFixedPanelTabsState({
         state: createEmptyFixedPanelTabsState({
           secondary: {
+            activeSurfaceTabId: null,
             activeTabId: disconnectedTab.id,
             isOpen: true,
+            surfaceTabIds: [],
             tabs: [disconnectedTab, runningTab],
           },
           lastUsedAt: Date.now(),
@@ -214,8 +218,10 @@ describe("useThreadFileTabs active owners", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: hostTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [hostTab],
       },
       lastUsedAt: Date.now(),
@@ -296,8 +302,10 @@ describe("useThreadFileTabs active owners", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: storageTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [storageTab],
       },
       lastUsedAt: Date.now(),

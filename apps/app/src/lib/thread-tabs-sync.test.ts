@@ -26,6 +26,8 @@ describe("thread tab synchronization", () => {
         activeTabId: first.id,
         isOpen: true,
         tabs: [first],
+        surfaceTabIds: [],
+        activeSurfaceTabId: null,
       },
     });
 
@@ -55,7 +57,7 @@ describe("thread tab synchronization", () => {
     };
     const current = createEmptyFixedPanelTabsState({
       lastUsedAt: 123,
-      secondary: { activeTabId: null, isOpen: true, tabs: [] },
+      secondary: { activeTabId: null, isOpen: true, tabs: [], surfaceTabIds: [], activeSurfaceTabId: null },
     });
 
     const reconciled = reconcileFixedPanelTabsState(current, [
