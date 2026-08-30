@@ -655,7 +655,18 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ],
     [pluginSurfaceTabs],
   );
-  const { open: openAgentSurface } = useAgentSurfaceTabs(threadId, threadId);
+  const { open: openAgentSurfaceTab } = useAgentSurfaceTabs(threadId, threadId);
+  // Opening a surface has to also dismiss the new-tab page it was opened FROM:
+  // a surface only shows when no file tab is active, so without this the tab
+  // appeared in the strip while the picker stayed in front of it, which reads
+  // as the click having done nothing.
+  const openAgentSurface = useCallback(
+    (tabId: string) => {
+      openAgentSurfaceTab(tabId);
+      clearActiveFileTabs();
+    },
+    [clearActiveFileTabs, openAgentSurfaceTab],
+  );
   const {
     fileOpeners: pluginFileOpeners,
     threadPanelActions: pluginThreadPanelActions,
