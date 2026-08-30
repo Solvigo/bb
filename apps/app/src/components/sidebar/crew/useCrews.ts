@@ -294,7 +294,15 @@ function assembleFleet(
         };
       });
 
-  const roots = agentThreads.filter((t) => !t.parentThreadId && live.has(t.id));
+  // parentOf, not the raw pointer: it is the ONE answer to "whose child is
+  // this", and the optimistic reparent already moved the row everywhere else.
+  // Reading the server's stale pointer here rendered a dragged root twice —
+  // once as its new parent's child, once as a loose chat that had not moved —
+  // and made a promotion to root vanish from both bands until the server
+  // caught up.
+  const roots = agentThreads.filter(
+    (t) => parentOf(t) === null && live.has(t.id),
+  );
 
   // Crewed or not, decided by ABSENCE: a root with agents under it is a crew,
   // and so is one carrying a crew handle — chartered but not yet staffed. Both

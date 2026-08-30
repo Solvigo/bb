@@ -247,6 +247,88 @@ describe("useCrews", () => {
     expect(root?.attention).toBe(1);
   });
 
+  it("shows a dragged root once while the move is still in the air", async () => {
+    // The defect this guards: `roots` read the SERVER's parent pointer while
+    // every other read honoured the optimistic one. Drag one root onto another
+    // and the dragged agent rendered twice — as its new parent's child in
+    // Projects, and as an untouched loose chat in Chats — until the server
+    // answered. Two rows, one agent, and no way to tell which was real.
+    const PAIR = [
+      { id: "thr_a", title: "alpha", projectId: "p", parentThreadId: null },
+      { id: "thr_b", title: "beta", projectId: "p", parentThreadId: null },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    // The reparent call never settles, so the assertions run inside the
+    // optimistic window rather than after the server has confirmed anything.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("crew_reparent")) return new Promise(() => {});
+        if (url.includes("/threads"))
+          return { ok: true, json: async () => PAIR };
+        return { ok: true, json: async () => ({ result: { rows: [] } }) };
+      }),
+    );
+
+    const { useCrews, reparentAgent } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(2);
+    });
+
+    act(() => {
+      void reparentAgent("thr_b", "thr_a");
+    });
+
+    await waitFor(() => {
+      expect(result.current.crews.length).toBe(1);
+    });
+    expect(result.current.crews[0]?.commanderThreadId).toBe("thr_a");
+    expect(result.current.crews[0]?.leads.map((l) => l.name)).toEqual(["beta"]);
+    // The whole point: beta moved, so it is no longer standing in Chats too.
+    expect(result.current.chats.map((c) => c.threadId)).toEqual([]);
+  });
+
+  it("promotes an agent to root the moment it is dropped there", async () => {
+    // The mirror of the same defect: dropping a child onto the project root
+    // cleared its optimistic parent, but `roots` still saw the server's old
+    // pointer, so the agent belonged to nobody and rendered nowhere.
+    const NESTED = [
+      { id: "thr_a", title: "alpha", projectId: "p", parentThreadId: null },
+      { id: "thr_b", title: "beta", projectId: "p", parentThreadId: "thr_a" },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("crew_reparent")) return new Promise(() => {});
+        if (url.includes("/threads"))
+          return { ok: true, json: async () => NESTED };
+        return { ok: true, json: async () => ({ result: { rows: [] } }) };
+      }),
+    );
+
+    const { useCrews, reparentAgent } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.crews.length).toBe(1);
+    });
+
+    act(() => {
+      void reparentAgent("thr_b", null);
+    });
+
+    await waitFor(() => {
+      expect(result.current.chats.map((c) => c.threadId).sort()).toEqual([
+        "thr_a",
+        "thr_b",
+      ]);
+    });
+    expect(result.current.crews.length).toBe(0);
+  });
+
   it("nests as deep as the pointers go", async () => {
     // Five levels. Nothing in the tree caps depth, and the roll-up has to climb
     // all of it — the deepest ask must be visible on the root.
