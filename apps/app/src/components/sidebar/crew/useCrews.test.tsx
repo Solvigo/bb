@@ -375,6 +375,94 @@ describe("useCrews", () => {
     window.localStorage.clear();
   });
 
+  it("keeps a recorded standby pending even once a handle was minted", async () => {
+    // charter writes the handle BEFORE the brief, so a root whose charter died
+    // in between wears a handle and has no brief. Reading the handle as
+    // completion took the only Retry off the screen.
+    const ROOTS = [
+      {
+        id: "thr_partial",
+        title: "New crew",
+        projectId: "p",
+        parentThreadId: null,
+      },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_partial", projectId: "p" }]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/threads"))
+          return { ok: true, json: async () => ROOTS };
+        if (url.includes("crew_fleet")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result: {
+                rows: [
+                  {
+                    threadId: "thr_partial",
+                    handle: "AW-3",
+                    parentThreadId: null,
+                    rank: "commander",
+                  },
+                ],
+              },
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ result: { rows: [] } }) };
+      }),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+
+    expect(result.current.pendingRoots.map((r) => r.threadId)).toEqual([
+      "thr_partial",
+    ]);
+    // And it is NOT presented as a working crew while it is half made.
+    expect(result.current.crews).toEqual([]);
+    window.localStorage.clear();
+  });
+
+  it("gives a projectless standby the personal project's own id", async () => {
+    // The thread list omits projectId for a personal thread. Emitting "" left
+    // the pending root in a project nothing groups under, so its Retry had no
+    // card to live on.
+    const ROOTS = [{ id: "thr_p", title: "New crew", parentThreadId: null }];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_p", projectId: "proj_personal" }]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/threads")
+          ? { ok: true, json: async () => ROOTS }
+          : { ok: true, json: async () => ({ result: { rows: [] } }) },
+      ),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+
+    expect(result.current.pendingRoots[0]?.projectId).toBe("proj_personal");
+    window.localStorage.clear();
+  });
+
   it("drops a recorded standby whose project no longer matches", async () => {
     // The record only ever narrows. A thread that moved, or a record written
     // for another project, stops matching rather than asserting anything.

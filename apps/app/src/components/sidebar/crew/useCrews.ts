@@ -344,8 +344,12 @@ export function assembleFleet(
   // no handle, and still sit on the project it was recorded for. A record that
   // has gone stale stops matching rather than asserting anything.
   const recorded = recordedStandbyRoots();
+  // A HANDLE IS NOT COMPLETION. charter writes the handle before the brief, so
+  // a root whose charter died in between wears a handle and has no brief — and
+  // dropping it from pending here is what took the only Retry off the screen.
+  // The record is removed when a charter SUCCEEDS, and until then this stays
+  // pending however crewed it looks.
   const isPendingRoot = (t: ThreadRow) =>
-    !isCrewed(t) &&
     recorded.get(t.id) === (t.projectId ?? PERSONAL_PROJECT_ID);
 
   const pendingRoots: PendingRoot[] = roots
@@ -353,7 +357,9 @@ export function assembleFleet(
     .map((t) => ({
       threadId: t.id,
       name: titleOf(t),
-      projectId: t.projectId ?? "",
+      // One spelling, so a personal standby is findable by the same id the
+      // rest of the app groups it under.
+      projectId: t.projectId ?? PERSONAL_PROJECT_ID,
     }));
 
   const chats: LooseChat[] = roots
@@ -365,29 +371,31 @@ export function assembleFleet(
       liveness: livenessOf.get(t.id) ?? null,
     }));
 
-  const crews = roots.filter(isCrewed).map((commander) => {
-    const leads: CrewLead[] = agentsUnder(commander.id);
-    const working = leads.filter((l) => l.working).length;
-    return {
-      commanderThreadId: commander.id,
-      name: titleOf(commander),
-      projectId: commander.projectId ?? "",
-      liveness: livenessOf.get(commander.id) ?? null,
-      leads,
-      attention:
-        (asksOf.get(commander.id) ?? 0) +
-        leads.reduce((total, lead) => total + lead.attention, 0),
-      // An agent is an agent. Depth is the only hierarchy there is, and it is
-      // shown by where a row sits — so the words here count agents rather than
-      // naming a rank the structure no longer has.
-      status:
-        leads.length === 0
-          ? "nothing under it yet"
-          : working > 0
-            ? `${working} of ${leads.length} working`
-            : `${leads.length} agent${leads.length === 1 ? "" : "s"} standing by`,
-    };
-  });
+  const crews = roots
+    .filter((t) => isCrewed(t) && !isPendingRoot(t))
+    .map((commander) => {
+      const leads: CrewLead[] = agentsUnder(commander.id);
+      const working = leads.filter((l) => l.working).length;
+      return {
+        commanderThreadId: commander.id,
+        name: titleOf(commander),
+        projectId: commander.projectId ?? "",
+        liveness: livenessOf.get(commander.id) ?? null,
+        leads,
+        attention:
+          (asksOf.get(commander.id) ?? 0) +
+          leads.reduce((total, lead) => total + lead.attention, 0),
+        // An agent is an agent. Depth is the only hierarchy there is, and it is
+        // shown by where a row sits — so the words here count agents rather than
+        // naming a rank the structure no longer has.
+        status:
+          leads.length === 0
+            ? "nothing under it yet"
+            : working > 0
+              ? `${working} of ${leads.length} working`
+              : `${leads.length} agent${leads.length === 1 ? "" : "s"} standing by`,
+      };
+    });
 
   return { crews, chats, pendingRoots };
 }
@@ -583,7 +591,9 @@ export type ReparentRefusal =
   | "cycle"
   | "self"
   | "unknown-agent"
-  | "not-permitted";
+  | "not-permitted"
+  /** A domain-holding agent's custody is protected from the drag. */
+  | "domain-agent";
 
 export interface ReparentOutcome {
   ok: boolean;
@@ -593,6 +603,7 @@ export interface ReparentOutcome {
 }
 
 const REFUSAL_TEXT: Record<ReparentRefusal, string> = {
+  "domain-agent": "that agent holds a domain, so its custody cannot be moved",
   cycle: "that would put an agent inside its own branch",
   self: "an agent cannot report to itself",
   "unknown-agent": "that agent is no longer there",

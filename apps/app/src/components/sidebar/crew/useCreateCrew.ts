@@ -186,16 +186,22 @@ function parseFleetRow(row: unknown): FleetRow | null {
   if (typeof row !== "object" || row === null) return null;
   const r = row as Record<string, unknown>;
   if (typeof r.threadId !== "string" || r.threadId === "") return null;
-  const handle = r.handle;
-  if (handle !== null && typeof handle !== "string") return null;
-  const parent = r.parentThreadId;
-  if (parent !== null && parent !== undefined && typeof parent !== "string") {
+  // PRESENT and nullable, not merely "not the wrong type". A row missing
+  // `handle` is a row from something that is not this contract, and reading a
+  // missing key as null is how an ungoverned thread passes for a crew root.
+  if (!("handle" in r) || (r.handle !== null && typeof r.handle !== "string")) {
+    return null;
+  }
+  if (
+    !("parentThreadId" in r) ||
+    (r.parentThreadId !== null && typeof r.parentThreadId !== "string")
+  ) {
     return null;
   }
   return {
     threadId: r.threadId,
-    handle: handle ?? null,
-    parentThreadId: typeof parent === "string" ? parent : null,
+    handle: r.handle as string | null,
+    parentThreadId: r.parentThreadId as string | null,
   };
 }
 
@@ -259,6 +265,11 @@ async function governedRootFor(
   if (result.ok !== true) return { status: "unavailable" };
   const rawRows = result.rows;
   if (!Array.isArray(rawRows)) return { status: "unavailable" };
+  // The plugin reports the rows IT could not read in `unreadable`. One entry
+  // there and the fleet is partial — and the row it dropped could be the very
+  // root being asked about, so a partial fleet is an unreadable one.
+  if (!Array.isArray(result.unreadable)) return { status: "unavailable" };
+  if (result.unreadable.length > 0) return { status: "unavailable" };
   const parsed = rawRows.map(parseFleetRow);
   if (parsed.some((r) => r === null)) return { status: "unavailable" };
 
@@ -390,6 +401,43 @@ async function sendRootOpening({
   ]);
 }
 
+/** The id of a thread that WAS created, when the body still yields one. */
+function recoverableThreadId(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const id = (body as Record<string, unknown>).id;
+  return typeof id === "string" && id !== "" ? id : null;
+}
+
+/**
+ * Undo a creation this flow can no longer use, and say what happened.
+ *
+ * The one thing never to say here is "no crew was made". A thread exists
+ * either way; the only question is whether its id came back well enough to
+ * archive it. An orphan nobody can name is the worst outcome, so an
+ * unrecoverable id is stated as exactly that.
+ */
+async function cleanUpStranded(threadId: string | null): Promise<string> {
+  if (threadId === null) {
+    return (
+      "A thread was created but the rig did not name it, so it could not be " +
+      "cleaned up. Look for an unnamed root on this project and archive it."
+    );
+  }
+  try {
+    await withDeadline(
+      sdk.threads.archive({ threadId }),
+      "Archiving the unusable thread",
+    );
+  } catch (e) {
+    return (
+      `A thread was created (${threadId}) that this crew cannot be built on, ` +
+      `and archiving it failed${e instanceof Error ? `: ${e.message}` : ""}. ` +
+      `Archive it by hand so it does not sit on the rail.`
+    );
+  }
+  return "The rig answered with a thread this crew cannot be built on, so it was archived. Try again.";
+}
+
 /**
  * What to do when our charter was refused and someone else may have won.
  *
@@ -460,6 +508,7 @@ async function openGovernedRoot(
     rootTaskId(projectId),
   );
   if (!repaired.ok) return repaired.message ?? "The crew could not be opened.";
+  charteredRoots.add(thread.id);
   forgetStandbyRoot(thread.id);
   await sendRootOpening({
     threadId: thread.id,
@@ -495,6 +544,10 @@ async function openGovernedRoot(
  * each read a thread list with no root on it, and each created one — the
  * duplicate this guard exists to make impossible.
  */
+/** Roots this session has seen charter successfully. Authoritative in a way a
+ *  handle is not: charter writes the handle before the brief. */
+const charteredRoots = new Set<string>();
+
 const creatingProjects = new Set<string>();
 const creatingListeners = new Set<() => void>();
 
@@ -596,7 +649,7 @@ export function useCreateCrew(): {
           // Notes the rig no longer agrees with: deleted, reparented, moved
           // to another project, or since chartered. Left alone they answer
           // questions about threads that stopped matching them long ago.
-          purgeStandbyRoots(threads, new Set());
+          purgeStandbyRoots(threads, charteredRoots);
           // What THIS client recorded standing up here — not what a thread is
           // called. Resuming on a title picked up the operator's own chat.
           const recorded = recordedStandbyRoots();
@@ -642,6 +695,7 @@ export function useCreateCrew(): {
               setError(recovered.message);
               return;
             }
+            charteredRoots.add(unfinished.id);
             forgetStandbyRoot(unfinished.id);
             // The brief goes out on BOTH paths here. A fleet row proves a
             // handle was written; it says nothing about whether the brief that
@@ -763,25 +817,32 @@ export function useCreateCrew(): {
             }),
           });
           if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as {
-              message?: string;
-            } | null;
+            // Bounded like every other read: a refusal whose body never
+            // finishes arriving is the same stuck button by another route.
+            const failure = await withDeadline(
+              res.json().catch(() => null),
+              "The rig",
+            ).catch(() => null);
             setError(
-              body?.message ?? `Could not start the crew (${res.status}).`,
+              messageOf(failure) ??
+                `Could not start the crew (${res.status}).`,
             );
             return;
           }
-          const created = parseThreadRow(
-            await withDeadline(res.json(), "The rig"),
-          );
+          const createdBody = await withDeadline(
+            res.json().catch(() => null),
+            "The rig",
+          ).catch(() => null);
+          const created = parseThreadRow(createdBody);
           // The crew is about to be chartered onto whatever came back. An id
           // that is missing, or a project that is not the one asked for, is a
           // root somewhere the operator did not choose — and a root cannot
           // move afterwards.
           if (created === null || projectOf(created) !== projectId) {
-            setError(
-              "The rig answered with a thread this crew cannot be built on.",
-            );
+            // A thread WAS created. Whether its id is recoverable from this
+            // body decides whether it can be cleaned up or only named.
+            const strandedId = recoverableThreadId(createdBody);
+            setError(await cleanUpStranded(strandedId));
             return;
           }
           const thread = created;
@@ -792,11 +853,9 @@ export function useCreateCrew(): {
           try {
             rememberStandbyRoot(thread.id, rootProjectId);
           } catch {
-            setError(
-              `The crew was created (${thread.id}) but this browser could not ` +
-                `record it, so it cannot be recovered from here. Archive that ` +
-                `thread by hand, or enable site storage and try again.`,
-            );
+            // The thread exists and nothing here can identify it later, so it
+            // is cleaned up now rather than left as an unrecognisable root.
+            setError(await cleanUpStranded(thread.id));
             return;
           }
 
@@ -830,6 +889,7 @@ export function useCreateCrew(): {
             setError(recovered.message);
             return;
           }
+          charteredRoots.add(thread.id);
           forgetStandbyRoot(thread.id);
           await sendRootOpening({
             threadId: thread.id,

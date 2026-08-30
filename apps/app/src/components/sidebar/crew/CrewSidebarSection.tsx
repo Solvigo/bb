@@ -1387,6 +1387,7 @@ function groupByProject(
   crews: readonly Crew[],
   nameOf: ReadonlyMap<string, string>,
   projectIds: readonly string[],
+  pendingRoots: readonly PendingRoot[],
 ): ProjectGroup[] {
   const groups = new Map<string, ProjectGroup>();
 
@@ -1415,6 +1416,17 @@ function groupByProject(
       crews: [crew],
     });
   }
+  // A pending root needs a card to carry its Retry. Personal is the one
+  // project that is not seeded from the project list, so a standby created
+  // with no project had nowhere on screen to be finished from.
+  for (const pending of pendingRoots) {
+    if (groups.has(pending.projectId)) continue;
+    groups.set(pending.projectId, {
+      projectId: pending.projectId,
+      name: nameOf.get(pending.projectId) ?? null,
+      crews: [],
+    });
+  }
   // Real projects first and alphabetical. Personal sinks below them — an agent
   // tree belongs in Projects wherever it lives, but the projectless bucket is
   // not a folder anyone chose, so it does not compete for the top. Anything
@@ -1430,7 +1442,9 @@ function groupByProject(
       // an empty "Personal" folder invites you to fill something that is not a
       // place.
       (group) =>
-        group.projectId !== PERSONAL_PROJECT_ID || group.crews.length > 0,
+        group.projectId !== PERSONAL_PROJECT_ID ||
+        group.crews.length > 0 ||
+        pendingRoots.some((r) => r.projectId === PERSONAL_PROJECT_ID),
     )
     .sort((a, b) => {
       const byWeight = weightOf(a) - weightOf(b);
@@ -1458,8 +1472,8 @@ export function CrewSidebarSection({
   const projectNameOf = useProjectNames();
   const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
   const projectGroups = useMemo(
-    () => groupByProject(crews, projectNameOf, projectIds),
-    [crews, projectNameOf, projectIds],
+    () => groupByProject(crews, projectNameOf, projectIds, pendingRoots),
+    [crews, pendingRoots, projectNameOf, projectIds],
   );
   const {
     createCrew,

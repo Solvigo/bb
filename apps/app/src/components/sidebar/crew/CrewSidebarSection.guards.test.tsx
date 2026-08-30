@@ -276,6 +276,36 @@ describe("CrewSidebarSection one-crew affordance", () => {
     expect(within(groups[1]!).getByTestId("add-crew-button")).toBeTruthy();
   });
 
+  it("gives the personal project a card when a standby is waiting there", () => {
+    // Personal is the projectless bucket and stays out of the way when empty —
+    // but a half-made root there still needs somewhere to carry its Retry.
+    useCrewsMock.mockReturnValue({
+      crews: [],
+      chats: [],
+      pendingRoots: [
+        {
+          threadId: "thr_p",
+          name: "New crew",
+          projectId: "proj_personal",
+        },
+      ],
+      loaded: true,
+      failed: false,
+      timedOut: false,
+      reload: vi.fn(),
+    });
+
+    renderSection();
+
+    const groups = screen.getAllByTestId("sidebar-project-group");
+    // Alpha, Beta, and Personal — which is only here because of the standby.
+    expect(groups).toHaveLength(3);
+    const retry = screen.getByTestId("retry-crew-button");
+    expect(retry.textContent).toContain("Setup did not finish");
+    fireEvent.click(retry);
+    expect(createCrew).toHaveBeenCalledWith("proj_personal");
+  });
+
   it("scopes project-root drop to the dragged agent's project while editing", () => {
     useCrewsMock.mockReturnValue({
       crews: [sampleCrew("proj_alpha", "thr_alpha")],

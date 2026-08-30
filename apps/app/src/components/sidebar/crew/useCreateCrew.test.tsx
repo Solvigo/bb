@@ -72,7 +72,9 @@ interface RigOptions {
     | "unreadable"
     | "malformed"
     | "outer-not-ok"
-    | "inner-not-ok";
+    | "inner-not-ok"
+    | "partial"
+    | "no-handle-key";
   /** What the fleet says AFTER the charter — the other process's crew landing
    *  between our pre-check and our refusal is the race itself. */
   fleetAfterCharter?:
@@ -80,10 +82,14 @@ interface RigOptions {
     | "unreadable"
     | "malformed"
     | "outer-not-ok"
-    | "inner-not-ok";
+    | "inner-not-ok"
+    | "partial"
+    | "no-handle-key";
   projects?: unknown[] | "unreadable";
   /** What POST /threads answers with — the crew is chartered onto this. */
   created?: unknown;
+  createStatus?: number;
+  createBody?: unknown;
 }
 
 /** The shape crew_charter actually answers with: a discriminated union on `ok`
@@ -115,6 +121,8 @@ function stubRig({
   fleetAfterCharter,
   projects = [{ id: "proj_a" }],
   created = { id: "thr_root", projectId: "proj_a" },
+  createStatus,
+  createBody,
 }: RigOptions = {}) {
   let charterSeen = false;
   calls = [];
@@ -154,11 +162,20 @@ function stubRig({
             }),
           };
         }
-        const rows = view === "malformed" ? [{ handle: "AW-1" }] : view;
+        const rows =
+          view === "malformed"
+            ? [{ handle: "AW-1" }]
+            : view === "no-handle-key"
+              ? [{ threadId: "thr_x", parentThreadId: null }]
+              : view;
+        const unreadable = view === "partial" ? ["thr_unreadable"] : [];
         return {
           ok: true,
           status: 200,
-          json: async () => ({ ok: true, result: { ok: true, rows } }),
+          json: async () => ({
+            ok: true,
+            result: { ok: true, rows: view === "partial" ? [] : rows, unreadable },
+          }),
         };
       }
       if (url.includes("crew_charter")) {
@@ -185,6 +202,13 @@ function stubRig({
       if (url.includes("/api/v1/threads")) {
         if (init?.method !== "POST" && threads === "unreadable") {
           return { ok: false, status: 503, json: async () => ({}) };
+        }
+        if (init?.method === "POST" && createStatus !== undefined) {
+          return {
+            ok: createStatus < 400,
+            status: createStatus,
+            json: async () => createBody ?? {},
+          };
         }
         return {
           ok: true,
@@ -705,6 +729,61 @@ describe("useCreateCrew", () => {
     expect(calls.filter((c) => c.includes("crew_charter"))).toEqual([]);
     expect(send).not.toHaveBeenCalled();
     setItem.mockRestore();
+  });
+
+  it.each([
+    ["the fleet reports rows it could not read", "partial" as const],
+    ["a row is missing its handle key", "no-handle-key" as const],
+  ])("will not create when %s", async (_label, fleet) => {
+    // A partial fleet is an unreadable one: the row it dropped could be the
+    // very root being asked about.
+    stubRig({ fleet });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("Could not read the crew ledger");
+    });
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+  });
+
+  it("surfaces a bounded message from a refused create", async () => {
+    stubRig({ createStatus: 409, createBody: { error: "that folder is busy" } });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toBe("that folder is busy");
+    });
+    expect(calls.filter((c) => c.includes("crew_charter"))).toEqual([]);
+  });
+
+  it("archives the thread it cannot build on rather than pretending none was made", async () => {
+    // A thread WAS created. Saying "no crew was made" would leave a root
+    // nobody is looking for.
+    stubRig({ created: { id: "thr_stranded", projectId: "proj_elsewhere" } });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("archived");
+    });
+    expect(archive).toHaveBeenCalledWith({ threadId: "thr_stranded" });
+  });
+
+  it("names an orphan it cannot even identify", async () => {
+    stubRig({ created: { projectId: "proj_a" } });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("did not name it");
+    });
+    expect(archive).not.toHaveBeenCalled();
   });
 
   it("keeps busy state per project", async () => {
