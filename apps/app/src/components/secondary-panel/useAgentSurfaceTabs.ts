@@ -6,9 +6,9 @@ import {
   type FixedPanelTabsSyncThreadId,
 } from "@/lib/fixed-panel-tabs";
 import {
+  EMPTY_FIXED_PANEL_TABS_STATE,
   getFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
-  type FixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 
 export interface AgentSurfaceTabsState {
@@ -65,24 +65,27 @@ function threadIdFromStorageKey(key: string): string | null {
  * independent timestamp check — means there is exactly one answer to that
  * question, and this one can never disagree with the atom's own.
  *
- * A unique sentinel (rather than some real "empty" state) as `initialValue`
- * makes a rejected parse (never stored, corrupt JSON, failed schema, or
- * expired) detectable by reference: `parseFixedPanelTabsState` only ever
- * returns something else when it produced a genuinely fresh, valid record
- * from `storedValue`.
+ * Passing the module's own `EMPTY_FIXED_PANEL_TABS_STATE` singleton as
+ * `initialValue` makes a rejected parse (never stored, corrupt JSON, failed
+ * schema, or expired) detectable by reference, with no fake or unsafely-cast
+ * value needed: `parseFixedPanelTabsStateForStorage` always builds a FRESH
+ * object on a successful parse (see `normalizeFixedPanelTabsState`, which
+ * never returns its input unchanged) and only ever hands back the literal
+ * `initialValue` reference on rejection — so `EMPTY_FIXED_PANEL_TABS_STATE`
+ * coming back out unchanged can only mean the parse was rejected, never that
+ * a real record happened to equal it.
  */
 function isOwningFixedPanelTabsRecordCurrent(threadId: string): boolean {
   const raw = window.localStorage.getItem(
     getFixedPanelTabsStateStorageKey({ threadId }),
   );
   if (raw === null) return false;
-  const rejectionSentinel = {} as FixedPanelTabsState;
   const parsed = parseFixedPanelTabsState({
-    initialValue: rejectionSentinel,
+    initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
     now: Date.now(),
     storedValue: raw,
   });
-  return parsed !== rejectionSentinel;
+  return parsed !== EMPTY_FIXED_PANEL_TABS_STATE;
 }
 
 function readStored(threadId: string): StoredSurfaceTabs | null {
