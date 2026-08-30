@@ -46,7 +46,7 @@ function renderPage() {
 }
 
 describe("NewTabPage", () => {
-  it("opens on the centered built-in tool launcher without exposing Tower", () => {
+  it("opens on the centered built-in tool launcher offering registered plugins", () => {
     const { container } = renderPage();
 
     expect(container.firstElementChild?.classList.contains("bg-tower-surface")).toBe(
@@ -57,7 +57,7 @@ describe("NewTabPage", () => {
     expect(screen.getByRole("button", { name: "Browser" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Files" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Side chat" })).toBeTruthy();
-    expect(screen.queryByText("Tower")).toBeNull();
+    expect(screen.getByRole("button", { name: "Tower" })).toBeTruthy();
     expect(screen.queryByTestId("new-tab-file-search")).toBeNull();
   });
 
