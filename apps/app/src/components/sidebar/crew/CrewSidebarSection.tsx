@@ -44,6 +44,10 @@ const ROW_RESTING_CLASS = "hover:bg-sidebar-accent";
 const ROW_CURRENT_CLASS = "bg-sidebar-accent";
 const ROW_DROP_TARGET_CLASS = "bg-primary/20 ring-2 ring-inset ring-primary";
 const ROW_JUST_MOVED_CLASS = "bg-primary/25 ring-2 ring-inset ring-primary/70";
+// The one control a project card offers when it has no crew: add one, or
+// finish the one whose charter did not go through. Same row either way.
+const CARD_ACTION_CLASS =
+  "flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50";
 
 function CrewEntry({
   crew,
@@ -863,41 +867,6 @@ export function pendingRootOf(
 }
 
 /**
- * The one row a half-made crew gets: it says the setup did not finish, and it
- * carries the button that finishes it.
- */
-function PendingRootRow({
-  onRetry,
-  retrying,
-}: {
-  onRetry: () => void;
-  retrying: boolean;
-}) {
-  return (
-    <div
-      data-testid="pending-root-row"
-      className="flex min-w-0 flex-col gap-1 rounded-md px-2 py-1.5"
-    >
-      <span className="truncate text-sm text-subtle-foreground">
-        Setup did not finish
-      </span>
-      <button
-        type="button"
-        data-testid="retry-crew-button"
-        onClick={onRetry}
-        disabled={retrying}
-        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
-      >
-        <Icon name="RotateCcw" className="size-3.5 shrink-0" aria-hidden />
-        <span className="truncate text-sm">
-          {retrying ? "Standing up a crew…" : "Retry"}
-        </span>
-      </button>
-    </div>
-  );
-}
-
-/**
  * Crews under the project they belong to, which is the tree's real root: a
  * project is a folder someone chose, and its agents live inside it.
  *
@@ -1088,28 +1057,35 @@ export function CrewSidebarSection({
                       Sent to Chats it read as a conversation and, by counting
                       as the project's root, hid the only control that could
                       finish it. */}
-                  {pendingRootOf(pendingRoots, group.projectId) !== null ? (
-                    <PendingRootRow
-                      onRetry={() => createCrew(group.projectId)}
-                      retrying={creatingCrew}
-                    />
-                  ) : !projectHasCrew(group.projectId, crews) ? (
-                    <button
-                      type="button"
-                      data-testid="add-crew-button"
-                      onClick={() => createCrew(group.projectId)}
-                      disabled={creatingCrew}
-                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      <Icon
-                        name="Plus"
-                        className="size-3.5 shrink-0"
-                        aria-hidden
-                      />
-                      <span className="truncate text-sm">
-                        {creatingCrew ? "Standing up a crew…" : "Add a crew"}
-                      </span>
-                    </button>
+                  {!projectHasCrew(group.projectId, crews) ? (
+                    (() => {
+                      const pending =
+                        pendingRootOf(pendingRoots, group.projectId) !== null;
+                      return (
+                        <button
+                          type="button"
+                          data-testid={
+                            pending ? "retry-crew-button" : "add-crew-button"
+                          }
+                          onClick={() => createCrew(group.projectId)}
+                          disabled={creatingCrew}
+                          className={CARD_ACTION_CLASS}
+                        >
+                          <Icon
+                            name={pending ? "RotateCcw" : "Plus"}
+                            className="size-3.5 shrink-0"
+                            aria-hidden
+                          />
+                          <span className="truncate text-sm">
+                            {creatingCrew
+                              ? "Standing up a crew…"
+                              : pending
+                                ? "Setup did not finish — retry"
+                                : "Add a crew"}
+                          </span>
+                        </button>
+                      );
+                    })()
                   ) : (
                     <ul className="flex flex-col gap-0.5">
                       {group.crews.map((crew) => (

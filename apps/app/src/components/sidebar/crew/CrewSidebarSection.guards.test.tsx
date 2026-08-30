@@ -257,10 +257,13 @@ describe("CrewSidebarSection one-crew affordance", () => {
 
     const groups = screen.getAllByTestId("sidebar-project-group");
     const alpha = groups[0]!;
-    // The standby is rendered in ITS project block, not below in Chats.
-    expect(within(alpha).getByTestId("pending-root-row")).toBeTruthy();
+    // The standby's control is in ITS project block, not below in Chats, and
+    // it says what it is rather than offering a second crew.
+    const retry = within(alpha).getByTestId("retry-crew-button");
+    expect(retry.textContent).toContain("Setup did not finish");
+    expect(within(alpha).queryByTestId("add-crew-button")).toBeNull();
     // And the way out is right there, on the same card.
-    fireEvent.click(within(alpha).getByTestId("retry-crew-button"));
+    fireEvent.click(retry);
     expect(createCrew).toHaveBeenCalledWith("proj_alpha");
     // The crewless project beside it still offers the ordinary affordance.
     expect(within(groups[1]!).getByTestId("add-crew-button")).toBeTruthy();

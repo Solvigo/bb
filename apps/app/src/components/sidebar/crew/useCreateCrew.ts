@@ -127,56 +127,36 @@ interface FleetEnvelope {
  * fleet row records no project, so the project boundary is read where it is
  * actually kept — on the thread.
  */
-async function readGovernedRoots(): Promise<FleetRow[] | null> {
-  try {
-    const res = await fetchWithTimeout(
-      "/api/v1/plugins/crew/rpc/crew_fleet",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "null",
-      },
-    );
-    if (!res.ok) return null;
-    const fleet = (await res.json()) as FleetEnvelope;
-    const rows = fleet?.result?.rows ?? fleet?.rows;
-    if (rows === undefined) return null;
-    return rows.filter((r) => Boolean(r.handle) && !r.parentThreadId);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The thread already holding this project's crew, if one is.
- *
- * The fleet row records no project, so the project boundary is read where it
- * is actually kept — on the thread. A fleet that cannot be read answers null,
- * which is "unknown", never "there is none".
- */
 async function governedRootFor(
   projectId: string,
   threads: readonly ThreadRow[],
 ): Promise<ThreadRow | null> {
-  const governed = await readGovernedRoots();
-  if (governed === null) return null;
-  const ids = new Set(governed.map((r) => r.threadId));
+  let rows: FleetRow[] | undefined;
+  try {
+    const res = await fetchWithTimeout("/api/v1/plugins/crew/rpc/crew_fleet", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+    });
+    if (!res.ok) return null;
+    const fleet = (await res.json()) as FleetEnvelope;
+    rows = fleet?.result?.rows ?? fleet?.rows;
+  } catch {
+    return null;
+  }
+  if (rows === undefined) return null;
+  const governed = new Set(
+    rows.filter((r) => Boolean(r.handle) && !r.parentThreadId).map(
+      (r) => r.threadId,
+    ),
+  );
   return (
     threads.find(
       (t) =>
-        ids.has(t.id) && (t.projectId ?? PERSONAL_PROJECT_ID) === projectId,
+        governed.has(t.id) &&
+        (t.projectId ?? PERSONAL_PROJECT_ID) === projectId,
     ) ?? null
   );
-}
-
-async function isGovernedRootFor(
-  threadId: string,
-  projectId: string,
-): Promise<boolean> {
-  const threads = await readThreadRows();
-  if (threads === null) return false;
-  const root = await governedRootFor(projectId, threads);
-  return root !== null && root.id === threadId;
 }
 
 /**
@@ -191,6 +171,7 @@ async function isGovernedRootFor(
 async function charterRoot(
   threadId: string,
   projectId: string,
+  threads: readonly ThreadRow[],
   briefText: string,
   taskId: string,
 ): Promise<CharterOutcome> {
@@ -227,9 +208,8 @@ async function charterRoot(
   // The one thing that turns a refusal into a success: the fleet already lists
   // this exact thread as this project's governed root, so the charter it is
   // refusing is the charter it already has.
-  if (await isGovernedRootFor(threadId, projectId)) {
-    return { ok: true, message: null };
-  }
+  const governed = await governedRootFor(projectId, threads);
+  if (governed?.id === threadId) return { ok: true, message: null };
   return {
     ok: false,
     message: message ?? `The crew could not be chartered (${res.status}).`,
@@ -388,6 +368,7 @@ export function useCreateCrew(): {
             const chartered = await charterRoot(
               unfinished.id,
               rootProjectId,
+              threads,
               await loadRootBootstrap(),
               rootTaskId(rootProjectId),
             );
@@ -515,6 +496,7 @@ export function useCreateCrew(): {
           const chartered = await charterRoot(
             thread.id,
             rootProjectId,
+            [...threads, thread],
             await loadRootBootstrap(),
             rootTaskId(rootProjectId),
           );
