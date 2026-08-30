@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { stripRankPrefix } from "@/lib/agent-title";
 import { wsManager } from "@/lib/ws";
 import { recordedStandbyRoots } from "./standbyRoots";
@@ -344,7 +345,8 @@ export function assembleFleet(
   // has gone stale stops matching rather than asserting anything.
   const recorded = recordedStandbyRoots();
   const isPendingRoot = (t: ThreadRow) =>
-    !isCrewed(t) && recorded.get(t.id) === (t.projectId ?? "");
+    !isCrewed(t) &&
+    recorded.get(t.id) === (t.projectId ?? PERSONAL_PROJECT_ID);
 
   const pendingRoots: PendingRoot[] = roots
     .filter(isPendingRoot)

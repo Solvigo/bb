@@ -67,11 +67,23 @@ interface FleetRow {
 interface RigOptions {
   threads?: unknown[] | "unreadable";
   charter?: { status?: number; body?: unknown };
-  fleet?: FleetRow[] | "unreadable" | "malformed";
+  fleet?:
+    | FleetRow[]
+    | "unreadable"
+    | "malformed"
+    | "outer-not-ok"
+    | "inner-not-ok";
   /** What the fleet says AFTER the charter — the other process's crew landing
    *  between our pre-check and our refusal is the race itself. */
-  fleetAfterCharter?: FleetRow[] | "unreadable" | "malformed";
+  fleetAfterCharter?:
+    | FleetRow[]
+    | "unreadable"
+    | "malformed"
+    | "outer-not-ok"
+    | "inner-not-ok";
   projects?: unknown[] | "unreadable";
+  /** What POST /threads answers with — the crew is chartered onto this. */
+  created?: unknown;
 }
 
 /** The shape crew_charter actually answers with: a discriminated union on `ok`
@@ -102,6 +114,7 @@ function stubRig({
   fleet = [],
   fleetAfterCharter,
   projects = [{ id: "proj_a" }],
+  created = { id: "thr_root", projectId: "proj_a" },
 }: RigOptions = {}) {
   let charterSeen = false;
   calls = [];
@@ -123,6 +136,23 @@ function stubRig({
             : fleet;
         if (view === "unreadable") {
           return { ok: false, status: 503, json: async () => ({}) };
+        }
+        if (view === "outer-not-ok") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: false, error: "port down" }),
+          };
+        }
+        if (view === "inner-not-ok") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              ok: true,
+              result: { ok: false, error: "ledger unreadable" },
+            }),
+          };
         }
         const rows = view === "malformed" ? [{ handle: "AW-1" }] : view;
         return {
@@ -147,9 +177,7 @@ function stubRig({
           ok: true,
           status: 200,
           json: async () =>
-            init?.method === "POST"
-              ? { id: "thr_root", projectId: "proj_a" }
-              : threads,
+            init?.method === "POST" ? created : threads,
         };
       }
       if (url.includes("/api/v1/projects")) {
@@ -538,6 +566,132 @@ describe("useCreateCrew", () => {
       expect(result.current.error).toBe("charter refused");
     });
     expect(archive).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a port that reports failure", "outer-not-ok" as const],
+    ["a ledger that reports failure", "inner-not-ok" as const],
+  ])("will not create on %s", async (_label, fleet) => {
+    // Both levels must say ok. A transport that succeeded carrying a verb that
+    // failed is still a fleet this code cannot read.
+    stubRig({ fleet });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("Could not read the crew ledger");
+    });
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+  });
+
+  it("will not create when one thread row is unreadable", async () => {
+    stubRig({ threads: [{ id: "thr_ok", projectId: "proj_a" }, { id: 7 }] });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("Could not read");
+    });
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+  });
+
+  it.each([
+    ["no id", { projectId: "proj_a" }],
+    ["an empty id", { id: "", projectId: "proj_a" }],
+    ["another project", { id: "thr_root", projectId: "proj_elsewhere" }],
+  ])("refuses to charter a created thread with %s", async (_label, created) => {
+    // A root cannot move after it is made, so a thread that came back on the
+    // wrong project is not something to charter and hand over.
+    stubRig({ created });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("cannot be built on");
+    });
+    expect(calls.filter((c) => c.includes("crew_charter"))).toEqual([]);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a truncated success", { ok: true, threadId: "thr_root" }],
+    [
+      "a success about another thread",
+      { ...CHARTERED.result, threadId: "thr_other" },
+    ],
+    [
+      "a success with no rank",
+      { ...CHARTERED.result, rank: "" },
+    ],
+  ])("does not accept %s as a chartered crew", async (_label, result_) => {
+    stubRig({ charter: { status: 200, body: { ok: true, result: result_ } } });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("could not be chartered");
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("charters the winner before opening it, not just the loser's own root", async () => {
+    // The winner is opened the same way any existing root is: its handle
+    // proves a charter started, never that its brief landed.
+    stubRig({
+      charter: {
+        status: 200,
+        body: {
+          ok: true,
+          result: { ok: false, error: "this project already has a crew" },
+        },
+      },
+      fleetAfterCharter: [
+        { threadId: "thr_winner", handle: "AW-9", parentThreadId: null },
+      ],
+      threads: [
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    // Ours refused, then the winner chartered: two charter calls, and the
+    // second one is what makes the winner safe to open.
+    await waitFor(() => {
+      expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(2);
+    });
+  });
+
+  it("does not create when this browser cannot record what it created", async () => {
+    // Without the note nothing can tell the thread from an ordinary chat
+    // afterwards: no retry, no cleanup, no way back.
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("storage is full");
+      });
+    stubRig();
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("could not");
+    });
+    expect(calls.filter((c) => c.includes("crew_charter"))).toEqual([]);
+    expect(send).not.toHaveBeenCalled();
+    setItem.mockRestore();
   });
 
   it("keeps busy state per project", async () => {

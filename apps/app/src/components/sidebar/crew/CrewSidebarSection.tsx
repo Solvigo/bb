@@ -1619,15 +1619,15 @@ export function CrewSidebarSection({
             const busyHere = creatingCrewFor(group.projectId);
             const projectLabel = group.name ?? "this project";
             return (
-              <li
-              key={group.projectId}
-              data-testid="sidebar-project-group"
-              // The card is a group so its controls are announced under the
-              // project they belong to rather than as a flat list of buttons.
-              role="group"
-              aria-label={projectLabel}
-            >
-                <div className="overflow-hidden rounded-lg border border-sidebar-border bg-surface-recessed-solid">
+              <li key={group.projectId} data-testid="sidebar-project-group">
+                {/* The GROUP is the card, not the list item: a role here would
+                    take the listitem semantics with it, and the projects band
+                    stops being a list at all. */}
+                <div
+                  role="group"
+                  aria-label={projectLabel}
+                  className="overflow-hidden rounded-lg border border-sidebar-border bg-surface-recessed-solid"
+                >
                   {group.name === null ? null : (
                     <div className="border-b border-sidebar-border px-2.5 py-2">
                       <ProjectRootDropZone

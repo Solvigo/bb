@@ -6,6 +6,7 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { ROOT_THREAD_TITLE } from "./useCrews";
 import {
   forgetStandbyRoot,
+  purgeStandbyRoots,
   recordedStandbyRoots,
   rememberStandbyRoot,
 } from "./standbyRoots";
@@ -55,14 +56,46 @@ async function fetchWithTimeout(
   }
 }
 
-async function readJson<T>(url: string): Promise<T | null> {
+/** A promise that loses to the clock rather than hanging the press. */
+async function withDeadline<T>(work: Promise<T>, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const res = await fetchWithTimeout(url);
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${what} did not answer in time.`)),
+          REQUEST_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/**
+ * A request AND the reading of its body, both bounded.
+ *
+ * Aborting the fetch does not bound `res.json()`: a response whose body never
+ * finishes arriving leaves the read pending forever, which is the same stuck
+ * button by another route.
+ */
+async function readJsonFrom(
+  url: string,
+  init?: RequestInit,
+): Promise<unknown | null> {
+  try {
+    const res = await fetchWithTimeout(url, init);
     if (!res.ok) return null;
-    return (await res.json()) as T;
+    return await withDeadline(res.json(), "The rig");
   } catch {
     return null;
   }
+}
+
+async function readJson<T>(url: string): Promise<T | null> {
+  return (await readJsonFrom(url)) as T | null;
 }
 
 interface ThreadRow {
@@ -72,21 +105,55 @@ interface ThreadRow {
   parentThreadId?: string | null;
 }
 
+/** Every row is checked. A list with one unreadable row is an unreadable list:
+ *  the row that failed to parse could be the root being asked about. */
+function parseThreadRow(row: unknown): ThreadRow | null {
+  if (typeof row !== "object" || row === null) return null;
+  const r = row as Record<string, unknown>;
+  if (typeof r.id !== "string" || r.id === "") return null;
+  if (r.projectId !== undefined && typeof r.projectId !== "string") return null;
+  if (
+    r.parentThreadId !== undefined &&
+    r.parentThreadId !== null &&
+    typeof r.parentThreadId !== "string"
+  ) {
+    return null;
+  }
+  if (r.title !== undefined && r.title !== null && typeof r.title !== "string") {
+    return null;
+  }
+  return {
+    id: r.id,
+    ...(typeof r.projectId === "string" ? { projectId: r.projectId } : {}),
+    ...(typeof r.title === "string" ? { title: r.title } : {}),
+    parentThreadId:
+      typeof r.parentThreadId === "string" ? r.parentThreadId : null,
+  };
+}
+
 /**
  * The live thread list, or null when it could not be read.
  *
- * NOT an empty array on failure. Every caller uses this list to decide whether
- * a root already exists, and an unread list that answers "none" is the answer
- * that creates the duplicate — silently, and exactly when the rig is already
- * having a bad minute.
+ * NOT an empty array on failure, and not a partially parsed one either. Every
+ * caller uses this list to decide whether a root already exists, and a list
+ * that answers "none" because it could not be read is the answer that creates
+ * the duplicate.
  */
 async function readThreadRows(): Promise<ThreadRow[] | null> {
   const body = await readJson<unknown>("/api/v1/threads?archived=false");
   if (body === null) return null;
-  if (Array.isArray(body)) return body as ThreadRow[];
-  const wrapped = body as { threads?: unknown[]; data?: unknown[] };
-  const rows = wrapped.threads ?? wrapped.data;
-  return rows === undefined ? null : (rows as ThreadRow[]);
+  const raw = Array.isArray(body)
+    ? body
+    : ((body as { threads?: unknown[]; data?: unknown[] }).threads ??
+      (body as { data?: unknown[] }).data);
+  if (!Array.isArray(raw)) return null;
+  const parsed = raw.map(parseThreadRow);
+  return parsed.some((r) => r === null) ? null : (parsed as ThreadRow[]);
+}
+
+/** One spelling of the projectless project, everywhere. */
+function projectOf(thread: { projectId?: string }): string {
+  return thread.projectId ?? PERSONAL_PROJECT_ID;
 }
 
 const UNREADABLE_FLEET =
@@ -171,45 +238,37 @@ async function governedRootFor(
   projectId: string,
   threads: readonly ThreadRow[],
 ): Promise<FleetAnswer> {
-  let payload: unknown;
-  try {
-    const res = await fetchWithTimeout("/api/v1/plugins/crew/rpc/crew_fleet", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "null",
-    });
-    if (!res.ok) return { status: "unavailable" };
-    payload = await res.json();
-  } catch {
-    return { status: "unavailable" };
-  }
+  const payload = await readJsonFrom("/api/v1/plugins/crew/rpc/crew_fleet", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "null",
+  });
   if (typeof payload !== "object" || payload === null) {
     return { status: "unavailable" };
   }
   const envelope = payload as Record<string, unknown>;
-  const inner =
-    typeof envelope.result === "object" && envelope.result !== null
-      ? (envelope.result as Record<string, unknown>)
-      : envelope;
-  if (envelope.ok === false || inner.ok === false) {
+  // BOTH levels must say ok, explicitly. The port wraps the verb's own
+  // discriminated union, so a transport that succeeded carrying a verb that
+  // failed is still a fleet this code cannot read.
+  if (envelope.ok !== true) return { status: "unavailable" };
+  const inner = envelope.result;
+  if (typeof inner !== "object" || inner === null) {
     return { status: "unavailable" };
   }
-  const rawRows = inner.rows;
+  const result = inner as Record<string, unknown>;
+  if (result.ok !== true) return { status: "unavailable" };
+  const rawRows = result.rows;
   if (!Array.isArray(rawRows)) return { status: "unavailable" };
   const parsed = rawRows.map(parseFleetRow);
-  // One unreadable row and the whole answer is unreadable: the row that failed
-  // to parse could be the very root being asked about.
   if (parsed.some((r) => r === null)) return { status: "unavailable" };
 
   const governed = new Set(
-    parsed
-      .filter((r): r is FleetRow => r !== null)
+    (parsed as FleetRow[])
       .filter((r) => r.handle !== null && r.parentThreadId === null)
       .map((r) => r.threadId),
   );
   const thread = threads.find(
-    (t) =>
-      governed.has(t.id) && (t.projectId ?? PERSONAL_PROJECT_ID) === projectId,
+    (t) => governed.has(t.id) && projectOf(t) === projectId,
   );
   return thread ? { status: "root", thread } : { status: "none" };
 }
@@ -228,35 +287,62 @@ async function charterRoot(
   briefText: string,
   taskId: string,
 ): Promise<CharterOutcome> {
-  let res: Response;
-  try {
-    res = await fetchWithTimeout("/api/v1/plugins/crew/rpc/crew_charter", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ threadId, briefText, taskId }),
-    });
-  } catch {
+  const body = await readJsonFrom("/api/v1/plugins/crew/rpc/crew_charter", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ threadId, briefText, taskId }),
+  });
+  if (typeof body !== "object" || body === null) {
     return { ok: false, message: "The crew plugin did not answer." };
   }
-  const body: unknown = await res.json().catch(() => null);
-  const envelope =
-    typeof body === "object" && body !== null
-      ? (body as Record<string, unknown>)
-      : {};
+  const envelope = body as Record<string, unknown>;
   const inner =
     typeof envelope.result === "object" && envelope.result !== null
       ? (envelope.result as Record<string, unknown>)
-      : envelope;
+      : {};
+  // Both levels, because a fault can be reported at either: the port's own
+  // envelope carries transport failures, the verb's result carries refusals.
   const message = messageOf(inner) ?? messageOf(envelope);
-  // SUCCESS MUST BE STATED, by the verb itself. `crew_charter` answers a
-  // discriminated union on `ok`, so anything that is not an explicit true —
-  // an empty body, a truncated one, a shape this code has never seen — is a
-  // charter that did not happen.
-  if (res.ok && inner.ok === true) return { ok: true, message: null };
+  if (envelope.ok === true && isCharteredResult(inner, threadId)) {
+    return { ok: true, message: null };
+  }
   return {
     ok: false,
-    message: message ?? `The crew could not be chartered (${res.status}).`,
+    message: message ?? "The crew could not be chartered.",
   };
+}
+
+/**
+ * The success arm of crew_charter, in full.
+ *
+ * A charter is the one call whose "yes" this flow acts on, and it acts by
+ * briefing an agent and handing the operator a crew. So the whole shape is
+ * checked — including that it is talking about the thread we asked about.
+ * A truncated body carrying `ok: true` is not a chartered crew.
+ */
+function isCharteredResult(
+  result: Record<string, unknown>,
+  threadId: string,
+): boolean {
+  if (result.ok !== true) return false;
+  if (result.threadId !== threadId) return false;
+  if (typeof result.rank !== "string" || result.rank === "") return false;
+  if (typeof result.derivedRank !== "string" || result.derivedRank === "") {
+    return false;
+  }
+  if (typeof result.depth !== "number") return false;
+  if (result.handle !== null && typeof result.handle !== "string") return false;
+  if (result.domain !== null && typeof result.domain !== "string") return false;
+  // Where the brief was durably written. Null is the plugin's own honest
+  // answer for a thread with no workspace, so it is a shape check, not a
+  // presence check — the verb's ok is what promises the brief is durable.
+  if (
+    result.briefWrittenTo !== null &&
+    typeof result.briefWrittenTo !== "string"
+  ) {
+    return false;
+  }
+  return Array.isArray(result.leads);
 }
 
 /**
@@ -334,7 +420,10 @@ async function recoverLostRace({
     return { outcome: "error", message: refusal ?? UNREADABLE_CREW };
   }
   try {
-    await sdk.threads.archive({ threadId: ourThreadId });
+    await withDeadline(
+      sdk.threads.archive({ threadId: ourThreadId }),
+      "Archiving the losing thread",
+    );
   } catch (e) {
     return {
       outcome: "error",
@@ -347,6 +436,37 @@ async function recoverLostRace({
   }
   forgetStandbyRoot(ourThreadId);
   return { outcome: "winner", thread: answer.thread };
+}
+
+/**
+ * Open a root the fleet says is already this project's crew.
+ *
+ * Charters it FIRST, every time and from every path. A handle proves a charter
+ * started, never that it finished — the brief is written after it — so this
+ * call is what makes an ok answer mean "handle AND durable brief" before an
+ * operator is handed the thread as a working crew. Idempotent by contract:
+ * a root that is already complete is unchanged.
+ *
+ * Answers null on success, or the message to show.
+ */
+async function openGovernedRoot(
+  thread: ThreadRow,
+  { openingRequest }: { openingRequest?: string },
+): Promise<string | null> {
+  const projectId = projectOf(thread);
+  const repaired = await charterRoot(
+    thread.id,
+    await loadRootBootstrap(),
+    rootTaskId(projectId),
+  );
+  if (!repaired.ok) return repaired.message ?? "The crew could not be opened.";
+  forgetStandbyRoot(thread.id);
+  await sendRootOpening({
+    threadId: thread.id,
+    bootstrap: null,
+    openingRequest,
+  });
+  return null;
 }
 
 /**
@@ -457,52 +577,41 @@ export function useCreateCrew(): {
             return;
           }
           if (owned.status === "root") {
-            // A handle proves a charter STARTED, never that it finished: the
-            // brief is written after the handle. Charter is idempotent and
-            // repairs a missing brief, so running it here is what makes an
-            // ok answer mean "handle AND durable brief" before this root is
-            // opened as though it were whole.
-            const ownedProjectId =
-              owned.thread.projectId ?? PERSONAL_PROJECT_ID;
-            const repaired = await charterRoot(
-              owned.thread.id,
-              await loadRootBootstrap(),
-              rootTaskId(ownedProjectId),
-            );
-            if (!repaired.ok) {
-              setError(repaired.message);
-              return;
-            }
-            forgetStandbyRoot(owned.thread.id);
-            await sendRootOpening({
-              threadId: owned.thread.id,
-              bootstrap: null,
+            const opened = await openGovernedRoot(owned.thread, {
               openingRequest,
             });
+            if (opened !== null) {
+              setError(opened);
+              return;
+            }
             navigate(
               getThreadRoutePath({
-                projectId: ownedProjectId,
+                projectId: projectOf(owned.thread),
                 threadId: owned.thread.id,
               }),
             );
             return;
           }
 
+          // Notes the rig no longer agrees with: deleted, reparented, moved
+          // to another project, or since chartered. Left alone they answer
+          // questions about threads that stopped matching them long ago.
+          purgeStandbyRoots(threads, new Set());
           // What THIS client recorded standing up here — not what a thread is
           // called. Resuming on a title picked up the operator's own chat.
           const recorded = recordedStandbyRoots();
           const unfinished = threads.find(
             (t) =>
               !t.parentThreadId &&
-              (t.projectId ?? PERSONAL_PROJECT_ID) === wantedProjectId &&
-              recorded.get(t.id) === (t.projectId ?? ""),
+              projectOf(t) === wantedProjectId &&
+              recorded.get(t.id) === projectOf(t),
           );
           if (unfinished) {
             // A root found this way may be a standby whose charter failed last
             // time, so the charter is retried before anything else. It is
             // idempotent under the same task id, and a thread that is already
             // crew comes back as the success it is.
-            const rootProjectId = unfinished.projectId ?? PERSONAL_PROJECT_ID;
+            const rootProjectId = projectOf(unfinished);
             const chartered = await charterRoot(
               unfinished.id,
               await loadRootBootstrap(),
@@ -515,14 +624,16 @@ export function useCreateCrew(): {
                 refusal: chartered.message,
               });
               if (recovered.outcome === "winner") {
-                await sendRootOpening({
-                  threadId: recovered.thread.id,
-                  bootstrap: null,
+                const opened = await openGovernedRoot(recovered.thread, {
                   openingRequest,
                 });
+                if (opened !== null) {
+                  setError(opened);
+                  return;
+                }
                 navigate(
                   getThreadRoutePath({
-                    projectId: recovered.thread.projectId ?? rootProjectId,
+                    projectId: projectOf(recovered.thread),
                     threadId: recovered.thread.id,
                   }),
                 );
@@ -660,15 +771,34 @@ export function useCreateCrew(): {
             );
             return;
           }
-          const thread = (await res.json()) as {
-            id: string;
-            projectId?: string;
-          };
-          const rootProjectId = thread.projectId ?? projectId;
+          const created = parseThreadRow(
+            await withDeadline(res.json(), "The rig"),
+          );
+          // The crew is about to be chartered onto whatever came back. An id
+          // that is missing, or a project that is not the one asked for, is a
+          // root somewhere the operator did not choose — and a root cannot
+          // move afterwards.
+          if (created === null || projectOf(created) !== projectId) {
+            setError(
+              "The rig answered with a thread this crew cannot be built on.",
+            );
+            return;
+          }
+          const thread = created;
+          const rootProjectId = projectOf(thread);
           // Recorded BEFORE the charter is attempted: if the charter fails, or
           // the tab closes mid-flight, this note is the only thing that can
           // tell this standby apart from an ordinary chat afterwards.
-          rememberStandbyRoot(thread.id, rootProjectId);
+          try {
+            rememberStandbyRoot(thread.id, rootProjectId);
+          } catch {
+            setError(
+              `The crew was created (${thread.id}) but this browser could not ` +
+                `record it, so it cannot be recovered from here. Archive that ` +
+                `thread by hand, or enable site storage and try again.`,
+            );
+            return;
+          }
 
           const chartered = await charterRoot(
             thread.id,
@@ -682,14 +812,16 @@ export function useCreateCrew(): {
               refusal: chartered.message,
             });
             if (recovered.outcome === "winner") {
-              await sendRootOpening({
-                threadId: recovered.thread.id,
-                bootstrap: null,
+              const opened = await openGovernedRoot(recovered.thread, {
                 openingRequest,
               });
+              if (opened !== null) {
+                setError(opened);
+                return;
+              }
               navigate(
                 getThreadRoutePath({
-                  projectId: recovered.thread.projectId ?? rootProjectId,
+                  projectId: projectOf(recovered.thread),
                   threadId: recovered.thread.id,
                 }),
               );
