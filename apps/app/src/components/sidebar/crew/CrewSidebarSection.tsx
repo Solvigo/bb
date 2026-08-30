@@ -412,7 +412,20 @@ function useAgentDrop(args: { agentId: string }): {
         setIsOver(false);
         endDrag();
         const moving = readAgentDrag(event.dataTransfer);
-        if (moving === null || isForbidden || editingCrewId === null) return;
+        // The id on the dataTransfer is whatever the drop site claims it is —
+        // a loose chat, a row from another crew, or a stale payload from a
+        // drag that already ended can all claim to be it. `draggingId` is our
+        // own state, set only when a row's guarded onDragStart actually ran,
+        // so it is the one source of truth for what is legitimately in the
+        // air. A mismatch means the claimed source was never a real drag.
+        if (
+          moving === null ||
+          moving !== draggingId ||
+          isForbidden ||
+          editingCrewId === null
+        ) {
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         move(moving, agentId === "" ? null : agentId);
@@ -699,7 +712,17 @@ function InsertionZone({ parentId }: { parentId: string | null }) {
       onDrop={(event) => {
         setIsOver(false);
         const moving = readAgentDrag(event.dataTransfer);
-        if (moving === null || isForbidden || editingCrewId === null) return;
+        // Same cross-check as the row drop target: the dataTransfer's claimed
+        // id is untrusted, `draggingId` (set only by a guarded onDragStart)
+        // is not.
+        if (
+          moving === null ||
+          moving !== draggingId ||
+          isForbidden ||
+          editingCrewId === null
+        ) {
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         move(moving, parentId);

@@ -283,6 +283,20 @@ describe("CrewSidebarSection edit-scope guards", () => {
     expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
   });
 
+  it("refuses a drop whose dataTransfer claims a source no drag actually started", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    // No dragStart happened anywhere in this test — draggingId is still null.
+    // A drop handler that trusted the dataTransfer's own claim would still
+    // see a plausible, in-scope id here and reparent a thread that was never
+    // picked up.
+    const dataTransfer = makeDataTransfer("lead_a");
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    fireEvent.drop(crewALink, { dataTransfer });
+    expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
+  });
+
   it("ends the drag before Escape leaves edit mode", () => {
     renderTwoCrewsAndAChat();
     editCrew("Crew A");
