@@ -4,7 +4,11 @@
 import { cleanup, render, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { CrewSidebarSection, CrewEditProvider } from "./CrewSidebarSection";
+import {
+  ChatsSidebarSection,
+  CrewSidebarSection,
+  CrewEditProvider,
+} from "./CrewSidebarSection";
 import * as useCrewsModule from "./useCrews";
 import * as queryHooks from "@/hooks/queries/sidebar-navigation-query";
 
@@ -196,6 +200,7 @@ describe("CrewSidebarSection edit-scope guards", () => {
       <MemoryRouter>
         <CrewEditProvider>
           <CrewSidebarSection />
+          <ChatsSidebarSection />
         </CrewEditProvider>
       </MemoryRouter>,
     );
