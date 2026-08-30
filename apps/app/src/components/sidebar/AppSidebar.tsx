@@ -22,7 +22,6 @@ import {
   CrewEditProvider,
   CrewSidebarSection,
 } from "./crew/CrewSidebarSection";
-import { NewProjectButton } from "./crew/NewProjectButton";
 import { AirwaysMark } from "./crew/BrandLockup";
 import { PlatformSection } from "./crew/PlatformSection";
 import { PluginThreadList } from "./PluginThreadList";
@@ -317,9 +316,32 @@ export function AppSidebar({
             {sidebarIdentityControls}
           </div>
         )}
-        <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
-          <NewProjectButton quickCreateProject={quickCreateProject} />
-        </div>
+        {quickCreateProject.isAvailable ? (
+          <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
+            <button
+              type="button"
+              data-testid="new-project-button"
+              onClick={quickCreateProject.openCreateDialog}
+              disabled={quickCreateProject.isCreating}
+              aria-label="New project from a folder"
+              className={cn(
+                "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors",
+                "text-sidebar-foreground hover:bg-sidebar-accent disabled:opacity-60",
+              )}
+            >
+              <Icon
+                name="FolderPlus"
+                className="size-4 shrink-0 text-sidebar-foreground"
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate">
+                {quickCreateProject.isCreating
+                  ? "Creating a project…"
+                  : "New project"}
+              </span>
+            </button>
+          </div>
+        ) : null}
         <PlatformSection onNavigate={closeOnMobile} />
         {/* Two bands, and every thread is in one of them: PROJECTS carries the
             agent trees, CHATS carries the threads nobody has crewed. The old

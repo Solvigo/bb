@@ -32,7 +32,6 @@ import {
   type LooseChat,
 } from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
-export { NewProjectButton } from "./NewProjectButton";
 
 export const SIDEBAR_SECTION_LABEL_CLASS =
   "px-2 text-xs font-medium text-muted-foreground";
@@ -993,6 +992,7 @@ export function CrewSidebarSection({
                   {group.crews.length === 0 ? (
                     <button
                       type="button"
+                      data-testid="add-crew-button"
                       onClick={() => createCrew(group.projectId)}
                       disabled={creatingCrew}
                       className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
