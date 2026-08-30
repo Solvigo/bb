@@ -14,7 +14,18 @@ import { sdk } from "@/lib/sdk";
 
 interface ProjectRow {
   id: string;
-  kind?: string;
+}
+
+function parseProjectRow(row: unknown): ProjectRow | null {
+  if (typeof row !== "object" || row === null) return null;
+  const id = (row as Record<string, unknown>).id;
+  return typeof id === "string" && id !== "" ? { id } : null;
+}
+
+function parseHostId(row: unknown): string | null {
+  if (typeof row !== "object" || row === null) return null;
+  const id = (row as Record<string, unknown>).id;
+  return typeof id === "string" && id !== "" ? id : null;
 }
 
 /**
@@ -344,6 +355,20 @@ function isCharteredResult(
   if (typeof result.depth !== "number") return false;
   if (result.handle !== null && typeof result.handle !== "string") return false;
   if (result.domain !== null && typeof result.domain !== "string") return false;
+  // Nullable, but PRESENT: these say what the root will actually run on, and
+  // a body that omits them is not this contract's success arm.
+  if (
+    !("providerId" in result) ||
+    (result.providerId !== null && typeof result.providerId !== "string")
+  ) {
+    return false;
+  }
+  if (
+    !("model" in result) ||
+    (result.model !== null && typeof result.model !== "string")
+  ) {
+    return false;
+  }
   // Where the brief was durably written. Null is the plugin's own honest
   // answer for a thread with no workspace, so it is a shape check, not a
   // presence check — the verb's ok is what promises the brief is durable.
@@ -353,7 +378,13 @@ function isCharteredResult(
   ) {
     return false;
   }
-  return Array.isArray(result.leads);
+  if (!Array.isArray(result.leads)) return false;
+  // Each lead is a record on the wire. An array of anything else is a shape
+  // this code has never seen, and the whole point of checking the success arm
+  // is that a body it does not recognise is not a chartered crew.
+  return result.leads.every(
+    (lead) => typeof lead === "object" && lead !== null && !Array.isArray(lead),
+  );
 }
 
 /**
@@ -739,11 +770,19 @@ export function useCreateCrew(): {
             setError(UNREADABLE_PROJECTS);
             return;
           }
-          const list = (
-            Array.isArray(projects)
-              ? projects
-              : ((projects as { projects?: unknown[] }).projects ?? [])
-          ) as ProjectRow[];
+          const rawProjects = Array.isArray(projects)
+            ? projects
+            : (projects as { projects?: unknown[] }).projects;
+          if (!Array.isArray(rawProjects)) {
+            setError(UNREADABLE_PROJECTS);
+            return;
+          }
+          const parsedProjects = rawProjects.map(parseProjectRow);
+          if (parsedProjects.some((p) => p === null)) {
+            setError(UNREADABLE_PROJECTS);
+            return;
+          }
+          const list = parsedProjects as ProjectRow[];
           // A NAMED project is the whole instruction. If it is not there after
           // this refresh — deleted, renamed away, never existed — the answer is
           // to say so. Falling back to Personal built the crew somewhere the
@@ -756,10 +795,11 @@ export function useCreateCrew(): {
               return;
             }
           }
+          // Personal is the canonical id or nothing. Matching on a `kind`
+          // field instead put the crew on whatever project happened to call
+          // itself personal, and `list[0]` put it on whatever came first.
           const projectId =
-            forProjectId ??
-            list.find((p) => p.id === PERSONAL_PROJECT_ID)?.id ??
-            list.find((p) => p.kind === "personal")?.id;
+            forProjectId ?? list.find((p) => p.id === PERSONAL_PROJECT_ID)?.id;
           if (!projectId) {
             setError(
               "No project is registered on this rig yet, so a crew cannot be started.",
@@ -769,57 +809,74 @@ export function useCreateCrew(): {
           const isPersonalProject = projectId === PERSONAL_PROJECT_ID;
 
           const hosts = await readJson<unknown>("/api/v1/hosts");
-          const hostList = (
-            Array.isArray(hosts)
-              ? hosts
-              : ((hosts as { hosts?: unknown[] })?.hosts ?? [])
-          ) as { id?: string }[];
-          const hostId = hostList[0]?.id;
+          const rawHosts = Array.isArray(hosts)
+            ? hosts
+            : (hosts as { hosts?: unknown[] } | null)?.hosts;
+          if (!Array.isArray(rawHosts)) {
+            setError("No host is connected, so a crew cannot be started yet.");
+            return;
+          }
+          const hostId = rawHosts.map(parseHostId).find((id) => id !== null);
           if (!hostId) {
             setError("No host is connected, so a crew cannot be started yet.");
             return;
           }
 
-          const res = await fetchWithTimeout("/api/v1/threads", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              projectId,
-              origin: "app",
-              title: ROOT_THREAD_TITLE,
-              // Provider AND model together, from the one shared path. Pinning
-              // only the provider still lets the instance resolve its default
-              // MODEL — which may belong to a dead provider, which is how this
-              // fault survived being "fixed" once already.
-              providerId: AGENT_PROVIDER.providerId,
-              model: AGENT_PROVIDER.model,
-              // The root ORCHESTRATES — it never edits this project, so it
-              // must not provision a worktree. A managed one cost the Captain
-              // ~10 MINUTES of pnpm (2318 packages, 3.7GB) before his root
-              // could say a word, and dragged the whole machine.
-              //
-              // On Personal that is guaranteed by construction: a personal
-              // workspace has no repo to clone. On a real project an unmanaged
-              // workspace with no path is the nearest thing — it provisions
-              // nothing, but only because it was asked not to — while still
-              // letting the root parent children that DO get worktrees.
-              // Measured on the rig: 12 seconds to first word on a repo-backed
-              // project, against ten minutes for a managed one.
-              environment: {
-                type: "host",
-                hostId,
-                workspace: isPersonalProject
-                  ? { type: "personal" }
-                  : { type: "unmanaged", path: null },
-              },
-              // STANDBY ONLY. The brief and the Captain's request are held
-              // back until the charter succeeds — a root that turns out to be
-              // uncharterable must never have been told to start work. The
-              // threads API requires a first entry, so this is the smallest
-              // honest one: an instruction to wait.
-              input: [{ type: "text", text: STANDBY_INPUT, mentions: [] }],
-            }),
-          });
+          // The create is the one call whose FAILURE is ambiguous. Every other
+          // request either happened or did not; this one may have been
+          // committed by the server and lost on the way back, leaving a root
+          // with no id to clean up by.
+          let res: Response;
+          try {
+            res = await fetchWithTimeout("/api/v1/threads", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                projectId,
+                origin: "app",
+                title: ROOT_THREAD_TITLE,
+                // Provider AND model together, from the one shared path. Pinning
+                // only the provider still lets the instance resolve its default
+                // MODEL — which may belong to a dead provider, which is how this
+                // fault survived being "fixed" once already.
+                providerId: AGENT_PROVIDER.providerId,
+                model: AGENT_PROVIDER.model,
+                // The root ORCHESTRATES — it never edits this project, so it
+                // must not provision a worktree. A managed one cost the Captain
+                // ~10 MINUTES of pnpm (2318 packages, 3.7GB) before his root
+                // could say a word, and dragged the whole machine.
+                //
+                // On Personal that is guaranteed by construction: a personal
+                // workspace has no repo to clone. On a real project an unmanaged
+                // workspace with no path is the nearest thing — it provisions
+                // nothing, but only because it was asked not to — while still
+                // letting the root parent children that DO get worktrees.
+                // Measured on the rig: 12 seconds to first word on a repo-backed
+                // project, against ten minutes for a managed one.
+                environment: {
+                  type: "host",
+                  hostId,
+                  workspace: isPersonalProject
+                    ? { type: "personal" }
+                    : { type: "unmanaged", path: null },
+                },
+                // STANDBY ONLY. The brief and the Captain's request are held
+                // back until the charter succeeds — a root that turns out to be
+                // uncharterable must never have been told to start work. The
+                // threads API requires a first entry, so this is the smallest
+                // honest one: an instruction to wait.
+                input: [{ type: "text", text: STANDBY_INPUT, mentions: [] }],
+              }),
+            });
+          } catch {
+            setError(
+              "The rig stopped answering while the crew was being created. " +
+                "It may have been made anyway, and there is no id to clean it " +
+                "up by — check this project for an unnamed root before trying " +
+                "again.",
+            );
+            return;
+          }
           if (!res.ok) {
             // Bounded like every other read: a refusal whose body never
             // finishes arriving is the same stuck button by another route.

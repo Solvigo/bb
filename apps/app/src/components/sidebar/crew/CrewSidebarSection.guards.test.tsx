@@ -71,12 +71,17 @@ vi.mock("./useCreateCrew", () => ({
   useCreateCrew: useCreateCrewMock,
 }));
 
+const useProjectNamesMock = vi.hoisted(() =>
+  vi.fn(
+    () =>
+      new Map([
+        ["proj_alpha", "Alpha Airways"],
+        ["proj_beta", "Beta Build"],
+      ]),
+  ),
+);
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useProjectNames: () =>
-    new Map([
-      ["proj_alpha", "Alpha Airways"],
-      ["proj_beta", "Beta Build"],
-    ]),
+  useProjectNames: useProjectNamesMock,
 }));
 
 vi.mock("./useCrews", () => ({
@@ -130,6 +135,12 @@ describe("CrewSidebarSection one-crew affordance", () => {
   afterEach(() => {
     cleanup();
     createCrew.mockClear();
+    useProjectNamesMock.mockReturnValue(
+      new Map([
+        ["proj_alpha", "Alpha Airways"],
+        ["proj_beta", "Beta Build"],
+      ]),
+    );
   });
 
   it("renders project cards with Add a crew when every project is crewless", () => {
@@ -274,6 +285,30 @@ describe("CrewSidebarSection one-crew affordance", () => {
     expect(createCrew).toHaveBeenCalledWith("proj_alpha");
     // The crewless project beside it still offers the ordinary affordance.
     expect(within(groups[1]!).getByTestId("add-crew-button")).toBeTruthy();
+  });
+
+  it("tells two unresolved projects apart by name", () => {
+    // Both rendered as "this project", and so did both of their Add a crew
+    // buttons: a screen reader heard the same control twice with no way to
+    // say which one it was on.
+    useProjectNamesMock.mockReturnValue(new Map());
+    useCrewsMock.mockReturnValue({
+      crews: [sampleCrew("proj_alpha", "thr_a"), sampleCrew("proj_beta", "thr_b")],
+      chats: [],
+      pendingRoots: [],
+      loaded: true,
+      failed: false,
+      timedOut: false,
+      reload: vi.fn(),
+    });
+
+    renderSection();
+
+    const names = screen
+      .getAllByRole("group")
+      .map((g) => g.getAttribute("aria-label"));
+    expect(names).toEqual(["Unnamed project 1", "Unnamed project 2"]);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("gives the personal project a card when a standby is waiting there", () => {

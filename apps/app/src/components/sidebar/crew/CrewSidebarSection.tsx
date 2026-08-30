@@ -1460,11 +1460,8 @@ function groupByProject(
  * they are simply no longer what the operator reads first.
  */
 export function CrewSidebarSection({
-  headerTrailing,
   onNavigate,
 }: {
-  /** Sits on the Crews heading — search belongs beside what it searches. */
-  headerTrailing?: ReactNode;
   onNavigate?: () => void;
 }) {
   const { crews, chats, pendingRoots, loaded, failed, timedOut, reload } =
@@ -1475,6 +1472,15 @@ export function CrewSidebarSection({
     () => groupByProject(crews, projectNameOf, projectIds, pendingRoots),
     [crews, pendingRoots, projectNameOf, projectIds],
   );
+  // Ordinals follow the rendered order, so the same unresolved project keeps
+  // the same spoken name for as long as the list holds still.
+  const unnamedOrdinals = useMemo(() => {
+    const ordinals = new Map<string, number>();
+    for (const group of projectGroups) {
+      if (group.name === null) ordinals.set(group.projectId, ordinals.size + 1);
+    }
+    return ordinals;
+  }, [projectGroups]);
   const {
     createCrew,
     creatingFor: creatingCrewFor,
@@ -1522,7 +1528,6 @@ export function CrewSidebarSection({
         >
           Projects
         </span>
-        {headerTrailing}
       </div>
       {editingCrewId !== null ? (
         // A MODE has to announce itself. The old hint was a grey paragraph
@@ -1631,7 +1636,12 @@ export function CrewSidebarSection({
             // Per project: a crew standing up on one project is no reason for
             // another project's card to go dead.
             const busyHere = creatingCrewFor(group.projectId);
-            const projectLabel = group.name ?? "this project";
+            // Two unresolved projects both announced as "this project", and
+            // so did both of their Add a crew buttons. A deterministic ordinal
+            // gives each one a name that is stable across renders and does not
+            // read an id out loud.
+            const projectLabel =
+              group.name ?? `Unnamed project ${unnamedOrdinals.get(group.projectId) ?? 1}`;
             return (
               <li key={group.projectId} data-testid="sidebar-project-group">
                 {/* The GROUP is the card, not the list item: a role here would

@@ -90,6 +90,9 @@ interface RigOptions {
   created?: unknown;
   createStatus?: number;
   createBody?: unknown;
+  /** The create never answers, so only the deadline can end the press. */
+  createHangs?: boolean;
+  hosts?: unknown[];
 }
 
 /** The shape crew_charter actually answers with: a discriminated union on `ok`
@@ -123,13 +126,18 @@ function stubRig({
   created = { id: "thr_root", projectId: "proj_a" },
   createStatus,
   createBody,
+  createHangs = false,
+  hosts = [{ id: "host_one" }],
 }: RigOptions = {}) {
   let charterSeen = false;
   calls = [];
   posted = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+    vi.fn(async (
+      url: string,
+      init?: { method?: string; body?: string; signal?: AbortSignal },
+    ) => {
       if (init?.method === "POST" && init.body) {
         posted.push({
           url,
@@ -168,7 +176,11 @@ function stubRig({
             : view === "no-handle-key"
               ? [{ threadId: "thr_x", parentThreadId: null }]
               : view;
-        const unreadable = view === "partial" ? ["thr_unreadable"] : [];
+        // The plugin's own shape for a row it could not honour.
+        const unreadable =
+          view === "partial"
+            ? [{ threadId: "thr_unreadable", error: "rank could not be read" }]
+            : [];
         return {
           ok: true,
           status: 200,
@@ -203,6 +215,13 @@ function stubRig({
         if (init?.method !== "POST" && threads === "unreadable") {
           return { ok: false, status: 503, json: async () => ({}) };
         }
+        if (init?.method === "POST" && createHangs) {
+          return new Promise((_, reject) => {
+            init.signal?.addEventListener("abort", () =>
+              reject(new Error("aborted")),
+            );
+          });
+        }
         if (init?.method === "POST" && createStatus !== undefined) {
           return {
             ok: createStatus < 400,
@@ -224,11 +243,7 @@ function stubRig({
         return { ok: true, status: 200, json: async () => projects };
       }
       if (url.includes("/api/v1/hosts")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => [{ id: "host_one" }],
-        };
+        return { ok: true, status: 200, json: async () => hosts };
       }
       return { ok: true, status: 200, json: async () => ({}) };
     }),
@@ -788,6 +803,72 @@ describe("useCreateCrew", () => {
       expect(result.current.error).toContain("did not name it");
     });
     expect(archive).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no providerId", { providerId: undefined }],
+    ["no model", { model: undefined }],
+    ["a lead that is not a record", { leads: ["thr_lead"] }],
+  ])("does not accept a charter success with %s", async (_label, patch) => {
+    const result_ = { ...CHARTERED.result, ...patch };
+    if ("providerId" in patch && patch.providerId === undefined) {
+      delete (result_ as Record<string, unknown>).providerId;
+    }
+    if ("model" in patch && patch.model === undefined) {
+      delete (result_ as Record<string, unknown>).model;
+    }
+    stubRig({ charter: { status: 200, body: { ok: true, result: result_ } } });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("could not be chartered");
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a project row with no id", { projects: [{ name: "Alpha" }] }],
+    ["a host row with an empty id", { hosts: [{ id: "" }] }],
+  ])("fails closed on %s", async (_label, rig) => {
+    stubRig(rig);
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+  });
+
+  it("warns of a root it cannot identify when the create itself times out", async () => {
+    // The one ambiguous failure: the server may have committed the thread and
+    // lost it on the way back, so there is no id to clean up by. Nothing here
+    // ever answers — only the deadline can end the press, so the clock is run
+    // forward rather than waited on.
+    stubRig({ createHangs: true });
+    const { result } = await freshHook();
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        result.current.createCrew("proj_a");
+      });
+      await act(async () => {
+        // Past REQUEST_TIMEOUT_MS, with the microtasks between each leg
+        // flushed as the clock moves.
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+
+      expect(result.current.error).toContain("no id to clean it up by");
+      // Nothing to archive: an id never came back.
+      expect(archive).not.toHaveBeenCalled();
+      // And the press is over, even though nothing ever answered.
+      expect(result.current.creatingFor("proj_a")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps busy state per project", async () => {

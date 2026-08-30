@@ -366,26 +366,11 @@ export function AppSidebar({
             )
           ) : (
             <CrewEditProvider>
-              <CrewSidebarSection
-                onNavigate={closeOnMobile}
-                headerTrailing={
-                  quickCreateProject.isAvailable ? (
-                    <button
-                      type="button"
-                      aria-label="New project from a folder"
-                      onClick={quickCreateProject.openCreateDialog}
-                      disabled={quickCreateProject.isCreating}
-                      className="grid size-5 shrink-0 place-items-center rounded text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      <Icon
-                        name="FolderPlus"
-                        className="size-3.5"
-                        aria-hidden
-                      />
-                    </button>
-                  ) : null
-                }
-              />
+              {/* ONE New project action in the rail. The Projects header used
+                  to carry a second, icon-only copy of the button already sitting
+                  above it — same dialog, same permission, two places to find it
+                  and two names for a screen reader to read out. */}
+              <CrewSidebarSection onNavigate={closeOnMobile} />
               <ChatsSidebarSection
                 onNavigate={closeOnMobile}
                 onNewChat={handleNewChat}

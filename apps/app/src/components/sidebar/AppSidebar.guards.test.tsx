@@ -158,6 +158,16 @@ function renderSidebar(quickCreateProject: QuickCreateProjectController) {
 describe("AppSidebar new-project affordance", () => {
   afterEach(cleanup);
 
+  it("offers exactly one New project action", () => {
+    // The Projects header used to carry an icon-only copy of the button
+    // already sitting above it: same dialog, two places to find it, two names
+    // read out by a screen reader.
+    renderSidebar(makeController());
+    expect(
+      screen.getAllByRole("button", { name: "New project from a folder" }),
+    ).toHaveLength(1);
+  });
+
   it("shows New project only when quick create is available", () => {
     renderSidebar(makeController({ isAvailable: false }));
     expect(screen.queryByTestId("new-project-button")).toBeNull();
