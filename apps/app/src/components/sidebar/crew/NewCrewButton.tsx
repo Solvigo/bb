@@ -154,7 +154,15 @@ export function NewCrewButton({
         </DropdownMenuContent>
       </DropdownMenu>
       {error ? (
-        <p className="px-2 text-xs text-destructive-text">{error}</p>
+        // A refusal here is the only thing that happens when the press does
+        // nothing visible, so it has to announce itself rather than appear.
+        <p
+          role="alert"
+          data-testid="new-crew-error"
+          className="px-2 text-xs text-destructive-text"
+        >
+          {error}
+        </p>
       ) : null}
     </div>
   );

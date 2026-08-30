@@ -1463,7 +1463,7 @@ export function CrewSidebarSection({
   );
   const {
     createCrew,
-    creating: creatingCrew,
+    creatingFor: creatingCrewFor,
     error: createCrewError,
   } = useCreateCrew();
   const {
@@ -1614,8 +1614,19 @@ export function CrewSidebarSection({
             // root, hid the only control that could finish it.
             const pending =
               pendingRootOf(pendingRoots, group.projectId) !== null;
+            // Per project: a crew standing up on one project is no reason for
+            // another project's card to go dead.
+            const busyHere = creatingCrewFor(group.projectId);
+            const projectLabel = group.name ?? "this project";
             return (
-              <li key={group.projectId} data-testid="sidebar-project-group">
+              <li
+              key={group.projectId}
+              data-testid="sidebar-project-group"
+              // The card is a group so its controls are announced under the
+              // project they belong to rather than as a flat list of buttons.
+              role="group"
+              aria-label={projectLabel}
+            >
                 <div className="overflow-hidden rounded-lg border border-sidebar-border bg-surface-recessed-solid">
                   {group.name === null ? null : (
                     <div className="border-b border-sidebar-border px-2.5 py-2">
@@ -1633,11 +1644,20 @@ export function CrewSidebarSection({
                         data-testid={
                           pending ? "retry-crew-button" : "add-crew-button"
                         }
+                        // Named for its project. Every card carries a control
+                        // reading "Add a crew", so the bare label told a screen
+                        // reader which ACTION this was and never which project
+                        // it would act on.
+                        aria-label={
+                          pending
+                            ? `Retry the unfinished crew setup on ${projectLabel}`
+                            : `Add a crew to ${projectLabel}`
+                        }
                         onClick={() => {
                           if (projectOutOfScope) return;
                           createCrew(group.projectId);
                         }}
-                        disabled={creatingCrew || projectOutOfScope}
+                        disabled={busyHere || projectOutOfScope}
                         className={cn(
                           CARD_ACTION_CLASS,
                           projectOutOfScope && "pointer-events-none opacity-40",
@@ -1649,7 +1669,7 @@ export function CrewSidebarSection({
                           aria-hidden
                         />
                         <span className="truncate text-sm">
-                          {creatingCrew
+                          {busyHere
                             ? "Standing up a crew…"
                             : pending
                               ? "Setup did not finish — retry"

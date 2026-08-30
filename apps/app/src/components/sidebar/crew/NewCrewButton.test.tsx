@@ -9,7 +9,12 @@ const crews = vi.hoisted(() => ({
 }));
 
 vi.mock("./useCreateCrew", () => ({
-  useCreateCrew: () => ({ createCrew, creating: false, error: null }),
+  useCreateCrew: () => ({
+    createCrew,
+    creating: false,
+    creatingFor: () => false,
+    error: null,
+  }),
 }));
 vi.mock("./useCrews", () => ({
   useCrews: () => ({

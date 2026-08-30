@@ -13,7 +13,12 @@ import type { Crew, LooseChat } from "./useCrews";
 
 const createCrew = vi.fn();
 const useCreateCrewMock = vi.hoisted(() =>
-  vi.fn(() => ({ createCrew, creating: false, error: null as string | null })),
+  vi.fn(() => ({
+    createCrew,
+    creating: false,
+    creatingFor: () => false,
+    error: null as string | null,
+  })),
 );
 const useCrewsMock = vi.hoisted(() => vi.fn());
 
@@ -108,6 +113,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
     useCreateCrewMock.mockReturnValue({
       createCrew,
       creating: false,
+      creatingFor: () => false,
       error: null,
     });
     useCrewsMock.mockReturnValue({
@@ -217,6 +223,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
     useCreateCrewMock.mockReturnValue({
       createCrew,
       creating: false,
+      creatingFor: () => false,
       error: "No host is connected, so a crew cannot be started yet.",
     });
     useCrewsMock.mockReturnValue({

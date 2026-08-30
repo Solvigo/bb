@@ -51,13 +51,38 @@ interface FleetRow {
 interface RigOptions {
   threads?: unknown[] | "unreadable";
   charter?: { status?: number; body?: unknown };
-  fleet?: FleetRow[];
+  fleet?: FleetRow[] | "unreadable" | "malformed";
+  projects?: unknown[] | "unreadable";
 }
+
+/** The shape crew_charter actually answers with: a discriminated union on `ok`
+ *  inside the plugin port's own `{ ok, result }` envelope. */
+const CHARTERED = {
+  ok: true,
+  result: {
+    ok: true,
+    threadId: "thr_root",
+    handle: "AW-1",
+    domain: null,
+    rank: "commander",
+    derivedRank: "commander",
+    depth: 0,
+    providerId: "anthropic",
+    model: "claude",
+    briefWrittenTo: "/w/.bb/brief.md",
+    leads: [],
+  },
+};
 
 /** The POST bodies the flow sent, by url, so a test can read what was asked. */
 let posted: { url: string; body: Record<string, unknown> }[] = [];
 
-function stubRig({ threads = [], charter = {}, fleet = [] }: RigOptions = {}) {
+function stubRig({
+  threads = [],
+  charter = {},
+  fleet = [],
+  projects = [{ id: "proj_a" }],
+}: RigOptions = {}) {
   calls = [];
   posted = [];
   vi.stubGlobal(
@@ -71,17 +96,21 @@ function stubRig({ threads = [], charter = {}, fleet = [] }: RigOptions = {}) {
       }
       calls.push(`${init?.method ?? "GET"} ${url}`);
       if (url.includes("crew_fleet")) {
+        if (fleet === "unreadable") {
+          return { ok: false, status: 503, json: async () => ({}) };
+        }
+        const rows = fleet === "malformed" ? [{ handle: "AW-1" }] : fleet;
         return {
           ok: true,
           status: 200,
-          json: async () => ({ ok: true, result: { rows: fleet } }),
+          json: async () => ({ ok: true, result: { ok: true, rows } }),
         };
       }
       if (url.includes("crew_charter")) {
         return {
           ok: (charter.status ?? 200) < 400,
           status: charter.status ?? 200,
-          json: async () => charter.body ?? { ok: true },
+          json: async () => charter.body ?? CHARTERED,
         };
       }
       if (url.includes("/api/v1/threads")) {
@@ -98,7 +127,10 @@ function stubRig({ threads = [], charter = {}, fleet = [] }: RigOptions = {}) {
         };
       }
       if (url.includes("/api/v1/projects")) {
-        return { ok: true, status: 200, json: async () => [{ id: "proj_a" }] };
+        if (projects === "unreadable") {
+          return { ok: false, status: 503, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => projects };
       }
       if (url.includes("/api/v1/hosts")) {
         return {
@@ -285,6 +317,105 @@ describe("useCreateCrew", () => {
     // The project's actual crew is what opens — never our unchartered standby.
     const sent = send.mock.calls[0]?.[0] as unknown as SentTurn | undefined;
     expect(sent?.threadId ?? null).not.toBe("thr_ours");
+  });
+
+  it("will not create when the crew ledger cannot be read", async () => {
+    // Uncertainty is not "there is no crew". Creating on a fleet that did not
+    // answer is how a project ends up with two roots.
+    stubRig({ fleet: "unreadable" });
+    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("Could not read the crew ledger");
+    });
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+  });
+
+  it("treats a malformed fleet row as an unreadable fleet, not an empty one", async () => {
+    // The row that failed to parse could be the very root being asked about.
+    stubRig({ fleet: "malformed" });
+    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("Could not read the crew ledger");
+    });
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+  });
+
+  it("refuses a named project that is no longer on the rig", async () => {
+    // Falling back to Personal built the crew somewhere the operator did not
+    // ask for, on a project it can never leave.
+    stubRig({ projects: [{ id: "proj_other" }] });
+    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("no longer on this rig");
+    });
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+  });
+
+  it("does not accept a handle-without-brief charter as success", async () => {
+    // charter writes the handle BEFORE the brief and refuses if the brief
+    // fails, so this exact refusal means a half-made root. Accepting it
+    // briefed a root whose brief had never been stored.
+    stubRig({
+      charter: {
+        status: 200,
+        body: {
+          ok: true,
+          result: {
+            ok: false,
+            error:
+              "charter: thr_root now has its floor, ceiling and handle, but its brief could not be delivered",
+          },
+        },
+      },
+      fleet: [{ threadId: "thr_root", handle: "AW-1", parentThreadId: null }],
+    });
+    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("could not be delivered");
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("reads an object-shaped transport error without rendering [object Object]", async () => {
+    stubRig({
+      charter: {
+        status: 200,
+        body: { ok: false, error: { message: "the port fell over" } },
+      },
+    });
+    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toBe("the port fell over");
+    });
+  });
+
+  it("keeps busy state per project", async () => {
+    stubRig();
+    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.creatingFor("proj_a")).toBe(true);
+    });
+    // Project B has nothing in flight and must keep its own affordance.
+    expect(result.current.creatingFor("proj_b")).toBe(false);
   });
 
   it("will not create anything when the thread list cannot be read", async () => {
