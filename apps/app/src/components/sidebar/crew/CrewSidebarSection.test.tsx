@@ -141,19 +141,13 @@ describe("CrewSidebarSection edit-scope guards", () => {
     } as unknown as DataTransfer;
   }
 
-  function renderTwoCrewsAndAChat() {
-    // Crew B lives in a SECOND project on purpose: the make-root scoping
-    // tests need two distinct project headers, and every other test in this
-    // suite treats Crew B purely as "the crew not being edited" regardless of
-    // which project it is in.
-    vi.mocked(queryHooks.useProjectNames).mockReturnValue(
-      new Map([
-        ["p1", "Project 1"],
-        ["p2", "Project 2"],
-      ]),
-    );
-
-    const mockCrews = [
+  // Crew B lives in a SECOND project on purpose: the make-root scoping tests
+  // need two distinct project headers, and every other test in this suite
+  // treats Crew B purely as "the crew not being edited" regardless of which
+  // project it is in. Project 3 has no crew at all — the empty-project
+  // Add-a-crew coverage needs one that exists but is never the edited one.
+  function baseCrews() {
+    return [
       {
         projectId: "p1",
         commanderThreadId: "cmd_a",
@@ -200,31 +194,61 @@ describe("CrewSidebarSection edit-scope guards", () => {
         ],
       },
     ];
+  }
 
+  // Two PRE-EXISTING loose chats, one in each of Crew A/B's projects, neither
+  // ever promoted from anything. The recovery-menu tests need both, to prove
+  // the menu is bound to a specific promoted thread rather than to "any loose
+  // chat in the same (or any) project".
+  function baseChats() {
+    return [
+      {
+        threadId: "chat_1",
+        name: "Loose Chat",
+        projectId: "p1",
+        liveness: null,
+      },
+      {
+        threadId: "chat_2",
+        name: "Other Project Chat",
+        projectId: "p2",
+        liveness: null,
+      },
+    ];
+  }
+
+  function setFleet(crews: unknown[], chats: unknown[]) {
     vi.mocked(useCrewsModule.useCrews).mockReturnValue({
-      crews: mockCrews,
-      chats: [
-        {
-          threadId: "chat_1",
-          name: "Loose Chat",
-          projectId: "p1",
-          liveness: null,
-        },
-      ],
+      crews,
+      chats,
       loaded: true,
       failed: false,
       timedOut: false,
       reload: vi.fn(),
     } as any);
+  }
 
-    return render(
+  function renderTree(onNavigate?: () => void) {
+    return (
       <MemoryRouter>
         <CrewEditProvider>
-          <CrewSidebarSection />
-          <ChatsSidebarSection />
+          <CrewSidebarSection onNavigate={onNavigate} />
+          <ChatsSidebarSection onNavigate={onNavigate} />
         </CrewEditProvider>
-      </MemoryRouter>,
+      </MemoryRouter>
     );
+  }
+
+  function renderTwoCrewsAndAChat(onNavigate?: () => void) {
+    vi.mocked(queryHooks.useProjectNames).mockReturnValue(
+      new Map([
+        ["p1", "Project 1"],
+        ["p2", "Project 2"],
+        ["p3", "Project 3"],
+      ]),
+    );
+    setFleet(baseCrews(), baseChats());
+    return render(renderTree(onNavigate));
   }
 
   function editCrew(name: string) {
@@ -416,32 +440,134 @@ describe("CrewSidebarSection edit-scope guards", () => {
     const leadBLink = screen.getByRole("link", { name: /Lead B/ });
     expect(leadBLink.getAttribute("tabindex")).toBe("-1");
 
+    // A real <button>, so it goes `disabled` rather than tabIndex={-1} — the
+    // stronger, native guarantee that a click cannot reach its handler at all.
     const leadBExpandButton = screen.getByRole("button", {
       name: "Show the agents under Lead B",
-    });
-    expect(leadBExpandButton.getAttribute("tabindex")).toBe("-1");
+    }) as HTMLButtonElement;
+    expect(leadBExpandButton.disabled).toBe(true);
 
     // A loose chat is dimmed for every crew's edit, not only a foreign one.
     const chatLink = screen.getByRole("link", { name: /Loose Chat/ });
     expect(chatLink.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("offers a move-menu recovery path for a loose chat while a crew is being edited", async () => {
+  it("does not offer the move menu to a pre-existing loose chat, same project or not", () => {
     renderTwoCrewsAndAChat();
     editCrew("Crew A");
 
-    // Promoting a leaf to root is what turns it into a row exactly like this
-    // one; drag stays closed off for a loose chat, so the recovery back into
-    // the crew being edited has to be this menu, not a dataTransfer.
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Move Loose Chat" }),
-      { button: 0 },
-    );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Lead A" }));
+    // Nothing has been promoted in this test, so there is no recovery
+    // binding — neither chat has any affiliation with Crew A, whether it
+    // lives in Crew A's own project or a different one.
+    expect(
+      screen.queryByRole("button", { name: "Move Loose Chat" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Move Other Project Chat" }),
+    ).toBeNull();
+  });
 
-    expect(useCrewsModule.reparentAgent).toHaveBeenCalledWith(
-      "chat_1",
-      "lead_a",
+  it("offers a move-menu recovery path only for the leaf just promoted out of the edited crew", async () => {
+    const { rerender } = renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    // Promote Lead A to root via the ordinary per-agent menu — the same move
+    // a drag-to-the-project-header would make.
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Move Lead A" }), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Make root" }));
+    expect(useCrewsModule.reparentAgent).toHaveBeenCalledWith("lead_a", null);
+
+    // The fleet catches up: Crew A no longer has Lead A, and it now shows up
+    // as a loose chat alongside the two that were always there.
+    const [crewA, crewB] = baseCrews();
+    setFleet(
+      [{ ...crewA, leads: [] }, crewB],
+      [
+        ...baseChats(),
+        { threadId: "lead_a", name: "Lead A", projectId: "p1", liveness: null },
+      ],
     );
+    rerender(renderTree());
+
+    // Provenance-bound: this is the ONE loose chat that just left Crew A, so
+    // it — and only it — gets a way back in.
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Move Lead A" }), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Crew A" }));
+    expect(useCrewsModule.reparentAgent).toHaveBeenCalledWith(
+      "lead_a",
+      "cmd_a",
+    );
+
+    // The two loose chats that were never part of any promotion still have
+    // no menu — the binding did not widen into "any loose chat".
+    expect(
+      screen.queryByRole("button", { name: "Move Loose Chat" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Move Other Project Chat" }),
+    ).toBeNull();
+  });
+
+  it("rejects a drop whose source is no longer part of the edited crew after a fleet refresh", () => {
+    const { rerender } = renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    const leadALink = screen.getByRole("link", { name: /Lead A/ });
+    const dataTransfer = makeDataTransfer("lead_a");
+    fireEvent.dragStart(leadALink, { dataTransfer });
+
+    // The fleet refreshes mid-drag: something else reparented Lead A out from
+    // under Crew A before the drop lands. draggingId and the dataTransfer
+    // both still say "lead_a" — only a fresh read of current membership,
+    // taken at move time, catches that it is no longer true.
+    const [crewA, crewB] = baseCrews();
+    setFleet([{ ...crewA, leads: [] }, crewB], baseChats());
+    rerender(renderTree());
+
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    fireEvent.drop(crewALink, { dataTransfer });
+    expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
+  });
+
+  it("keeps out-of-scope elements inert even when a click reaches them directly", () => {
+    const onNavigate = vi.fn();
+    renderTwoCrewsAndAChat(onNavigate);
+    editCrew("Crew A");
+
+    // pointer-events-none on the dimmed ancestor only ever stopped a real
+    // mouse; a click dispatched straight at the element — standing in for
+    // retained or programmatic focus plus a keyboard activation — must still
+    // do nothing.
+    fireEvent.click(screen.getByRole("link", { name: /Crew B/ }));
+    fireEvent.click(screen.getByRole("link", { name: /Lead B/ }));
+    fireEvent.click(screen.getByRole("link", { name: /Loose Chat/ }));
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    const leadBExpandButton = screen.getByRole("button", {
+      name: "Show the agents under Lead B",
+    }) as HTMLButtonElement;
+    fireEvent.click(leadBExpandButton);
+    // A disabled toggle does not toggle: Sortie B never becomes reachable.
+    expect(screen.queryByRole("link", { name: /Sortie B/ })).toBeNull();
+  });
+
+  it("disables Add a crew for an empty project while a different crew is being edited", () => {
+    renderTwoCrewsAndAChat();
+
+    // Project 3 is the only empty one, so this is unambiguous.
+    const addCrewButton = screen.getByRole("button", {
+      name: "Add a crew",
+    }) as HTMLButtonElement;
+    expect(addCrewButton.disabled).toBe(false);
+
+    editCrew("Crew A");
+    expect(addCrewButton.disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(addCrewButton.disabled).toBe(false);
   });
 });

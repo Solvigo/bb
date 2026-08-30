@@ -47,6 +47,11 @@ function CrewEntry({
   const { editingCrewId, setEditingCrewId, beginDrag, endDrag, justMovedId } =
     useContext(CrewEditContext);
   const editing = editingCrewId === crew.commanderThreadId;
+  // A different crew is being edited. Dimmed by the ancestor's
+  // pointer-events-none below, but that only stops the mouse — a click
+  // arriving through retained or programmatic focus still reaches the
+  // handler, so the handler has to refuse it itself.
+  const outOfScope = editingCrewId !== null && !editing;
   // Not useInEditScope(): this component renders the CrewScopeContext
   // Provider below, so a hook called up here — before that provider exists —
   // would read the ambient value from OUTSIDE this crew, which is never this
@@ -78,19 +83,25 @@ function CrewEntry({
           "transition-opacity",
           // Editing one crew dims the rest, so the operator can see the boundary
           // of what they are rearranging rather than inferring it.
-          editingCrewId !== null &&
-            !editing &&
-            "pointer-events-none opacity-40",
+          outOfScope && "pointer-events-none opacity-40",
         )}
       >
         <div className="group/crew flex items-center">
           <NavLink
             to={threadPath(crew.commanderThreadId)}
             onClick={(event) => {
+              // A crew dimmed for someone else's edit session is inert, not
+              // just quiet — it must not navigate even if it kept focus from
+              // before that session began.
+              if (outOfScope) {
+                event.preventDefault();
+                return;
+              }
               // In edit mode a row is a handle, not a link.
               if (editing) event.preventDefault();
               else onNavigate?.();
             }}
+            aria-disabled={outOfScope || undefined}
             draggable={editing}
             // Guarded the same way the drop side is: draggable={editing} is
             // what a mouse honors, but a dispatched dragstart does not check
@@ -111,7 +122,7 @@ function CrewEntry({
             onDragEnd={endDrag}
             // Dimmed for every crew but the one being edited; pointer-events
             // stops the mouse but not Tab, so keyboard focus is pulled too.
-            tabIndex={editingCrewId !== null && !editing ? -1 : undefined}
+            tabIndex={outOfScope ? -1 : undefined}
             {...drop.handlers}
             className={({ isActive }) =>
               cn(
@@ -250,6 +261,17 @@ interface CrewEditState {
   refusal: string | null;
   /** What to say in the live region. */
   moveMessage: string;
+  /**
+   * The loose chat a leaf was JUST promoted into, out of the crew still being
+   * edited — the one loose chat, if any, allowed a move-menu back in.
+   *
+   * Not "every loose chat gets a menu during edit": a chat with no crew
+   * affiliation at all has no legitimate destination to offer, and offering
+   * one anyway would let the menu reparent a thread nobody meant to touch.
+   * Bound to the specific thread AND the specific edit session that promoted
+   * it — leaving the crew, or editing a different one, clears it.
+   */
+  recoverableChatId: string | null;
 }
 
 /**
@@ -286,6 +308,7 @@ const CrewEditContext = createContext<CrewEditState>({
   setEditingCrewId: () => {},
   refusal: null,
   moveMessage: "",
+  recoverableChatId: null,
 });
 
 /** Every id in an agent's branch, so a drop onto its own descendant is refused
@@ -464,7 +487,17 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
     setRefusal(message);
     window.setTimeout(() => setRefusal(null), 6000);
   }, []);
-  const [editingCrewId, setEditingCrewId] = useState<string | null>(null);
+  const [editingCrewId, setEditingCrewIdState] = useState<string | null>(null);
+  // The recovery menu is bound to ONE edit session: leaving it, or starting a
+  // different one, must drop the binding rather than let it point at a chat
+  // that has nothing to do with whatever crew is being edited now.
+  const [recoverableChatId, setRecoverableChatId] = useState<string | null>(
+    null,
+  );
+  const setEditingCrewId = useCallback((crewId: string | null) => {
+    setRecoverableChatId(null);
+    setEditingCrewIdState(crewId);
+  }, []);
   const [dragging, setDragging] = useState<{
     id: string;
     subtree: ReadonlySet<string>;
@@ -487,7 +520,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editingCrewId, endDrag]);
+  }, [editingCrewId, endDrag, setEditingCrewId]);
   // Every agent, flat and in tree order, so the move menu can name a
   // destination the operator would otherwise have to drag to.
   const destinations = useMemo(() => {
@@ -513,6 +546,25 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   const [justMovedId, setJustMovedId] = useState<string | null>(null);
   const move = useCallback(
     (movingId: string, newParentId: string | null) => {
+      // `destinations` and `recoverableChatId` are both live — recomputed
+      // whenever the fetched fleet or the edit session changes — so this is
+      // membership as of NOW, not as of whenever a drag started or a menu
+      // opened. draggingId/dataTransfer only prove a drag was real when it
+      // began; they say nothing about whether the fleet still agrees the
+      // source belongs where the caller thinks it does. A background refresh
+      // that reparented or removed it mid-drag must not let a stale drop or a
+      // stale menu selection through.
+      const crewMemberIds = new Set(destinations.map((d) => d.threadId));
+      const isLegalSource =
+        crewMemberIds.has(movingId) || movingId === recoverableChatId;
+      if (editingCrewId === null || !isLegalSource) {
+        reportRefusal(
+          reparentRefusalText({ ok: false, reason: "unknown-agent" }),
+        );
+        return;
+      }
+      const promotingCrewMember =
+        newParentId === null && crewMemberIds.has(movingId);
       void reparentAgent(movingId, newParentId).then((outcome) => {
         if (outcome.ok) {
           announce(newParentId === null ? "Moved to the top." : "Moved.");
@@ -521,6 +573,15 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
             () => setJustMovedId((id) => (id === movingId ? null : id)),
             900,
           );
+          if (promotingCrewMember) {
+            // A leaf just left the crew being edited and landed as a loose
+            // chat — the one recovery path back in.
+            setRecoverableChatId(movingId);
+          } else if (newParentId !== null && movingId === recoverableChatId) {
+            // The recovered chat just moved back into a crew; it is no
+            // longer loose, so the menu that recovered it goes with it.
+            setRecoverableChatId(null);
+          }
           return;
         }
         const why = reparentRefusalText(outcome);
@@ -528,7 +589,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
         reportRefusal(why);
       });
     },
-    [announce, reportRefusal],
+    [announce, destinations, editingCrewId, recoverableChatId, reportRefusal],
   );
 
   const editState = useMemo(
@@ -543,6 +604,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       destinations,
       move,
       justMovedId,
+      recoverableChatId,
     }),
     [
       announce,
@@ -553,13 +615,14 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       endDrag,
       justMovedId,
       move,
+      recoverableChatId,
       reportRefusal,
     ],
   );
 
   const value = useMemo(
     () => ({ ...editState, setEditingCrewId, refusal, moveMessage }),
-    [editState, moveMessage, refusal],
+    [editState, moveMessage, refusal, setEditingCrewId],
   );
   return (
     <CrewEditContext.Provider value={value}>
@@ -843,13 +906,16 @@ function AgentTreeRow({
                 : `Show the agents under ${agent.name}`
             }
             aria-expanded={expanded}
-            onClick={() => setExpanded((open) => !open)}
-            // Same reasoning as the row's own tabIndex: the enclosing crew's
-            // pointer-events-none dims this visually but does not pull it out
-            // of Tab, so a keyboard user editing a DIFFERENT crew could still
-            // reach it.
-            tabIndex={outOfScope ? -1 : undefined}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground transition-colors hover:text-foreground"
+            onClick={() => {
+              // Same guard as `disabled` below, redundantly: a real <button>
+              // being disabled is the platform's own guarantee, but the
+              // handler refuses on its own too rather than depend on exactly
+              // how a given runtime dispatches a click to a disabled control.
+              if (outOfScope) return;
+              setExpanded((open) => !open);
+            }}
+            disabled={outOfScope}
+            className="flex size-5 shrink-0 items-center justify-center rounded text-subtle-foreground transition-colors hover:text-foreground disabled:pointer-events-none"
           >
             <Icon
               name={expanded ? "ChevronDown" : "ChevronRight"}
@@ -879,13 +945,17 @@ function AgentTreeRow({
             beginDrag(agent);
           }}
           onDragEnd={endDrag}
-          // In edit mode a click edits, it does not travel. Navigating away
-          // mid-rearrangement loses the shape you were halfway through.
+          // In edit mode a click edits, it does not travel — and dimmed for a
+          // DIFFERENT crew's edit, it must not travel either, or a click that
+          // arrives through retained or programmatic focus (pointer-events on
+          // the ancestor only ever stopped the mouse) navigates a row that
+          // looks disabled.
           onClickCapture={(event) => {
-            if (!editing) return;
+            if (!editing && !outOfScope) return;
             event.preventDefault();
             event.stopPropagation();
           }}
+          aria-disabled={outOfScope || undefined}
           tabIndex={outOfScope ? -1 : undefined}
           {...drop.handlers}
           // The keyboard route to the same move. A drag is a mouse gesture and
@@ -1190,39 +1260,57 @@ export function CrewSidebarSection({
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {groupByProject(crews, projectNameOf, projectIds).map((group) => (
-            <li key={group.projectId}>
-              {group.name === null ? null : (
-                <ProjectRootDropZone
-                  name={group.name}
-                  inScope={group.projectId === editingProjectId}
-                />
-              )}
-              {group.crews.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => createCrew(group.projectId)}
-                  disabled={creatingCrew}
-                  className="flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
-                >
-                  <Icon name="Plus" className="size-3.5 shrink-0" aria-hidden />
-                  <span className="truncate text-[13px]">
-                    {creatingCrew ? "Standing up a crew…" : "Add a crew"}
-                  </span>
-                </button>
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {group.crews.map((crew) => (
-                    <CrewEntry
-                      key={crew.commanderThreadId}
-                      crew={crew}
-                      onNavigate={onNavigate}
+          {groupByProject(crews, projectNameOf, projectIds).map((group) => {
+            const projectInScope = group.projectId === editingProjectId;
+            // Every other project goes inert during an edit session, same as
+            // its header: an empty project's only affordance is standing up a
+            // brand new crew, which has nothing to do with the crew being
+            // rearranged and shouldn't be reachable mid-session.
+            const projectOutOfScope = editingCrewId !== null && !projectInScope;
+            return (
+              <li key={group.projectId}>
+                {group.name === null ? null : (
+                  <ProjectRootDropZone
+                    name={group.name}
+                    inScope={projectInScope}
+                  />
+                )}
+                {group.crews.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (projectOutOfScope) return;
+                      createCrew(group.projectId);
+                    }}
+                    disabled={creatingCrew || projectOutOfScope}
+                    className={cn(
+                      "flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50",
+                      projectOutOfScope && "pointer-events-none opacity-40",
+                    )}
+                  >
+                    <Icon
+                      name="Plus"
+                      className="size-3.5 shrink-0"
+                      aria-hidden
                     />
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
+                    <span className="truncate text-[13px]">
+                      {creatingCrew ? "Standing up a crew…" : "Add a crew"}
+                    </span>
+                  </button>
+                ) : (
+                  <ul className="flex flex-col gap-1">
+                    {group.crews.map((crew) => (
+                      <CrewEntry
+                        key={crew.commanderThreadId}
+                        crew={crew}
+                        onNavigate={onNavigate}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -1244,7 +1332,8 @@ function ChatRow({
   chat: LooseChat;
   onNavigate?: () => void;
 }) {
-  const { editingCrewId, endDrag, justMovedId } = useContext(CrewEditContext);
+  const { editingCrewId, endDrag, justMovedId, recoverableChatId } =
+    useContext(CrewEditContext);
   // A loose chat belongs to no crew, so it is never part of the crew being
   // edited — and while one is being edited it steps out of the way entirely.
   const editing = false;
@@ -1253,9 +1342,12 @@ function ChatRow({
   // that must not be the only way back INTO a crew: "make root" turned a leaf
   // into exactly this row, and a chat with no drag and no menu had no way to
   // undo that short of the server-side move tooling. The dropdown is a plain
-  // click calling `move` directly — no dataTransfer to spoof — so offering it
-  // during edit mode reopens a recovery path without reopening the drag hole.
-  const canMove = editingCrewId !== null;
+  // click calling `move` directly — no dataTransfer to spoof — so it reopens a
+  // recovery path without reopening the drag hole. Bound to the ONE chat this
+  // edit session just promoted, though: every other loose chat, same project
+  // or not, has no crew affiliation to recover into, and offering the menu
+  // there would just be a way to reparent an unrelated thread by accident.
+  const canMove = recoverableChatId === chat.threadId;
   const movable: MovableAgent = {
     threadId: chat.threadId,
     name: chat.name,
@@ -1270,9 +1362,17 @@ function ChatRow({
             threadId: chat.threadId,
           })}
           onClick={(event) => {
-            if (editing) event.preventDefault();
-            else onNavigate?.();
+            // Dimmed while any crew is being edited, and that must hold even
+            // if the click arrives through focus the row kept from before
+            // edit mode began — pointer-events-none on this same link stops
+            // a mouse, never a keyboard activation on existing focus.
+            if (dimmed) {
+              event.preventDefault();
+              return;
+            }
+            onNavigate?.();
           }}
+          aria-disabled={dimmed || undefined}
           // A loose chat belongs to no crew, so it is never in scope for the
           // crew being edited. It used to stay draggable during edit mode,
           // relying on the dimmed ancestor's pointer-events-none to keep it
