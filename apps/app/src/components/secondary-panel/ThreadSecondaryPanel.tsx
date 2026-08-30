@@ -38,6 +38,7 @@ import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
 import { WorktreeFileActionsProvider } from "./tower/worktree-file-actions";
 import { registerBuiltInAgentSurfaceTabs } from "./tower/builtInAgentSurfaceTabs";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { useAgentSurfaceTabs } from "./useAgentSurfaceTabs";
 import { useRouteState } from "@/hooks/useRouteState";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
@@ -500,9 +501,16 @@ export function ThreadSecondaryPanel({
     ],
     [pluginSurfaceTabs],
   );
-  const [towerView, setTowerView] = useState<string | null>(
-    () => towerTabs[0]?.id ?? null,
+  // Which surfaces this thread has open, and which is showing — remembered per
+  // thread rather than defaulted, so a thread opens the way it was left instead
+  // of mounting every registered surface at once.
+  const surfaces = useAgentSurfaceTabs(openInThreadId, openInThreadId);
+  const openTowerTabs = useMemo(
+    () => towerTabs.filter((tab) => surfaces.openTabIds.includes(tab.id)),
+    [surfaces.openTabIds, towerTabs],
   );
+  const towerView = surfaces.activeTabId;
+  const setTowerView = surfaces.show;
   // Same contract the per-agent surface gives a tab: a disposer narrowed to
   // this agent, so a tab never tears down its context because a different
   // agent's surface closed.
@@ -526,7 +534,7 @@ export function ThreadSecondaryPanel({
   const towerViewCanShow =
     activeTabKind === null || activeTabKind === "thread-info";
   const activeTowerTab = towerViewCanShow
-    ? (towerTabs.find((tab) => tab.id === towerView) ?? towerTabs[0] ?? null)
+    ? (openTowerTabs.find((tab) => tab.id === towerView) ?? null)
     : null;
   const isTowerViewActive = activeTowerTab !== null;
   const isDiffPanelActive = activeFixedPanel === "git-diff";
@@ -729,7 +737,7 @@ export function ThreadSecondaryPanel({
             aria-label="Right panel views"
             // header tab-button icon color
           >
-            {towerTabs.map((tab) => (
+            {openTowerTabs.map((tab) => (
               <PinnedIconTab
                 key={tab.id}
                 ariaLabel={`Show ${tab.label.toLowerCase()}`}
@@ -740,6 +748,8 @@ export function ThreadSecondaryPanel({
                   onPanelChange("thread-info");
                   setTowerView(tab.id);
                 }}
+                onClose={() => surfaces.close(tab.id)}
+                closeAriaLabel={`Close ${tab.label.toLowerCase()}`}
                 title={tab.title}
                 usesDesktopChrome={usesDesktopChrome}
                 activeTreatment="fill"
