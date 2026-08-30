@@ -25,7 +25,12 @@ vi.mock("./useCrews", async () => {
 });
 
 vi.mock("./useCreateCrew", () => ({
-  useCreateCrew: () => ({ createCrew: vi.fn(), creating: false }),
+  useCreateCrew: () => ({
+    createCrew: vi.fn(),
+    creating: false,
+    creatingFor: () => false,
+    error: null,
+  }),
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({

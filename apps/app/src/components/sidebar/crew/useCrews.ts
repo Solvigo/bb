@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { stripRankPrefix } from "@/lib/agent-title";
 import { wsManager } from "@/lib/ws";
+import { recordedStandbyRoots } from "./standbyRoots";
 
 export interface CrewLead {
   threadId: string;
@@ -54,13 +55,10 @@ export interface Crew {
  * ABSENCE, exactly as the model intends — there is no second kind of thread,
  * and any of these can be chartered later without moving.
  */
-/** The title a root carries from creation until its crew names it. */
+/** The title a root carries from creation until its crew names it. It names
+ *  the thread and nothing more — provenance is recorded, never inferred from
+ *  a sentence anyone is free to write. */
 export const ROOT_THREAD_TITLE = "New crew";
-/** …and the retired wizard's, so a root made before it is still recognised. */
-export const UNNAMED_ROOT_TITLES: readonly string[] = [
-  ROOT_THREAD_TITLE,
-  "New crew · setup",
-];
 
 /**
  * A root that was created for a crew and never chartered.
@@ -336,10 +334,17 @@ export function assembleFleet(
     (byParent.get(t.id) ?? []).some((child) => live.has(child.id)) ||
     handleOf.has(t.id);
 
-  // Never chartered, never named, nothing under it: the standby a failed
-  // charter left behind, not something anyone chose to start.
+  // The standby a failed charter left behind — identified by what this client
+  // RECORDED creating, never by what the thread is called. A title is a
+  // sentence anyone may write, and classifying "New crew" as a broken setup
+  // turned the operator's own chat into a repair prompt.
+  //
+  // The record only ever narrows: the thread must still be a root, still carry
+  // no handle, and still sit on the project it was recorded for. A record that
+  // has gone stale stops matching rather than asserting anything.
+  const recorded = recordedStandbyRoots();
   const isPendingRoot = (t: ThreadRow) =>
-    !isCrewed(t) && UNNAMED_ROOT_TITLES.includes((t.title ?? "").trim());
+    !isCrewed(t) && recorded.get(t.id) === (t.projectId ?? "");
 
   const pendingRoots: PendingRoot[] = roots
     .filter(isPendingRoot)

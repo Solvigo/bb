@@ -21,7 +21,10 @@ const send = vi.hoisted(() =>
     undefined,
   ),
 );
-vi.mock("@/lib/sdk", () => ({ sdk: { threads: { send } } }));
+const archive = vi.hoisted(() =>
+  vi.fn(async (_args: { threadId: string }) => ({ ok: true as const })),
+);
+vi.mock("@/lib/sdk", () => ({ sdk: { threads: { send, archive } } }));
 
 const navigate = vi.hoisted(() => vi.fn());
 vi.mock("react-router-dom", async () => {
@@ -32,8 +35,21 @@ vi.mock("react-router-dom", async () => {
   return { ...actual, useNavigate: () => navigate };
 });
 
-import { useCreateCrew } from "./useCreateCrew";
 import rootBootstrap from "./rootAgentBootstrap.md?raw";
+
+/**
+ * A FRESH module per test.
+ *
+ * The in-flight project set is module state by design — it is what stops two
+ * surfaces creating two roots — so a test whose flow has not finished unwinding
+ * leaves the next one's press refused before it starts. Re-importing isolates
+ * them instead of making each test guess how long to wait.
+ */
+async function freshHook() {
+  vi.resetModules();
+  const { useCreateCrew } = await import("./useCreateCrew");
+  return renderHook(() => useCreateCrew(), { wrapper });
+}
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <MemoryRouter>{children}</MemoryRouter>
@@ -52,6 +68,9 @@ interface RigOptions {
   threads?: unknown[] | "unreadable";
   charter?: { status?: number; body?: unknown };
   fleet?: FleetRow[] | "unreadable" | "malformed";
+  /** What the fleet says AFTER the charter — the other process's crew landing
+   *  between our pre-check and our refusal is the race itself. */
+  fleetAfterCharter?: FleetRow[] | "unreadable" | "malformed";
   projects?: unknown[] | "unreadable";
 }
 
@@ -81,8 +100,10 @@ function stubRig({
   threads = [],
   charter = {},
   fleet = [],
+  fleetAfterCharter,
   projects = [{ id: "proj_a" }],
 }: RigOptions = {}) {
+  let charterSeen = false;
   calls = [];
   posted = [];
   vi.stubGlobal(
@@ -96,10 +117,14 @@ function stubRig({
       }
       calls.push(`${init?.method ?? "GET"} ${url}`);
       if (url.includes("crew_fleet")) {
-        if (fleet === "unreadable") {
+        const view =
+          charterSeen && fleetAfterCharter !== undefined
+            ? fleetAfterCharter
+            : fleet;
+        if (view === "unreadable") {
           return { ok: false, status: 503, json: async () => ({}) };
         }
-        const rows = fleet === "malformed" ? [{ handle: "AW-1" }] : fleet;
+        const rows = view === "malformed" ? [{ handle: "AW-1" }] : view;
         return {
           ok: true,
           status: 200,
@@ -107,6 +132,7 @@ function stubRig({
         };
       }
       if (url.includes("crew_charter")) {
+        charterSeen = true;
         return {
           ok: (charter.status ?? 200) < 400,
           status: charter.status ?? 200,
@@ -152,6 +178,9 @@ describe("useCreateCrew", () => {
   beforeEach(() => {
     send.mockClear();
     navigate.mockClear();
+    archive.mockClear();
+    archive.mockImplementation(async () => ({ ok: true as const }));
+    window.localStorage.clear();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -163,7 +192,7 @@ describe("useCreateCrew", () => {
     // that went out with the create would have started a loose thread that the
     // charter had not yet made into anything.
     stubRig();
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
 
     act(() => {
       result.current.createCrew("proj_a");
@@ -206,7 +235,7 @@ describe("useCreateCrew", () => {
         },
       },
     });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
 
     act(() => {
       result.current.createCrew("proj_a");
@@ -234,7 +263,7 @@ describe("useCreateCrew", () => {
         },
       ],
     });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
 
     act(() => {
       result.current.createCrew("proj_a");
@@ -263,7 +292,7 @@ describe("useCreateCrew", () => {
       ],
       fleet: [{ threadId: "thr_live", handle: "AW-1", parentThreadId: null }],
     });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
 
     act(() => {
       result.current.createCrew("proj_a", "ship the billing page");
@@ -304,7 +333,7 @@ describe("useCreateCrew", () => {
       ],
       fleet: [{ threadId: "thr_theirs", handle: "AW-9", parentThreadId: null }],
     });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
 
     act(() => {
       result.current.createCrew("proj_a");
@@ -323,7 +352,7 @@ describe("useCreateCrew", () => {
     // Uncertainty is not "there is no crew". Creating on a fleet that did not
     // answer is how a project ends up with two roots.
     stubRig({ fleet: "unreadable" });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
     act(() => {
       result.current.createCrew("proj_a");
     });
@@ -336,7 +365,7 @@ describe("useCreateCrew", () => {
   it("treats a malformed fleet row as an unreadable fleet, not an empty one", async () => {
     // The row that failed to parse could be the very root being asked about.
     stubRig({ fleet: "malformed" });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
     act(() => {
       result.current.createCrew("proj_a");
     });
@@ -350,7 +379,7 @@ describe("useCreateCrew", () => {
     // Falling back to Personal built the crew somewhere the operator did not
     // ask for, on a project it can never leave.
     stubRig({ projects: [{ id: "proj_other" }] });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
     act(() => {
       result.current.createCrew("proj_a");
     });
@@ -378,7 +407,7 @@ describe("useCreateCrew", () => {
       },
       fleet: [{ threadId: "thr_root", handle: "AW-1", parentThreadId: null }],
     });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
     act(() => {
       result.current.createCrew("proj_a");
     });
@@ -396,7 +425,7 @@ describe("useCreateCrew", () => {
         body: { ok: false, error: { message: "the port fell over" } },
       },
     });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
     act(() => {
       result.current.createCrew("proj_a");
     });
@@ -405,9 +434,101 @@ describe("useCreateCrew", () => {
     });
   });
 
+  it("archives its own losing standby and opens the winner", async () => {
+    // Two processes, one project. The loser must not leave a husk on the rail
+    // that nobody can tell from a real root.
+    stubRig({
+      charter: {
+        status: 200,
+        body: {
+          ok: true,
+          result: { ok: false, error: "this project already has a crew" },
+        },
+      },
+      fleetAfterCharter: [
+        { threadId: "thr_winner", handle: "AW-9", parentThreadId: null },
+      ],
+      threads: [
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalled();
+    });
+
+    // Ours archived, the authoritative winner opened.
+    expect(archive).toHaveBeenCalledWith({ threadId: "thr_root" });
+    const sent = send.mock.calls[0]?.[0] as unknown as SentTurn | undefined;
+    expect(sent?.threadId ?? "thr_winner").toBe("thr_winner");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("names the orphan out loud when archiving the loser fails", async () => {
+    archive.mockImplementation(async () => {
+      throw new Error("archive route said no");
+    });
+    stubRig({
+      charter: {
+        status: 200,
+        body: {
+          ok: true,
+          result: { ok: false, error: "this project already has a crew" },
+        },
+      },
+      fleetAfterCharter: [
+        { threadId: "thr_winner", handle: "AW-9", parentThreadId: null },
+      ],
+      threads: [
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("thr_root");
+    });
+    expect(result.current.error).toContain("could not be archived");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("does not archive anything when the fleet cannot say who won", async () => {
+    // Fail closed: an unreadable fleet is never grounds to destroy a thread.
+    stubRig({
+      charter: {
+        status: 200,
+        body: { ok: true, result: { ok: false, error: "charter refused" } },
+      },
+      fleetAfterCharter: "unreadable",
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toBe("charter refused");
+    });
+    expect(archive).not.toHaveBeenCalled();
+  });
+
   it("keeps busy state per project", async () => {
     stubRig();
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
     act(() => {
       result.current.createCrew("proj_a");
     });
@@ -423,7 +544,7 @@ describe("useCreateCrew", () => {
     // creates a duplicate root — silently, and precisely when the rig is
     // already having a bad minute.
     stubRig({ threads: "unreadable" });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
 
     act(() => {
       result.current.createCrew("proj_a");
@@ -441,7 +562,7 @@ describe("useCreateCrew", () => {
     // A truncated, empty, or unrecognised body is not a charter. Treating it
     // as one is how an ungoverned root gets briefed and opened as a crew.
     stubRig({ charter: { status: 200, body: {} } });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
 
     act(() => {
       result.current.createCrew("proj_a");
@@ -458,6 +579,10 @@ describe("useCreateCrew", () => {
     // `creating` is per-component state and the rail and the project card each
     // hold their own, so both saw an idle flag and both created a root.
     stubRig();
+    // Both from the SAME module instance: the shared set is the thing under
+    // test, so re-importing between them would defeat the point.
+    vi.resetModules();
+    const { useCreateCrew } = await import("./useCreateCrew");
     const rail = renderHook(() => useCreateCrew(), { wrapper });
     const card = renderHook(() => useCreateCrew(), { wrapper });
 
@@ -491,7 +616,7 @@ describe("useCreateCrew", () => {
       },
       fleet: [{ threadId: "thr_ours", handle: null, parentThreadId: null }],
     });
-    const { result } = renderHook(() => useCreateCrew(), { wrapper });
+    const { result } = await freshHook();
 
     act(() => {
       result.current.createCrew("proj_a");

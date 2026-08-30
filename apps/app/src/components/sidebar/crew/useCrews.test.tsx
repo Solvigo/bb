@@ -329,12 +329,11 @@ describe("useCrews", () => {
     expect(result.current.crews.length).toBe(0);
   });
 
-  it("keeps an unchartered standby out of Chats", async () => {
-    // The defect this guards: a charter that failed left a root with no handle
-    // and nothing under it, which fell through to Chats — where it read as a
-    // conversation and, by counting as the project's root, hid the only
-    // affordance that could finish the setup.
-    const STANDBY = [
+  it("tells a standby from a chat by what it recorded, never by the title", async () => {
+    // Two roots, same title, no handles. Only one of them was created by this
+    // flow; the other is the operator's own thinking, and classifying it as a
+    // broken setup put a repair prompt on a perfectly good conversation.
+    const ROOTS = [
       {
         id: "thr_standby",
         title: "New crew",
@@ -343,18 +342,22 @@ describe("useCrews", () => {
       },
       {
         id: "thr_talk",
-        title: "A real conversation",
+        title: "New crew",
         projectId: "p",
         parentThreadId: null,
       },
     ];
     vi.unstubAllGlobals();
     vi.resetModules();
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_standby", projectId: "p" }]),
+    );
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
         url.includes("/threads")
-          ? { ok: true, json: async () => STANDBY }
+          ? { ok: true, json: async () => ROOTS }
           : { ok: true, json: async () => ({ result: { rows: [] } }) },
       ),
     );
@@ -369,7 +372,44 @@ describe("useCrews", () => {
       "thr_standby",
     ]);
     expect(result.current.chats.map((c) => c.threadId)).toEqual(["thr_talk"]);
-    expect(result.current.crews).toEqual([]);
+    window.localStorage.clear();
+  });
+
+  it("drops a recorded standby whose project no longer matches", async () => {
+    // The record only ever narrows. A thread that moved, or a record written
+    // for another project, stops matching rather than asserting anything.
+    const ROOTS = [
+      {
+        id: "thr_standby",
+        title: "New crew",
+        projectId: "p",
+        parentThreadId: null,
+      },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_standby", projectId: "other" }]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/threads")
+          ? { ok: true, json: async () => ROOTS }
+          : { ok: true, json: async () => ({ result: { rows: [] } }) },
+      ),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+
+    expect(result.current.pendingRoots).toEqual([]);
+    expect(result.current.chats.map((c) => c.threadId)).toEqual(["thr_standby"]);
+    window.localStorage.clear();
   });
 
   it("nests as deep as the pointers go", async () => {

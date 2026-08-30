@@ -3,7 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { AGENT_PROVIDER } from "@/lib/agentProvider";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { ROOT_THREAD_TITLE, UNNAMED_ROOT_TITLES } from "./useCrews";
+import { ROOT_THREAD_TITLE } from "./useCrews";
+import {
+  forgetStandbyRoot,
+  recordedStandbyRoots,
+  rememberStandbyRoot,
+} from "./standbyRoots";
 import { sdk } from "@/lib/sdk";
 
 interface ProjectRow {
@@ -300,6 +305,51 @@ async function sendRootOpening({
 }
 
 /**
+ * What to do when our charter was refused and someone else may have won.
+ *
+ * Only ever called with the standby THIS invocation created. It re-reads the
+ * fleet fail-closed: unless a DIFFERENT governed root is now holding this
+ * project, nothing is archived and the original refusal stands. A losing
+ * standby is archived rather than left on the rail, and an archive that fails
+ * is said out loud — an orphan nobody can see is worse than one that is named.
+ */
+async function recoverLostRace({
+  ourThreadId,
+  projectId,
+  refusal,
+}: {
+  ourThreadId: string;
+  projectId: string;
+  refusal: string | null;
+}): Promise<
+  { outcome: "winner"; thread: ThreadRow } | { outcome: "error"; message: string }
+> {
+  const threads = await readThreadRows();
+  if (threads === null) {
+    return { outcome: "error", message: refusal ?? UNREADABLE_FLEET };
+  }
+  const answer = await governedRootFor(projectId, threads);
+  // Fail closed: an unreadable fleet is never grounds to archive anything.
+  if (answer.status !== "root" || answer.thread.id === ourThreadId) {
+    return { outcome: "error", message: refusal ?? UNREADABLE_CREW };
+  }
+  try {
+    await sdk.threads.archive({ threadId: ourThreadId });
+  } catch (e) {
+    return {
+      outcome: "error",
+      message:
+        `Another crew won this project, but the thread this attempt created ` +
+        `(${ourThreadId}) could not be archived` +
+        `${e instanceof Error ? `: ${e.message}` : ""}. ` +
+        `Archive it by hand so it does not sit on the rail.`,
+    };
+  }
+  forgetStandbyRoot(ourThreadId);
+  return { outcome: "winner", thread: answer.thread };
+}
+
+/**
  * Pressing NEW CREW stands up the project's ROOT AGENT.
  *
  * The order is the contract. The root is created project-bound and
@@ -407,6 +457,23 @@ export function useCreateCrew(): {
             return;
           }
           if (owned.status === "root") {
+            // A handle proves a charter STARTED, never that it finished: the
+            // brief is written after the handle. Charter is idempotent and
+            // repairs a missing brief, so running it here is what makes an
+            // ok answer mean "handle AND durable brief" before this root is
+            // opened as though it were whole.
+            const ownedProjectId =
+              owned.thread.projectId ?? PERSONAL_PROJECT_ID;
+            const repaired = await charterRoot(
+              owned.thread.id,
+              await loadRootBootstrap(),
+              rootTaskId(ownedProjectId),
+            );
+            if (!repaired.ok) {
+              setError(repaired.message);
+              return;
+            }
+            forgetStandbyRoot(owned.thread.id);
             await sendRootOpening({
               threadId: owned.thread.id,
               bootstrap: null,
@@ -414,18 +481,21 @@ export function useCreateCrew(): {
             });
             navigate(
               getThreadRoutePath({
-                projectId: owned.thread.projectId ?? PERSONAL_PROJECT_ID,
+                projectId: ownedProjectId,
                 threadId: owned.thread.id,
               }),
             );
             return;
           }
 
+          // What THIS client recorded standing up here — not what a thread is
+          // called. Resuming on a title picked up the operator's own chat.
+          const recorded = recordedStandbyRoots();
           const unfinished = threads.find(
             (t) =>
               !t.parentThreadId &&
-              UNNAMED_ROOT_TITLES.includes(t.title ?? "") &&
-              (t.projectId ?? PERSONAL_PROJECT_ID) === wantedProjectId,
+              (t.projectId ?? PERSONAL_PROJECT_ID) === wantedProjectId &&
+              recorded.get(t.id) === (t.projectId ?? ""),
           );
           if (unfinished) {
             // A root found this way may be a standby whose charter failed last
@@ -439,9 +509,29 @@ export function useCreateCrew(): {
               rootTaskId(rootProjectId),
             );
             if (!chartered.ok) {
-              setError(chartered.message);
+              const recovered = await recoverLostRace({
+                ourThreadId: unfinished.id,
+                projectId: rootProjectId,
+                refusal: chartered.message,
+              });
+              if (recovered.outcome === "winner") {
+                await sendRootOpening({
+                  threadId: recovered.thread.id,
+                  bootstrap: null,
+                  openingRequest,
+                });
+                navigate(
+                  getThreadRoutePath({
+                    projectId: recovered.thread.projectId ?? rootProjectId,
+                    threadId: recovered.thread.id,
+                  }),
+                );
+                return;
+              }
+              setError(recovered.message);
               return;
             }
+            forgetStandbyRoot(unfinished.id);
             // The brief goes out on BOTH paths here. A fleet row proves a
             // handle was written; it says nothing about whether the brief that
             // should have gone with it ever landed. Between re-stating standing
@@ -575,6 +665,10 @@ export function useCreateCrew(): {
             projectId?: string;
           };
           const rootProjectId = thread.projectId ?? projectId;
+          // Recorded BEFORE the charter is attempted: if the charter fails, or
+          // the tab closes mid-flight, this note is the only thing that can
+          // tell this standby apart from an ordinary chat afterwards.
+          rememberStandbyRoot(thread.id, rootProjectId);
 
           const chartered = await charterRoot(
             thread.id,
@@ -582,14 +676,29 @@ export function useCreateCrew(): {
             rootTaskId(rootProjectId),
           );
           if (!chartered.ok) {
-            // The standby root stays, still holding nothing but the instruction
-            // to wait: the next press finds it by title and retries the charter.
-            // Navigating into it here would present a loose thread as a crew
-            // root, which is the thing the charter exists to prevent.
-            setError(chartered.message);
+            const recovered = await recoverLostRace({
+              ourThreadId: thread.id,
+              projectId: rootProjectId,
+              refusal: chartered.message,
+            });
+            if (recovered.outcome === "winner") {
+              await sendRootOpening({
+                threadId: recovered.thread.id,
+                bootstrap: null,
+                openingRequest,
+              });
+              navigate(
+                getThreadRoutePath({
+                  projectId: recovered.thread.projectId ?? rootProjectId,
+                  threadId: recovered.thread.id,
+                }),
+              );
+              return;
+            }
+            setError(recovered.message);
             return;
           }
-
+          forgetStandbyRoot(thread.id);
           await sendRootOpening({
             threadId: thread.id,
             bootstrap: await loadRootBootstrap(),
