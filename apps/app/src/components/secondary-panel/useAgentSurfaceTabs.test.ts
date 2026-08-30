@@ -124,6 +124,14 @@ describe("useAgentSurfaceTabs persistence", () => {
 
   it("hydrates a persisted non-empty open set on a fresh mount", async () => {
     const threadId = "thr_hydrate";
+    // A current owning record has to exist for the companion to be trusted
+    // at all — see isOwningFixedPanelTabsRecordCurrent.
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({ lastUsedAt: Date.now() }),
+      }),
+    );
     window.localStorage.setItem(
       agentSurfaceStorageKey(threadId),
       JSON.stringify({ openTabIds: ["brief", "files"], activeTabId: "files" }),
