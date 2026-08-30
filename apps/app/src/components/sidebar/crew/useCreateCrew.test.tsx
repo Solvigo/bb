@@ -162,22 +162,25 @@ function stubRig({
         };
       }
       if (url.includes("crew_charter")) {
-        charterSeen = true;
         // The real verb answers ABOUT the thread it was asked about, and the
-        // flow refuses a success that names a different one — so the stub has
-        // to echo it rather than assert a fixed id.
+        // flow refuses a success that names a different one — so the stub
+        // echoes the id rather than asserting a fixed one.
         const askedFor = JSON.parse(init?.body ?? "{}") as {
           threadId?: string;
         };
-        return {
-          ok: (charter.status ?? 200) < 400,
-          status: charter.status ?? 200,
-          json: async () =>
-            charter.body ?? {
-              ok: true,
-              result: { ...CHARTERED.result, threadId: askedFor.threadId },
-            },
+        const success = {
+          ok: true,
+          result: { ...CHARTERED.result, threadId: askedFor.threadId },
         };
+        // A configured answer belongs to the charter THIS invocation makes for
+        // its own root — the one that can lose the race. The repair charter
+        // that follows is a different call about the WINNER, and answering it
+        // with the loser's refusal is a rig that cannot express the race at
+        // all: nobody could ever be opened.
+        const body = charterSeen ? success : (charter.body ?? success);
+        const status = charterSeen ? 200 : (charter.status ?? 200);
+        charterSeen = true;
+        return { ok: status < 400, status, json: async () => body };
       }
       if (url.includes("/api/v1/threads")) {
         if (init?.method !== "POST" && threads === "unreadable") {
