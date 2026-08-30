@@ -76,6 +76,7 @@ import {
   type ThreadActionsMenuResponsiveAction,
 } from "@/components/thread/ThreadActionsMenu";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
+import { SwapAgentButton } from "@/components/secondary-panel/tower/SwapAgentButton";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -158,6 +159,14 @@ import {
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import {
+  useAgentSurfaceTabs,
+  useAgentSurfaceTabsStorageMaintenance,
+} from "@/components/secondary-panel/useAgentSurfaceTabs";
+import { listAgentSurfaceTabs } from "@/components/secondary-panel/tower/agentSurfaceRegistry";
+import { registerBuiltInAgentSurfaceTabs } from "@/components/secondary-panel/tower/builtInAgentSurfaceTabs";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
+import type { NewTabSurfaceOption } from "@/components/secondary-panel/NewTabPage";
 import { getFileExtension } from "@/lib/file-opener-preference";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -461,6 +470,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     usePaneContext();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
+  useAgentSurfaceTabsStorageMaintenance(threadId);
   const systemConfigQuery = useSystemConfig();
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
@@ -625,6 +635,43 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openPluginPanel,
     threadId,
   });
+  // The agent's own surfaces, offered on the new-tab page instead of mounting
+  // themselves. Registered surfaces are the same set the panel strip draws
+  // from, so a surface can never be openable here and absent there.
+  //
+  // Registering from the component body is the registry's own instruction —
+  // module scope deadlocks on an import cycle — and it has to happen HERE too:
+  // the panel registers during its render, which is after this list is built,
+  // so reading the registry without this saw only the plugin surfaces.
+  registerBuiltInAgentSurfaceTabs();
+  const { agentSurfaceTabs: pluginSurfaceTabs } = usePluginSlots();
+  const agentSurfaceOptions = useMemo<NewTabSurfaceOption[]>(
+    () => [
+      ...listAgentSurfaceTabs().map((tab) => ({
+        id: tab.id,
+        label: tab.label,
+        icon: tab.icon,
+      })),
+      ...pluginSurfaceTabs.map((slot) => ({
+        id: `plugin:${slot.pluginId}:${slot.id}`,
+        label: slot.label,
+        icon: pluginIconName(slot.icon),
+      })),
+    ],
+    [pluginSurfaceTabs],
+  );
+  const { open: openAgentSurfaceTab } = useAgentSurfaceTabs(threadId, threadId);
+  // Opening a surface has to also dismiss the new-tab page it was opened FROM:
+  // a surface only shows when no file tab is active, so without this the tab
+  // appeared in the strip while the picker stayed in front of it, which reads
+  // as the click having done nothing.
+  const openAgentSurface = useCallback(
+    (tabId: string) => {
+      openAgentSurfaceTab(tabId);
+      clearActiveFileTabs();
+    },
+    [clearActiveFileTabs, openAgentSurfaceTab],
+  );
   const {
     fileOpeners: pluginFileOpeners,
     threadPanelActions: pluginThreadPanelActions,
@@ -1901,12 +1948,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       // Tower links navigate the right pane instead of opening a URL.
       const nav = parseTowerLink(href);
       if (nav) {
-        setTowerNav({ ...nav, nonce: nextNavNonce() });
+        setTowerNav({ ...nav, threadId, nonce: nextNavNonce() });
         return true;
       }
       return handleOpenUrlByPreference(href);
     },
-    [handleOpenUrlByPreference, setTowerNav],
+    [handleOpenUrlByPreference, setTowerNav, threadId],
   );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
@@ -2344,10 +2391,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       pluginActions={
-        <PluginThreadHeaderActions
-          threadId={thread.id}
-          projectId={thread.projectId}
-        />
+        <div className="flex items-center gap-1">
+          <SwapAgentButton threadId={thread.id} />
+          <PluginThreadHeaderActions
+            threadId={thread.id}
+            projectId={thread.projectId}
+          />
+        </div>
       }
       threadHeaderGitActions={gitActions.threadHeaderGitActions}
       threadTitle={threadTitle}
@@ -2445,7 +2495,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onOpenBrowser={handleOpenBrowser}
       onOpenReview={canUseGitUi ? openSecondaryPanelDiffPanel : undefined}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
+      onOpenSurface={openAgentSurface}
       pluginActions={pluginPanelActions}
+      surfaces={agentSurfaceOptions}
     />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
@@ -2560,6 +2612,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           }}
           secondaryPanel={{
             activeTab: activeFixedSecondaryTab,
+            threadId,
             canUseGitUi,
             defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
             environmentId: thread.environmentId ?? undefined,

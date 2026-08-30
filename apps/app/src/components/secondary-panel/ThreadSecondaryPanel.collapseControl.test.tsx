@@ -20,8 +20,6 @@ function renderPanel(args: {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
     <Wrapper>
-      {/* The panel reads route state now — it resolves which agent it is
-          showing from the URL rather than being told. */}
       <MemoryRouter>
         <TooltipProvider>
           <PanelGroup direction="horizontal">

@@ -77,8 +77,10 @@ describe("fixed panel tab server sync", () => {
       result.current.update((current) => ({
         ...current,
         secondary: {
+          activeSurfaceTabId: null,
           activeTabId: localTab.id,
           isOpen: true,
+          surfaceTabIds: [],
           tabs: [localTab],
         },
       }));
@@ -103,8 +105,10 @@ describe("fixed panel tab server sync", () => {
         state: createEmptyFixedPanelTabsState({
           lastUsedAt,
           secondary: {
+            activeSurfaceTabId: null,
             activeTabId: localTab.id,
             isOpen: true,
+            surfaceTabIds: [],
             tabs: [localTab],
           },
         }),
@@ -143,8 +147,10 @@ describe("fixed panel tab server sync", () => {
         state: createEmptyFixedPanelTabsState({
           lastUsedAt: Date.now(),
           secondary: {
+            activeSurfaceTabId: null,
             activeTabId: localTab.id,
             isOpen: true,
+            surfaceTabIds: [],
             tabs: [localTab],
           },
         }),
@@ -185,8 +191,10 @@ describe("fixed panel tab server sync", () => {
         state: createEmptyFixedPanelTabsState({
           lastUsedAt: Date.now(),
           secondary: {
+            activeSurfaceTabId: null,
             activeTabId: localTab.id,
             isOpen: true,
+            surfaceTabIds: [],
             tabs: [localTab],
           },
         }),
@@ -244,8 +252,10 @@ describe("fixed panel tab server sync", () => {
       result.current.update((current) => ({
         ...current,
         secondary: {
+          activeSurfaceTabId: null,
           activeTabId: savedTab.id,
           isOpen: true,
+          surfaceTabIds: [],
           tabs: [savedTab],
         },
       }));

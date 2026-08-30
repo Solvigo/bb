@@ -282,7 +282,8 @@ describe("CrewSidebarSection one-crew affordance", () => {
 
     renderSection();
 
-    fireEvent.click(screen.getByLabelText("Edit the crew"));
+    // #68 renamed the affordance; the scoping it arms is what this asserts.
+    fireEvent.click(screen.getByLabelText("Rearrange Crew thr_alpha"));
 
     const commander = screen.getByText("Crew thr_alpha").closest("a");
     expect(commander).toBeTruthy();

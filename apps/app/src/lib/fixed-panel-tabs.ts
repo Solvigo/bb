@@ -30,8 +30,8 @@ import {
 
 const FIXED_PANEL_TABS_TOUCH_THROTTLE_MS = 60 * 1000;
 
-type FixedPanelTabsPanelStateId = string | null | undefined;
-type FixedPanelTabsSyncThreadId = string | null | undefined;
+export type FixedPanelTabsPanelStateId = string | null | undefined;
+export type FixedPanelTabsSyncThreadId = string | null | undefined;
 
 export type FixedPanelTabsStateUpdater = (
   state: FixedPanelTabsState,
@@ -170,6 +170,7 @@ function openFixedSecondaryPanelState(
   return {
     ...current,
     secondary: {
+      ...current.secondary,
       tabs,
       activeTabId,
       isOpen: true,
@@ -333,6 +334,7 @@ export function useSetFixedSecondaryPanelTab(
         return {
           ...current,
           secondary: {
+            ...current.secondary,
             tabs,
             activeTabId,
             isOpen: true,
@@ -406,6 +408,7 @@ export function useSetFixedRightTerminalActiveTerminal(
         return {
           ...current,
           secondary: {
+            ...current.secondary,
             tabs,
             activeTabId,
             isOpen: true,

@@ -74,6 +74,26 @@ export function listAgentSurfaceTabs(): AgentSurfaceTab[] {
 }
 
 /**
+ * Resolve a selected surface tab id against the registry-backed tab list. A
+ * valid id is returned as-is; null, a removed id (for example persisted
+ * `crew`), or an id whose plugin tab disappeared falls back to the first tab;
+ * an empty list yields null so callers can show an empty surface honestly.
+ */
+export function resolveAgentSurfaceTabId(
+  selectedId: string | null,
+  availableTabs: readonly AgentSurfaceTab[],
+): string | null {
+  if (availableTabs.length === 0) return null;
+  if (
+    selectedId !== null &&
+    availableTabs.some((tab) => tab.id === selectedId)
+  ) {
+    return selectedId;
+  }
+  return availableTabs[0]?.id ?? null;
+}
+
+/**
  * An agent's surface is finished with: its tabs must release whatever they hold
  * for it. Fired when a surface unmounts AND when its agent is archived or
  * retired — the second case is the one that matters, because an archived agent

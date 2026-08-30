@@ -97,8 +97,10 @@ describe("secondaryPanelTabState", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: secondTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [createThreadInfoFixedPanelTab(), firstTab, secondTab],
       },
     });
@@ -123,8 +125,10 @@ describe("secondaryPanelTabState", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: fileTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [createThreadInfoFixedPanelTab(), fileTab],
       },
     });
@@ -156,8 +160,10 @@ describe("secondaryPanelTabState", () => {
     });
     const state = createEmptyFixedPanelTabsState({
       secondary: {
+        activeSurfaceTabId: null,
         activeTabId: activeTab.id,
         isOpen: true,
+        surfaceTabIds: [],
         tabs: [activeTab, inactiveTab],
       },
     });

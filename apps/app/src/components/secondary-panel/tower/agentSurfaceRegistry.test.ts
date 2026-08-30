@@ -4,10 +4,39 @@ import {
   listAgentSurfaceTabs,
   onAgentTeardown,
   registerAgentSurfaceTab,
+  resolveAgentSurfaceTabId,
+  type AgentSurfaceTab,
   type AgentSurfaceTabProps,
 } from "./agentSurfaceRegistry";
 
 const stub = () => null as unknown as (props: AgentSurfaceTabProps) => null;
+
+const BUILT_INS: readonly AgentSurfaceTab[] = [
+  {
+    id: "brief",
+    label: "Brief",
+    icon: "FileText",
+    title: "Brief",
+    order: 0,
+    component: stub(),
+  },
+  {
+    id: "files",
+    label: "Files",
+    icon: "Folder",
+    title: "Files",
+    order: 2,
+    component: stub(),
+  },
+];
+
+const PLUGIN_TAB: AgentSurfaceTab = {
+  id: "plugin:crew:subagents",
+  label: "Subagents",
+  icon: "Layers",
+  title: "Subagents",
+  component: stub(),
+};
 
 describe("the agent surface registry", () => {
   it("puts an unordered tab after the built-ins rather than in front of them", () => {
@@ -44,6 +73,23 @@ describe("the agent surface registry", () => {
     expect(after).toHaveLength(before);
     expect(after.find((tab) => tab.id === "test-browser")?.label).toBe(
       "Browser v2",
+    );
+  });
+
+  it("resolves valid, stale, null, and empty tab lists through one helper", () => {
+    expect(resolveAgentSurfaceTabId("brief", BUILT_INS)).toBe("brief");
+    expect(resolveAgentSurfaceTabId("crew", BUILT_INS)).toBe("brief");
+    expect(resolveAgentSurfaceTabId(null, BUILT_INS)).toBe("brief");
+    expect(resolveAgentSurfaceTabId("crew", [])).toBeNull();
+  });
+
+  it("falls back when a plugin tab arrives or is removed", () => {
+    const withPlugin = [...BUILT_INS, PLUGIN_TAB];
+    expect(resolveAgentSurfaceTabId("plugin:crew:subagents", withPlugin)).toBe(
+      "plugin:crew:subagents",
+    );
+    expect(resolveAgentSurfaceTabId("plugin:crew:subagents", BUILT_INS)).toBe(
+      "brief",
     );
   });
 
