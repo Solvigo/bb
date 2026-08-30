@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { TowerRenderSurface } from "./TowerRenderSurface";
 import { useAgentSurfaceTabs } from "../useAgentSurfaceTabs";
 import {
@@ -13,6 +14,17 @@ import {
 vi.mock("../useAgentSurfaceTabs", () => ({
   useAgentSurfaceTabs: vi.fn(),
 }));
+
+// PinnedIconTab wraps every tab in a Tooltip, which requires an ancestor
+// TooltipProvider — Radix throws without one instead of falling back to a
+// default context.
+function renderSurface(scopeThreadId: string) {
+  return render(
+    <TooltipProvider>
+      <TowerRenderSurface scopeThreadId={scopeThreadId} />
+    </TooltipProvider>,
+  );
+}
 
 function registerTrackerTab(id: string, mountCounts: Record<string, number>) {
   function TrackerTab({ visible }: AgentSurfaceTabProps) {
@@ -54,7 +66,7 @@ describe("TowerRenderSurface", () => {
   it("does not auto-open the first registered tab when nothing is persisted as open", () => {
     stubSurfaces([], null);
 
-    const view = render(<TowerRenderSurface scopeThreadId="thr_lead" />);
+    const view = renderSurface("thr_lead");
 
     expect(view.queryByText("Nothing open")).not.toBeNull();
   });
@@ -64,7 +76,7 @@ describe("TowerRenderSurface", () => {
     registerTrackerTab("nested-tab-a", mountCounts);
     const { open } = stubSurfaces([], null);
 
-    const view = render(<TowerRenderSurface scopeThreadId="thr_lead" />);
+    const view = renderSurface("thr_lead");
     fireEvent.click(view.getByRole("button", { name: "Show nested-tab-a" }));
 
     expect(open).toHaveBeenCalledWith("nested-tab-a");
@@ -76,7 +88,7 @@ describe("TowerRenderSurface", () => {
     registerTrackerTab("nested-tab-c", mountCounts);
     stubSurfaces(["nested-tab-b", "nested-tab-c"], "nested-tab-b");
 
-    const view = render(<TowerRenderSurface scopeThreadId="thr_lead" />);
+    const view = renderSurface("thr_lead");
 
     expect(
       view.getByTestId("tab-content-nested-tab-b").getAttribute("data-visible"),
@@ -87,7 +99,11 @@ describe("TowerRenderSurface", () => {
     expect(mountCounts).toEqual({ "nested-tab-b": 1, "nested-tab-c": 1 });
 
     stubSurfaces(["nested-tab-b", "nested-tab-c"], "nested-tab-c");
-    view.rerender(<TowerRenderSurface scopeThreadId="thr_lead" />);
+    view.rerender(
+      <TooltipProvider>
+        <TowerRenderSurface scopeThreadId="thr_lead" />
+      </TooltipProvider>,
+    );
 
     expect(
       view.getByTestId("tab-content-nested-tab-b").getAttribute("data-visible"),
@@ -109,7 +125,7 @@ describe("TowerRenderSurface", () => {
     });
     const { close } = stubSurfaces(["nested-tab-d"], "nested-tab-d");
 
-    const view = render(<TowerRenderSurface scopeThreadId="thr_lead" />);
+    const view = renderSurface("thr_lead");
 
     const closeButton = view.getByRole("button", {
       name: "Close nested-tab-d",
@@ -128,7 +144,7 @@ describe("TowerRenderSurface", () => {
     });
     stubSurfaces(["nested-tab-e"], "a-removed-tab-id");
 
-    const view = render(<TowerRenderSurface scopeThreadId="thr_lead" />);
+    const view = renderSurface("thr_lead");
 
     expect(view.getByTestId("tab-content-nested-tab-e")).not.toBeNull();
     expect(view.queryByText("Nothing open")).toBeNull();
