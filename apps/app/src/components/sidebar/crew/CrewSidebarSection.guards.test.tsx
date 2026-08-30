@@ -38,6 +38,30 @@ function sampleChat(projectId: string, threadId: string, name: string): LooseCha
   };
 }
 
+/**
+ * jsdom builds no DataTransfer, so a drag fixture has to carry the same surface
+ * the component uses: a data store whose keys show up in `types`, and the
+ * drag-image call, which really does take the node the caller parked in the
+ * document and leave it there for the caller to remove.
+ */
+function dragTransferStub() {
+  const store = new Map<string, string>();
+  // Kept as one live array so it survives being copied onto the synthetic
+  // event; a getter would be snapshotted empty before setData ever runs.
+  const types: string[] = [];
+  return {
+    effectAllowed: "move",
+    dropEffect: "move",
+    types,
+    setData: (format: string, value: string) => {
+      if (!store.has(format)) types.push(format);
+      store.set(format, value);
+    },
+    getData: (format: string) => store.get(format) ?? "",
+    setDragImage: vi.fn((_image: Element, _x: number, _y: number) => {}),
+  };
+}
+
 vi.mock("./useCreateCrew", () => ({
   useCreateCrew: useCreateCrewMock,
 }));
@@ -207,7 +231,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
 
     renderSection();
 
-    expect(screen.getByTestId("crew-create-error")).toHaveTextContent(
+    expect(screen.getByTestId("crew-create-error").textContent).toContain(
       "No host is connected",
     );
   });
@@ -228,17 +252,17 @@ describe("CrewSidebarSection one-crew affordance", () => {
 
     const commander = screen.getByText("Crew thr_alpha").closest("a");
     expect(commander).toBeTruthy();
-    fireEvent.dragStart(commander!, {
-      dataTransfer: { setData: vi.fn(), effectAllowed: "move" },
-    });
+    fireEvent.dragStart(commander!, { dataTransfer: dragTransferStub() });
 
-    expect(screen.getByTestId("project-root-drop-proj_alpha")).toHaveAttribute(
-      "data-project-drop-active",
-      "true",
-    );
-    expect(screen.getByTestId("project-root-drop-proj_beta")).toHaveAttribute(
-      "data-project-drop-active",
-      "false",
-    );
+    expect(
+      screen
+        .getByTestId("project-root-drop-proj_alpha")
+        .getAttribute("data-project-drop-active"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("project-root-drop-proj_beta")
+        .getAttribute("data-project-drop-active"),
+    ).toBe("false");
   });
 });
