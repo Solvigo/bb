@@ -920,6 +920,47 @@ describe("useCreateCrew", () => {
     expect(sent?.threadId ?? "thr_winner").toBe("thr_winner");
   });
 
+  it("never archives a recorded root that has since moved to another project", async () => {
+    // The note says where this client left a standby, not where the thread
+    // lives now. Trusting it would archive a live root on someone else's
+    // project — the one destructive mistake this cleanup could make.
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_moved", projectId: "proj_a" }]),
+    );
+    stubRig({
+      threads: [
+        {
+          id: "thr_moved",
+          title: "New crew",
+          projectId: "proj_elsewhere",
+          parentThreadId: null,
+        },
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+      fleet: [{ threadId: "thr_winner", handle: "AW-9", parentThreadId: null }],
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalled();
+    });
+
+    expect(archive).not.toHaveBeenCalled();
+    // The stale note is dropped without touching the thread it named.
+    expect(window.localStorage.getItem("bb.crew.standby-roots")).not.toContain(
+      "thr_moved",
+    );
+    expect(result.current.error).toBeNull();
+  });
+
   it("keeps a leftover visible when it cannot be archived", async () => {
     // A leftover that is merely invisible is the thing being fixed, so the
     // winner is not opened past a cleanup that failed.

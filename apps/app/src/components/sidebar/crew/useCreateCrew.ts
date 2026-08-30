@@ -502,6 +502,13 @@ async function recoverLostRace({
   if (answer.status !== "root" || answer.thread.id === ourThreadId) {
     return { outcome: "error", message: refusal ?? UNREADABLE_CREW };
   }
+  // Same rule on this path: the rig decides what may be destroyed, not a
+  // record of what was intended.
+  const ours = threads.find((t) => t.id === ourThreadId);
+  if (ours !== undefined && projectOf(ours) !== projectId) {
+    forgetStandbyRoot(ourThreadId);
+    return { outcome: "error", message: refusal ?? UNREADABLE_CREW };
+  }
   try {
     await withDeadline(
       sdk.threads.archive({ threadId: ourThreadId }),
@@ -552,7 +559,16 @@ async function archiveRecordedLosers(
       forgetStandbyRoot(threadId);
       continue;
     }
-    if (thread.parentThreadId) continue;
+    // THE NOTE IS NOT THE THREAD. It says where this client left a standby,
+    // which is not the same as where that thread lives now — a stale record
+    // pointing at a root that has since become someone else's is an archive
+    // of a live crew root on another project. The rig is asked, every time,
+    // before anything is destroyed; a record that no longer matches is simply
+    // dropped.
+    if (projectOf(thread) !== projectId || thread.parentThreadId) {
+      forgetStandbyRoot(threadId);
+      continue;
+    }
     try {
       await withDeadline(
         sdk.threads.archive({ threadId }),
