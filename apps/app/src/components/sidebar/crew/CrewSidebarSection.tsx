@@ -36,6 +36,14 @@ export { NewCrewButton } from "./NewCrewButton";
 export const SIDEBAR_SECTION_LABEL_CLASS =
   "px-2 text-xs font-medium text-muted-foreground";
 
+// Three row types share one visual vocabulary: the row you are on, the row a
+// drag is hovering, and the row that just arrived. Naming each state once is
+// what keeps the three rows looking like one list.
+const ROW_RESTING_CLASS = "hover:bg-sidebar-accent";
+const ROW_CURRENT_CLASS = "bg-sidebar-accent";
+const ROW_DROP_TARGET_CLASS = "bg-primary/20 ring-2 ring-inset ring-primary";
+const ROW_JUST_MOVED_CLASS = "bg-primary/25 ring-2 ring-inset ring-primary/70";
+
 function CrewEntry({
   crew,
   onNavigate,
@@ -74,21 +82,18 @@ function CrewEntry({
           }}
           draggable={editing}
           onDragStart={(event) => {
-            event.dataTransfer.setData(AGENT_DRAG_TYPE, crew.commanderThreadId);
-            event.dataTransfer.effectAllowed = "move";
-            setAgentDragImage(event.dataTransfer, crew.name);
-            beginDrag(movable, crew.projectId);
+            startAgentDrag(event, movable, crew.projectId, beginDrag);
           }}
           onDragEnd={endDrag}
           {...drop.handlers}
           className={({ isActive }) =>
             cn(
               "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
-              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+              isActive ? ROW_CURRENT_CLASS : ROW_RESTING_CLASS,
               // Where the agent would land, said loudly enough to see.
-              drop.isOver && "bg-primary/20 ring-2 ring-inset ring-primary",
+              drop.isOver && ROW_DROP_TARGET_CLASS,
               drop.isForbidden && "cursor-not-allowed opacity-40",
-              justMoved && "bg-primary/25 ring-2 ring-inset ring-primary/70",
+              justMoved && ROW_JUST_MOVED_CLASS,
             )
           }
         >
@@ -247,26 +252,28 @@ function subtreeIds(agent: MovableAgent): Set<string> {
 function setAgentDragImage(dataTransfer: DataTransfer, name: string): void {
   if (typeof document === "undefined") return;
   const card = document.createElement("div");
+  card.className = "agent-drag-card";
   card.textContent = name;
-  card.style.cssText = [
-    "position:fixed",
-    "top:-1000px",
-    "left:-1000px",
-    "max-width:220px",
-    "overflow:hidden",
-    "text-overflow:ellipsis",
-    "white-space:nowrap",
-    "padding:6px 10px",
-    "border-radius:10px",
-    "font:500 12px/1.2 system-ui,sans-serif",
-    "background:#1f1f1e",
-    "border:1px solid #2c2c2b",
-    "color:#e7e7e7",
-    "box-shadow:0 6px 16px rgba(0,0,0,0.45)",
-  ].join(";");
   document.body.appendChild(card);
   dataTransfer.setDragImage(card, 14, 14);
   requestAnimationFrame(() => card.remove());
+}
+
+/**
+ * Everything a row does when it is picked up. Three rows start an agent drag
+ * and all three have to set the same payload, effect and cursor card; keeping
+ * one copy is what stops them drifting apart.
+ */
+function startAgentDrag(
+  event: React.DragEvent,
+  agent: MovableAgent,
+  projectId: string,
+  beginDrag: (agent: MovableAgent, projectId: string) => void,
+): void {
+  event.dataTransfer.setData(AGENT_DRAG_TYPE, agent.threadId);
+  event.dataTransfer.effectAllowed = "move";
+  setAgentDragImage(event.dataTransfer, agent.name);
+  beginDrag(agent, projectId);
 }
 
 /**
@@ -500,48 +507,32 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
 function ProjectRootDropZone({
   name,
   projectId,
-  variant = "inline",
 }: {
   name: string;
   projectId: string;
-  /** Block header sits inside a project card; inline is the legacy row style. */
-  variant?: "inline" | "block-header";
 }) {
   const { draggingId, draggingProjectId, editing } =
     useContext(CrewEditContext);
-  const acceptsDrop =
+  const armed =
     editing && draggingId !== null && draggingProjectId === projectId;
-  const drop = useAgentDrop({ agentId: "", enabled: acceptsDrop });
-  const armed = acceptsDrop;
-  const isBlockHeader = variant === "block-header";
+  const drop = useAgentDrop({ agentId: "", enabled: armed });
   return (
     <div
       {...drop.handlers}
       data-testid={`project-root-drop-${projectId}`}
       data-project-drop-active={armed ? "true" : "false"}
       className={cn(
-        "flex items-center gap-2 transition-colors",
-        isBlockHeader ? "min-h-7 px-0" : "min-h-6 gap-1.5 rounded px-2",
+        "flex min-h-7 items-center gap-2 px-0 transition-colors",
         armed && "ring-1 ring-inset ring-border",
         drop.isOver && "bg-primary/20 ring-2 ring-primary",
       )}
     >
       <Icon
         name="Folder"
-        className={cn(
-          "shrink-0 text-subtle-foreground",
-          isBlockHeader ? "size-4" : "size-3.5",
-        )}
+        className="size-4 shrink-0 text-subtle-foreground"
         aria-hidden
       />
-      <span
-        className={cn(
-          "truncate font-medium",
-          isBlockHeader
-            ? "text-sm text-foreground"
-            : "text-xs text-muted-foreground",
-        )}
-      >
+      <span className="truncate text-sm font-medium text-foreground">
         {name}
       </span>
       {armed ? (
@@ -715,10 +706,7 @@ function AgentTreeRow({
           onClick={onNavigate}
           draggable
           onDragStart={(event) => {
-            event.dataTransfer.setData(AGENT_DRAG_TYPE, agent.threadId);
-            event.dataTransfer.effectAllowed = "move";
-            setAgentDragImage(event.dataTransfer, agent.name);
-            beginDrag(agent, projectId);
+            startAgentDrag(event, agent, projectId, beginDrag);
           }}
           onDragEnd={endDrag}
           // In edit mode a click edits, it does not travel. Navigating away
@@ -742,10 +730,10 @@ function AgentTreeRow({
           className={({ isActive }) =>
             cn(
               "flex min-h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left transition-colors",
-              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
-              drop.isOver && "bg-primary/20 ring-2 ring-inset ring-primary",
+              isActive ? ROW_CURRENT_CLASS : ROW_RESTING_CLASS,
+              drop.isOver && ROW_DROP_TARGET_CLASS,
               drop.isForbidden && "cursor-not-allowed opacity-40",
-              justMoved && "bg-primary/25 ring-2 ring-inset ring-primary/70",
+              justMoved && ROW_JUST_MOVED_CLASS,
             )
           }
         >
@@ -1045,7 +1033,6 @@ export function CrewSidebarSection({
                     <ProjectRootDropZone
                       name={group.name}
                       projectId={group.projectId}
-                      variant="block-header"
                     />
                   </div>
                 )}
@@ -1131,18 +1118,14 @@ function ChatRow({
           // offering it as a target would only ever produce a refusal.
           draggable
           onDragStart={(event) => {
-            event.dataTransfer.setData(AGENT_DRAG_TYPE, chat.threadId);
-            event.dataTransfer.effectAllowed = "move";
-            setAgentDragImage(event.dataTransfer, chat.name);
-            beginDrag(movable, chat.projectId);
+            startAgentDrag(event, movable, chat.projectId, beginDrag);
           }}
           onDragEnd={endDrag}
           className={({ isActive }) =>
             cn(
               "flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 transition-colors",
-              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
-              justMovedId === chat.threadId &&
-                "bg-primary/25 ring-2 ring-inset ring-primary/70",
+              isActive ? ROW_CURRENT_CLASS : ROW_RESTING_CLASS,
+              justMovedId === chat.threadId && ROW_JUST_MOVED_CLASS,
             )
           }
         >

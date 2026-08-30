@@ -723,4 +723,24 @@
       animation: none;
     }
   }
+
+  /* The card the cursor carries while an agent is dragged. It lives here
+     rather than in a style string so the sidebar's boot chunk does not pay
+     for it, and so it follows the palette instead of a frozen hex. */
+  .agent-drag-card {
+    position: fixed;
+    top: -1000px;
+    left: -1000px;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 6px 10px;
+    border-radius: 10px;
+    font: 500 12px/1.2 system-ui, sans-serif;
+    background: var(--popover);
+    border: 1px solid var(--sidebar-border);
+    color: var(--popover-foreground);
+    box-shadow: 0 6px 16px color-mix(in oklab, var(--ink) 45%, transparent);
+  }
 }
