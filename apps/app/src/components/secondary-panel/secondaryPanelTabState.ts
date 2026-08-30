@@ -147,6 +147,11 @@ export function setSecondaryPanelTabsInState({
   return {
     ...state,
     secondary: {
+      // Spread, do not rebuild. Anything on this group that is not one of the
+      // three fields below — the open surface set, today — is silently erased
+      // by a rebuild, and the symptom is a setting that vanishes on an
+      // unrelated action rather than an error anyone can see.
+      ...state.secondary,
       tabs,
       activeTabId,
       isOpen,
