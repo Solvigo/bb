@@ -85,7 +85,14 @@ function CrewEntry({
               else onNavigate?.();
             }}
             draggable={editing}
+            // Guarded the same way the drop side is: draggable={editing} is
+            // what a mouse honors, but a dispatched dragstart does not check
+            // the attribute, so the handler refuses on its own too.
             onDragStart={(event) => {
+              if (!editing) {
+                event.preventDefault();
+                return;
+              }
               event.dataTransfer.setData(
                 AGENT_DRAG_TYPE,
                 crew.commanderThreadId,
@@ -95,6 +102,11 @@ function CrewEntry({
               beginDrag(movable);
             }}
             onDragEnd={endDrag}
+            // Dimmed for every crew but the one being edited; pointer-events
+            // stops the mouse but not Tab, so keyboard focus is pulled too.
+            tabIndex={
+              editingCrewId !== null && !editing ? -1 : undefined
+            }
             {...drop.handlers}
             className={({ isActive }) =>
               cn(
@@ -361,11 +373,20 @@ function useAgentDrop(args: { agentId: string }): {
   const { agentId } = args;
   const { draggingId, draggingSubtree, endDrag, move, editingCrewId } =
     useContext(CrewEditContext);
+  const inScope = useInEditScope();
+  // The project-root zone (agentId === "") is not inside any crew, so it is
+  // exempt from the scope check below — it is the one destination that is
+  // always reachable regardless of which crew is being edited.
+  const isRoot = agentId === "";
   const [isOver, setIsOver] = useState(false);
-  // An agent cannot be dropped on itself or on anything inside its own branch.
-  // Saying so DURING the drag is the point: the server would refuse it anyway,
-  // and a cursor that only finds out on release taught the operator nothing.
-  const isForbidden = draggingId !== null && draggingSubtree.has(agentId);
+  // An agent cannot be dropped on itself or on anything inside its own branch,
+  // nor onto a row outside the crew currently being edited. The row that owns
+  // the drop already dims and disables pointer events for out-of-scope crews,
+  // but that is presentation, not the guarantee: the handler refuses the drop
+  // itself so a bypassed or future style change cannot reopen the hole.
+  const isForbidden =
+    draggingId !== null &&
+    (draggingSubtree.has(agentId) || (!isRoot && !inScope));
   return {
     isOver: isOver && !isForbidden,
     isForbidden,
@@ -434,15 +455,21 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
     setDragging({ id: agent.threadId, subtree: subtreeIds(agent) });
   }, []);
   const endDrag = useCallback(() => setDragging(null), []);
-  // Esc leaves the mode, because a mode you cannot back out of is a trap.
+  // Esc leaves the mode, because a mode you cannot back out of is a trap. It
+  // also ends any drag in flight — otherwise the drag survives the mode that
+  // armed it, and drop.isForbidden being computed from a stale draggingId
+  // paints a row as an active target for a drag that no longer has anywhere
+  // legal to land.
   useEffect(() => {
     if (editingCrewId === null) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setEditingCrewId(null);
+      if (event.key !== "Escape") return;
+      endDrag();
+      setEditingCrewId(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editingCrewId]);
+  }, [editingCrewId, endDrag]);
   // Every agent, flat and in tree order, so the move menu can name a
   // destination the operator would otherwise have to drag to.
   const destinations = useMemo(() => {
@@ -720,9 +747,13 @@ function AgentTreeRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasChildren = agent.sorties.length > 0;
-  const { beginDrag, endDrag, move, justMovedId, draggingId } =
+  const { beginDrag, endDrag, move, justMovedId, draggingId, editingCrewId } =
     useContext(CrewEditContext);
   const editing = useInEditScope();
+  // Dimmed by the enclosing crew's opacity/pointer-events, but Tab does not
+  // honor either — a keyboard user could still land here and fire the Shift
+  // shortcut below. Pulling it out of the tab order is the real fix.
+  const outOfScope = editingCrewId !== null && !editing;
   const drop = useAgentDrop({ agentId: agent.threadId });
   const justMoved = justMovedId === agent.threadId;
 
@@ -787,7 +818,14 @@ function AgentTreeRow({
           to={getThreadRoutePath({ projectId, threadId: agent.threadId })}
           onClick={onNavigate}
           draggable={editing}
+          // Guarded the same way the drop side is: draggable={editing} is
+          // what a mouse honors, but a dispatched dragstart does not check
+          // the attribute, so the handler refuses on its own too.
           onDragStart={(event) => {
+            if (!editing) {
+              event.preventDefault();
+              return;
+            }
             event.dataTransfer.setData(AGENT_DRAG_TYPE, agent.threadId);
             event.dataTransfer.effectAllowed = "move";
             setAgentDragImage(event.dataTransfer, agent.name);
@@ -801,12 +839,16 @@ function AgentTreeRow({
             event.preventDefault();
             event.stopPropagation();
           }}
+          tabIndex={outOfScope ? -1 : undefined}
           {...drop.handlers}
           // The keyboard route to the same move. A drag is a mouse gesture and
           // reparenting must not be mouse-only: this promotes an agent to the
           // root, which is the one move that cannot be reached by dropping on
-          // something else when the row you want is off screen.
+          // something else when the row you want is off screen. Gated to the
+          // crew in scope, the same as the drag itself — otherwise a row dimmed
+          // for a different crew still moved on Shift+Delete.
           onKeyDown={(event) => {
+            if (!editing) return;
             if (event.key !== "Backspace" && event.key !== "Delete") return;
             if (!event.shiftKey) return;
             event.preventDefault();
@@ -1011,7 +1053,7 @@ export function CrewSidebarSection({
   const projectNameOf = useProjectNames();
   const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
   const { createCrew, creating: creatingCrew } = useCreateCrew();
-  const { editingCrewId, setEditingCrewId, refusal, moveMessage } =
+  const { editingCrewId, setEditingCrewId, endDrag, refusal, moveMessage } =
     useContext(CrewEditContext);
   const editingCrewName =
     crews.find((crew) => crew.commanderThreadId === editingCrewId)?.name ??
@@ -1042,7 +1084,10 @@ export function CrewSidebarSection({
             </span>
             <button
               type="button"
-              onClick={() => setEditingCrewId(null)}
+              onClick={() => {
+                endDrag();
+                setEditingCrewId(null);
+              }}
               className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15"
             >
               Done
@@ -1144,8 +1189,7 @@ function ChatRow({
   chat: LooseChat;
   onNavigate?: () => void;
 }) {
-  const { editingCrewId, beginDrag, endDrag, justMovedId } =
-    useContext(CrewEditContext);
+  const { editingCrewId, endDrag, justMovedId } = useContext(CrewEditContext);
   // A loose chat belongs to no crew, so it is never part of the crew being
   // edited — and while one is being edited it steps out of the way entirely.
   const editing = false;
@@ -1172,19 +1216,17 @@ function ChatRow({
             if (editing) event.preventDefault();
             else onNavigate?.();
           }}
-          // A chat is an agent that nothing reports to yet, so it can be
-          // picked up like any other. Drag one onto an agent and it stops
-          // being loose — it moves out of here and into that branch.
-          //
-          // It is a source and not a destination: the crew plugin refuses a
-          // childless root as a parent ("Parent thread is invalid"), so
-          // offering it as a target would only ever produce a refusal.
-          draggable={editingCrewId !== null}
+          // A loose chat belongs to no crew, so it is never in scope for the
+          // crew being edited. It used to stay draggable during edit mode,
+          // relying on the dimmed ancestor's pointer-events-none to keep it
+          // from actually being picked up — a style, not a guarantee. It is
+          // not draggable during edit mode at all now.
+          draggable={false}
+          // Belt-and-suspenders alongside draggable={false}: a synthetic
+          // dragstart does not honor the attribute, so the handler itself
+          // refuses to hand out drag data.
           onDragStart={(event) => {
-            event.dataTransfer.setData(AGENT_DRAG_TYPE, chat.threadId);
-            event.dataTransfer.effectAllowed = "move";
-            setAgentDragImage(event.dataTransfer, chat.name);
-            beginDrag(movable);
+            event.preventDefault();
           }}
           onDragEnd={endDrag}
           className={({ isActive }) =>

@@ -2,7 +2,7 @@
 
 
 import { render, fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CrewSidebarSection, CrewEditProvider } from "./CrewSidebarSection";
 import * as useCrewsModule from "./useCrews";
@@ -112,5 +112,193 @@ describe("CrewSidebarSection drag boundary", () => {
       fireEvent.drop(gap, { dataTransfer });
       expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("CrewSidebarSection edit-scope guards", () => {
+  function makeDataTransfer(id: string) {
+    return {
+      setData: vi.fn(),
+      setDragImage: vi.fn(),
+      getData: vi.fn().mockReturnValue(id),
+      types: ["application/x-bb-agent"],
+      effectAllowed: "uninitialized",
+      dropEffect: "none",
+    } as unknown as DataTransfer;
+  }
+
+  function renderTwoCrewsAndAChat() {
+    vi.mocked(queryHooks.useProjectNames).mockReturnValue(
+      new Map([["p1", "Project 1"]]),
+    );
+
+    const mockCrews = [
+      {
+        projectId: "p1",
+        commanderThreadId: "cmd_a",
+        name: "Crew A",
+        status: "idle",
+        liveness: null,
+        attention: 0,
+        leads: [
+          {
+            threadId: "lead_a",
+            name: "Lead A",
+            liveness: null,
+            attention: 0,
+            sorties: [],
+          },
+        ],
+      },
+      {
+        projectId: "p1",
+        commanderThreadId: "cmd_b",
+        name: "Crew B",
+        status: "idle",
+        liveness: null,
+        attention: 0,
+        leads: [
+          {
+            threadId: "lead_b",
+            name: "Lead B",
+            liveness: null,
+            attention: 0,
+            sorties: [],
+          },
+        ],
+      },
+    ];
+
+    vi.mocked(useCrewsModule.useCrews).mockReturnValue({
+      crews: mockCrews,
+      chats: [
+        {
+          threadId: "chat_1",
+          name: "Loose Chat",
+          projectId: "p1",
+          liveness: null,
+        },
+      ],
+      loaded: true,
+      failed: false,
+      timedOut: false,
+      reload: vi.fn(),
+    } as any);
+
+    return render(
+      <MemoryRouter>
+        <CrewEditProvider>
+          <CrewSidebarSection />
+        </CrewEditProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  function editCrew(name: string) {
+    fireEvent.click(screen.getByRole("button", { name: `Rearrange ${name}` }));
+  }
+
+  beforeEach(() => {
+    vi.mocked(useCrewsModule.reparentAgent).mockClear();
+  });
+
+  it("does not arm a drag from a row while no crew is being edited", () => {
+    renderTwoCrewsAndAChat();
+
+    // Neither crew is being edited yet, so this row is not a legitimate drag
+    // source — but a synthetic dragstart bypasses the draggable attribute, so
+    // the handler itself has to refuse.
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    expect(crewALink.getAttribute("draggable")).toBe("false");
+    fireEvent.dragStart(crewALink, { dataTransfer: makeDataTransfer("cmd_a") });
+
+    // If the guard had not held, this drag would already be "in the air" and
+    // entering edit mode on Crew A would show its gaps immediately, with no
+    // second drag ever started.
+    editCrew("Crew A");
+    expect(document.querySelectorAll(".relative.-my-1").length).toBe(0);
+  });
+
+  it("refuses a Shift+Delete move on a row outside the edited crew's scope", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    const leadBLink = screen.getByRole("link", { name: /Lead B/ });
+    expect(leadBLink.getAttribute("tabindex")).toBe("-1");
+    fireEvent.keyDown(leadBLink, { key: "Delete", shiftKey: true });
+    expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
+  });
+
+  it("honors Shift+Backspace inside the edited crew's own scope", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    const leadALink = screen.getByRole("link", { name: /Lead A/ });
+    expect(leadALink.getAttribute("tabindex")).not.toBe("-1");
+    fireEvent.keyDown(leadALink, { key: "Backspace", shiftKey: true });
+    expect(useCrewsModule.reparentAgent).toHaveBeenCalledWith("lead_a", null);
+  });
+
+  it("refuses a drop onto a row outside the edited crew, without reparenting", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    const dataTransfer = makeDataTransfer("cmd_a");
+    fireEvent.dragStart(crewALink, { dataTransfer });
+
+    const crewBLink = screen.getByRole("link", { name: /Crew B/ });
+    fireEvent.dragOver(crewBLink, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("none");
+
+    fireEvent.drop(crewBLink, { dataTransfer });
+    expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
+  });
+
+  it("keeps a loose chat non-draggable while a crew is being edited", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    const chatLink = screen.getByRole("link", { name: /Loose Chat/ });
+    expect(chatLink.getAttribute("draggable")).toBe("false");
+
+    const dataTransfer = makeDataTransfer("chat_1");
+    fireEvent.dragStart(chatLink, { dataTransfer });
+    expect(dataTransfer.setData).not.toHaveBeenCalled();
+
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    fireEvent.drop(crewALink, { dataTransfer });
+    expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
+  });
+
+  it("ends the drag before Escape leaves edit mode", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    fireEvent.dragStart(crewALink, { dataTransfer: makeDataTransfer("cmd_a") });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Back to neutral: both crews offer their Rearrange affordance again.
+    editCrew("Crew B");
+
+    // If Escape had left the previous drag active, Crew B's gaps would render
+    // "armed" from a drag that no one is still holding.
+    expect(document.querySelectorAll(".relative.-my-1").length).toBe(0);
+  });
+
+  it("ends the drag before Done leaves edit mode", () => {
+    renderTwoCrewsAndAChat();
+    editCrew("Crew A");
+
+    const crewALink = screen.getByRole("link", { name: /Crew A/ });
+    fireEvent.dragStart(crewALink, { dataTransfer: makeDataTransfer("cmd_a") });
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    editCrew("Crew B");
+
+    expect(document.querySelectorAll(".relative.-my-1").length).toBe(0);
   });
 });
