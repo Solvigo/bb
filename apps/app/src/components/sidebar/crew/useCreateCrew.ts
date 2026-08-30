@@ -1,21 +1,15 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { AGENT_PROVIDER } from "@/lib/agentProvider";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { ROOT_THREAD_TITLE, UNNAMED_ROOT_TITLES } from "./useCrews";
 import { sdk } from "@/lib/sdk";
 
 interface ProjectRow {
   id: string;
   kind?: string;
 }
-
-/** A root keeps this title until its crew is named — that is how a second
- *  press finds the unnamed root instead of starting another. The wizard's old
- *  title is still matched so a root created before the interview was retired
- *  is resumed rather than duplicated. */
-const ROOT_THREAD_TITLE = "New crew";
-const UNNAMED_ROOT_TITLES = [ROOT_THREAD_TITLE, "New crew · setup"];
 
 /**
  * The brief, fetched when someone actually presses the button.
@@ -34,9 +28,31 @@ const STANDBY_INPUT =
   "Stand by. You are being chartered as this project's root agent and will " +
   "receive your brief in a moment. Do not start any work yet.";
 
+/**
+ * Nothing here may wait forever.
+ *
+ * Every call this flow makes is on the path between a press and a crew, and a
+ * request that never settles leaves the button spinning with no way back —
+ * worse than a refusal, which at least says something.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+async function fetchWithTimeout(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function readJson<T>(url: string): Promise<T | null> {
   try {
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -51,13 +67,25 @@ interface ThreadRow {
   parentThreadId?: string | null;
 }
 
-/** The live thread list, whichever envelope this rig's route answers with. */
-async function readThreadRows(): Promise<ThreadRow[]> {
+/**
+ * The live thread list, or null when it could not be read.
+ *
+ * NOT an empty array on failure. Every caller uses this list to decide whether
+ * a root already exists, and an unread list that answers "none" is the answer
+ * that creates the duplicate — silently, and exactly when the rig is already
+ * having a bad minute.
+ */
+async function readThreadRows(): Promise<ThreadRow[] | null> {
   const body = await readJson<unknown>("/api/v1/threads?archived=false");
+  if (body === null) return null;
   if (Array.isArray(body)) return body as ThreadRow[];
-  const wrapped = body as { threads?: unknown[]; data?: unknown[] } | null;
-  return (wrapped?.threads ?? wrapped?.data ?? []) as ThreadRow[];
+  const wrapped = body as { threads?: unknown[]; data?: unknown[] };
+  const rows = wrapped.threads ?? wrapped.data;
+  return rows === undefined ? null : (rows as ThreadRow[]);
 }
+
+const UNREADABLE_FLEET =
+  "Could not read this rig's threads, so a crew cannot be started safely right now.";
 
 /** The task id a project's root is chartered under. Deterministic on purpose:
  *  a retry after a failed charter charters the SAME work, not a second one. */
@@ -67,8 +95,6 @@ function rootTaskId(projectId: string): string {
 
 interface CharterOutcome {
   ok: boolean;
-  /** True when this thread was already crew, which is a success for a retry. */
-  already: boolean;
   message: string | null;
 }
 
@@ -76,6 +102,13 @@ interface FleetRow {
   threadId?: string;
   handle?: string | null;
   parentThreadId?: string | null;
+}
+
+interface CharterEnvelope {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  result?: { ok?: boolean; error?: string; message?: string };
 }
 
 interface FleetEnvelope {
@@ -94,29 +127,56 @@ interface FleetEnvelope {
  * fleet row records no project, so the project boundary is read where it is
  * actually kept — on the thread.
  */
+async function readGovernedRoots(): Promise<FleetRow[] | null> {
+  try {
+    const res = await fetchWithTimeout(
+      "/api/v1/plugins/crew/rpc/crew_fleet",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      },
+    );
+    if (!res.ok) return null;
+    const fleet = (await res.json()) as FleetEnvelope;
+    const rows = fleet?.result?.rows ?? fleet?.rows;
+    if (rows === undefined) return null;
+    return rows.filter((r) => Boolean(r.handle) && !r.parentThreadId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The thread already holding this project's crew, if one is.
+ *
+ * The fleet row records no project, so the project boundary is read where it
+ * is actually kept — on the thread. A fleet that cannot be read answers null,
+ * which is "unknown", never "there is none".
+ */
+async function governedRootFor(
+  projectId: string,
+  threads: readonly ThreadRow[],
+): Promise<ThreadRow | null> {
+  const governed = await readGovernedRoots();
+  if (governed === null) return null;
+  const ids = new Set(governed.map((r) => r.threadId));
+  return (
+    threads.find(
+      (t) =>
+        ids.has(t.id) && (t.projectId ?? PERSONAL_PROJECT_ID) === projectId,
+    ) ?? null
+  );
+}
+
 async function isGovernedRootFor(
   threadId: string,
   projectId: string,
 ): Promise<boolean> {
-  let fleet: FleetEnvelope | null = null;
-  try {
-    const res = await fetch("/api/v1/plugins/crew/rpc/crew_fleet", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "null",
-    });
-    if (res.ok) fleet = (await res.json()) as FleetEnvelope;
-  } catch {
-    return false;
-  }
-  const rows = fleet?.result?.rows ?? fleet?.rows;
-  const row = rows?.find((r) => r.threadId === threadId);
-  if (!row || !row.handle || row.parentThreadId) return false;
-
   const threads = await readThreadRows();
-  const thread = threads.find((t) => t.id === threadId);
-  if (!thread) return false;
-  return (thread.projectId ?? PERSONAL_PROJECT_ID) === projectId;
+  if (threads === null) return false;
+  const root = await governedRootFor(projectId, threads);
+  return root !== null && root.id === threadId;
 }
 
 /**
@@ -136,7 +196,7 @@ async function charterRoot(
 ): Promise<CharterOutcome> {
   let res: Response;
   try {
-    res = await fetch("/api/v1/plugins/crew/rpc/crew_charter", {
+    res = await fetchWithTimeout("/api/v1/plugins/crew/rpc/crew_charter", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ threadId, briefText, taskId }),
@@ -144,31 +204,34 @@ async function charterRoot(
   } catch {
     return {
       ok: false,
-      already: false,
       message: "The crew plugin did not answer.",
     };
   }
-  const body = (await res.json().catch(() => null)) as {
-    ok?: boolean;
-    error?: string;
-    message?: string;
-    result?: { ok?: boolean; error?: string; message?: string };
-  } | null;
-  const result = body?.result ?? body ?? {};
-  const message = result.error ?? result.message ?? null;
-  const refused =
-    !res.ok || result.ok === false || (result.ok === undefined && message);
-  if (!refused) return { ok: true, already: false, message: null };
+  const body = (await res.json().catch(() => null)) as CharterEnvelope | null;
+  // Both levels, because a fault can be reported at either: the port's own
+  // envelope carries transport failures, the verb's result carries refusals.
+  const message =
+    body?.result?.error ??
+    body?.result?.message ??
+    body?.error ??
+    body?.message ??
+    null;
+  // SUCCESS MUST BE STATED. A 200 whose body is empty, truncated, or shaped
+  // some way this code has never seen is not a chartered crew — and treating
+  // it as one is how an unchartered root gets briefed and opened as if it
+  // were governed.
+  const chartered =
+    res.ok && (body?.result?.ok === true || (body?.ok === true && !body.result));
+  if (chartered) return { ok: true, message: null };
 
   // The one thing that turns a refusal into a success: the fleet already lists
   // this exact thread as this project's governed root, so the charter it is
   // refusing is the charter it already has.
   if (await isGovernedRootFor(threadId, projectId)) {
-    return { ok: true, already: true, message: null };
+    return { ok: true, message: null };
   }
   return {
     ok: false,
-    already: false,
     message: message ?? `The crew could not be chartered (${res.status}).`,
   };
 }
@@ -225,6 +288,33 @@ async function sendRootOpening({
  * product surface — it should be iterated like any other reviewable text, not
  * buried as a string literal in a component.
  */
+/**
+ * Projects with a creation in flight, shared by every instance of this hook.
+ *
+ * `creating` is per-component state, and the rail button and each project
+ * card hold their own. Two of them pressed together each saw an idle flag,
+ * each read a thread list with no root on it, and each created one — the
+ * duplicate this guard exists to make impossible.
+ */
+const creatingProjects = new Set<string>();
+const creatingListeners = new Set<() => void>();
+
+function markCreating(projectId: string, active: boolean): void {
+  if (active) creatingProjects.add(projectId);
+  else creatingProjects.delete(projectId);
+  for (const listener of creatingListeners) listener();
+}
+
+function subscribeCreating(listener: () => void): () => void {
+  creatingListeners.add(listener);
+  return () => {
+    creatingListeners.delete(listener);
+  };
+}
+
+const anyCreating = () => creatingProjects.size > 0;
+const neverCreating = () => false;
+
 export function useCreateCrew(): {
   /** Name the project the crew is FOR; omit only when it has no code yet. */
   createCrew: (forProjectId?: string, openingRequest?: string) => void;
@@ -232,13 +322,24 @@ export function useCreateCrew(): {
   error: string | null;
 } {
   const navigate = useNavigate();
-  const [creating, setCreating] = useState(false);
+  // Read from the shared set, so every button that can start a crew shows the
+  // one in flight — including the ones that did not start it.
+  const creating = useSyncExternalStore(
+    subscribeCreating,
+    anyCreating,
+    neverCreating,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const createCrew = useCallback(
     (forProjectId?: string, openingRequest?: string) => {
-      if (creating) return;
-      setCreating(true);
+      // Scoped to the project asked for, because a root is born on its
+      // project and can never move: resuming Personal's unnamed root when
+      // the press came from a repo-backed project hands back an agent that
+      // can talk and can never dispatch for the project clicked.
+      const wantedProjectId = forProjectId ?? PERSONAL_PROJECT_ID;
+      if (creatingProjects.has(wantedProjectId)) return;
+      markCreating(wantedProjectId, true);
       setError(null);
       void (async () => {
         try {
@@ -246,11 +347,32 @@ export function useCreateCrew(): {
           // rather than leave another husk on the rail. Three unnamed roots
           // with nothing under them is what repeated presses produced before.
           const threads = await readThreadRows();
-          // Scoped to the project asked for, because a root is born on its
-          // project and can never move: resuming Personal's unnamed root when
-          // the press came from a repo-backed project hands back an agent that
-          // can talk and can never dispatch for the project clicked.
-          const wantedProjectId = forProjectId ?? PERSONAL_PROJECT_ID;
+          if (threads === null) {
+            setError(UNREADABLE_FLEET);
+            return;
+          }
+
+          // A project holds ONE crew. Its root may have been named long ago,
+          // in which case the title check below cannot see it — and creating a
+          // standby anyway leaves a loose thread behind for a charter that was
+          // always going to be refused. Ask the fleet first and open what is
+          // already there.
+          const owned = await governedRootFor(wantedProjectId, threads);
+          if (owned) {
+            await sendRootOpening({
+              threadId: owned.id,
+              bootstrap: null,
+              openingRequest,
+            });
+            navigate(
+              getThreadRoutePath({
+                projectId: owned.projectId ?? PERSONAL_PROJECT_ID,
+                threadId: owned.id,
+              }),
+            );
+            return;
+          }
+
           const unfinished = threads.find(
             (t) =>
               !t.parentThreadId &&
@@ -273,12 +395,14 @@ export function useCreateCrew(): {
               setError(chartered.message);
               return;
             }
+            // The brief goes out on BOTH paths here. A fleet row proves a
+            // handle was written; it says nothing about whether the brief that
+            // should have gone with it ever landed. Between re-stating standing
+            // orders to a root that has them and leaving a half-chartered root
+            // that never learned what it is, only one is recoverable.
             await sendRootOpening({
               threadId: unfinished.id,
-              // Only a root that had never been chartered still needs its
-              // brief; one that was already crew has been carrying it since it
-              // was chartered, and sending it twice reads as a second order.
-              bootstrap: chartered.already ? null : await loadRootBootstrap(),
+              bootstrap: await loadRootBootstrap(),
               openingRequest,
             });
             // Scoped, like every thread link: the projectless route resolves to
@@ -405,7 +529,7 @@ export function useCreateCrew(): {
 
           await sendRootOpening({
             threadId: thread.id,
-            bootstrap: chartered.already ? null : await loadRootBootstrap(),
+            bootstrap: await loadRootBootstrap(),
             openingRequest,
           });
           navigate(
@@ -419,11 +543,11 @@ export function useCreateCrew(): {
             e instanceof Error ? e.message : "Could not start the crew.",
           );
         } finally {
-          setCreating(false);
+          markCreating(wantedProjectId, false);
         }
       })();
     },
-    [creating, navigate],
+    [navigate],
   );
 
   return { createCrew, creating, error };

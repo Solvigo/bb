@@ -30,6 +30,7 @@ import {
   type Crew,
   type CrewLead,
   type LooseChat,
+  type PendingRoot,
 } from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
 
@@ -838,17 +839,61 @@ interface ProjectGroup {
 }
 
 /**
- * Whether a project already has a root thread — crewed commander or loose chat.
- * Setup commanders and renamed roots that land in chats still count.
+ * Whether a project already has a CREW.
+ *
+ * Only a crew counts. An ordinary chat on a project is a conversation, not a
+ * crew, and letting one stand in for a root meant a project the operator had
+ * only ever talked in could never be given a crew at all — Add a crew simply
+ * was not there, with nothing on screen to say why. An unchartered standby is
+ * not counted here either; it renders its own retry.
  */
-export function projectHasRootThread(
+export function projectHasCrew(
   projectId: string,
   crews: readonly Crew[],
-  chats: readonly LooseChat[],
 ): boolean {
+  return crews.some((c) => c.projectId === projectId);
+}
+
+/** The unchartered standby waiting on this project, if there is one. */
+export function pendingRootOf(
+  pendingRoots: readonly PendingRoot[],
+  projectId: string,
+): PendingRoot | null {
+  return pendingRoots.find((r) => r.projectId === projectId) ?? null;
+}
+
+/**
+ * The one row a half-made crew gets: it says the setup did not finish, and it
+ * carries the button that finishes it.
+ */
+function PendingRootRow({
+  onRetry,
+  retrying,
+}: {
+  onRetry: () => void;
+  retrying: boolean;
+}) {
   return (
-    crews.some((c) => c.projectId === projectId) ||
-    chats.some((c) => c.projectId === projectId)
+    <div
+      data-testid="pending-root-row"
+      className="flex min-w-0 flex-col gap-1 rounded-md px-2 py-1.5"
+    >
+      <span className="truncate text-sm text-subtle-foreground">
+        Setup did not finish
+      </span>
+      <button
+        type="button"
+        data-testid="retry-crew-button"
+        onClick={onRetry}
+        disabled={retrying}
+        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
+      >
+        <Icon name="RotateCcw" className="size-3.5 shrink-0" aria-hidden />
+        <span className="truncate text-sm">
+          {retrying ? "Standing up a crew…" : "Retry"}
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -931,7 +976,8 @@ export function CrewSidebarSection({
   headerTrailing?: ReactNode;
   onNavigate?: () => void;
 }) {
-  const { crews, chats, loaded, failed, timedOut, reload } = useCrews();
+  const { crews, chats, pendingRoots, loaded, failed, timedOut, reload } =
+    useCrews();
   const projectNameOf = useProjectNames();
   const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
   const projectGroups = useMemo(
@@ -1037,7 +1083,17 @@ export function CrewSidebarSection({
                   </div>
                 )}
                 <div className="flex flex-col gap-1 px-1.5 py-2">
-                  {!projectHasRootThread(group.projectId, crews, chats) ? (
+                  {/* A standby whose charter did not go through stays HERE,
+                      inside the project it was made for, carrying the retry.
+                      Sent to Chats it read as a conversation and, by counting
+                      as the project's root, hid the only control that could
+                      finish it. */}
+                  {pendingRootOf(pendingRoots, group.projectId) !== null ? (
+                    <PendingRootRow
+                      onRetry={() => createCrew(group.projectId)}
+                      retrying={creatingCrew}
+                    />
+                  ) : !projectHasCrew(group.projectId, crews) ? (
                     <button
                       type="button"
                       data-testid="add-crew-button"

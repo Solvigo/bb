@@ -81,7 +81,7 @@ vi.mock("./useCrews", () => ({
 import {
   CrewEditProvider,
   CrewSidebarSection,
-  projectHasRootThread,
+  projectHasCrew,
 } from "./CrewSidebarSection";
 
 function renderSection() {
@@ -94,19 +94,12 @@ function renderSection() {
   );
 }
 
-describe("projectHasRootThread", () => {
-  it("counts crewed commanders and loose chat roots", () => {
+describe("projectHasCrew", () => {
+  it("counts crews and nothing else", () => {
     expect(
-      projectHasRootThread("proj_alpha", [sampleCrew("proj_alpha", "thr_a")], []),
+      projectHasCrew("proj_alpha", [sampleCrew("proj_alpha", "thr_a")]),
     ).toBe(true);
-    expect(
-      projectHasRootThread(
-        "proj_alpha",
-        [],
-        [sampleChat("proj_alpha", "thr_setup", "New crew · setup")],
-      ),
-    ).toBe(true);
-    expect(projectHasRootThread("proj_beta", [], [])).toBe(false);
+    expect(projectHasCrew("proj_beta", [])).toBe(false);
   });
 });
 
@@ -120,6 +113,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
     useCrewsMock.mockReturnValue({
       crews: [sampleCrew("proj_alpha", "thr_alpha")],
       chats: [],
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,
@@ -136,6 +130,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
     useCrewsMock.mockReturnValue({
       crews: [],
       chats: [],
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,
@@ -158,12 +153,14 @@ describe("CrewSidebarSection one-crew affordance", () => {
     expect(within(groups[1]!).getByTestId("add-crew-button")).toBeTruthy();
   });
 
-  it("does not offer a second crew when a setup commander exists as a chat root", () => {
+  it("still offers Add a crew on a project that only has a conversation", () => {
+    // A chat is not a crew. Counting one as the project's root left a project
+    // the operator had only ever talked in with no way to crew it, and nothing
+    // on screen saying why.
     useCrewsMock.mockReturnValue({
       crews: [],
-      chats: [
-        sampleChat("proj_alpha", "thr_setup", "New crew · setup"),
-      ],
+      chats: [sampleChat("proj_alpha", "thr_talk", "Some thinking")],
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,
@@ -173,7 +170,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
     renderSection();
 
     const groups = screen.getAllByTestId("sidebar-project-group");
-    expect(within(groups[0]!).queryByTestId("add-crew-button")).toBeNull();
+    expect(within(groups[0]!).getByTestId("add-crew-button")).toBeTruthy();
     expect(within(groups[1]!).getByTestId("add-crew-button")).toBeTruthy();
   });
 
@@ -184,6 +181,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
         sampleCrew("proj_alpha", "thr_beta"),
       ],
       chats: [],
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,
@@ -202,6 +200,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
     useCrewsMock.mockReturnValue({
       crews: [sampleCrew("proj_alpha", "thr_alpha")],
       chats: [],
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,
@@ -223,6 +222,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
     useCrewsMock.mockReturnValue({
       crews: [],
       chats: [],
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,
@@ -236,10 +236,41 @@ describe("CrewSidebarSection one-crew affordance", () => {
     );
   });
 
+  it("keeps a failed setup inside its project, with the retry reachable", () => {
+    // The dead end this guards: a standby left by a refused charter fell
+    // through to Chats, where it read as a conversation AND counted as the
+    // project's root — so Add a crew disappeared and nothing on screen could
+    // finish the setup.
+    useCrewsMock.mockReturnValue({
+      crews: [],
+      chats: [],
+      pendingRoots: [
+        { threadId: "thr_standby", name: "New crew", projectId: "proj_alpha" },
+      ],
+      loaded: true,
+      failed: false,
+      timedOut: false,
+      reload: vi.fn(),
+    });
+
+    renderSection();
+
+    const groups = screen.getAllByTestId("sidebar-project-group");
+    const alpha = groups[0]!;
+    // The standby is rendered in ITS project block, not below in Chats.
+    expect(within(alpha).getByTestId("pending-root-row")).toBeTruthy();
+    // And the way out is right there, on the same card.
+    fireEvent.click(within(alpha).getByTestId("retry-crew-button"));
+    expect(createCrew).toHaveBeenCalledWith("proj_alpha");
+    // The crewless project beside it still offers the ordinary affordance.
+    expect(within(groups[1]!).getByTestId("add-crew-button")).toBeTruthy();
+  });
+
   it("scopes project-root drop to the dragged agent's project while editing", () => {
     useCrewsMock.mockReturnValue({
       crews: [sampleCrew("proj_alpha", "thr_alpha")],
       chats: [],
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,

@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { deriveProjectNameFromPath, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
@@ -14,6 +15,7 @@ import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
+import { APP_ROOT_ROUTE_PATH } from "@/lib/route-paths";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import type {
   ProjectPathDialogSubmitHandler,
@@ -49,6 +51,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const hostsQuery = useHosts();
   const hosts = hostsQuery.data ?? EMPTY_HOSTS;
   const setRootComposeProjectId = useSetRootComposeProjectId();
+  const navigate = useNavigate();
   const [createError, setCreateError] = useState<string | null>(null);
 
   const submit = useCallback(
@@ -72,6 +75,11 @@ export function useQuickCreateProject(): QuickCreateProjectController {
             // target, so the next thing typed starts there.
             closeDialog();
             setRootComposeProjectId(project.id);
+            // Selecting the project is invisible from a thread route: the
+            // composer that reads the selection is not on screen. Creating a
+            // project ended with the dialog closing over the same thread the
+            // operator was already looking at, and nothing to show for it.
+            navigate(APP_ROOT_ROUTE_PATH);
           },
           // A failed create used to leave the dialog sitting there with the
           // button live again and nothing said. The picker is the only surface
@@ -86,7 +94,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
         },
       );
     },
-    [mutate, setRootComposeProjectId],
+    [mutate, navigate, setRootComposeProjectId],
   );
 
   const controller = useLocalPathPicker({

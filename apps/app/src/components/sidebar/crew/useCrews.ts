@@ -54,6 +54,29 @@ export interface Crew {
  * ABSENCE, exactly as the model intends — there is no second kind of thread,
  * and any of these can be chartered later without moving.
  */
+/** The title a root carries from creation until its crew names it. */
+export const ROOT_THREAD_TITLE = "New crew";
+/** …and the retired wizard's, so a root made before it is still recognised. */
+export const UNNAMED_ROOT_TITLES: readonly string[] = [
+  ROOT_THREAD_TITLE,
+  "New crew · setup",
+];
+
+/**
+ * A root that was created for a crew and never chartered.
+ *
+ * It is not a chat — nobody started it to talk in — and it is not a crew,
+ * because the charter that would have made it one did not go through. Kept as
+ * its own kind so it renders inside its project with a retry rather than
+ * settling into Chats, where it would both look like a conversation and, by
+ * counting as the project's root, hide the affordance that could fix it.
+ */
+export interface PendingRoot {
+  threadId: string;
+  name: string;
+  projectId: string;
+}
+
 export interface LooseChat {
   threadId: string;
   name: string;
@@ -211,7 +234,7 @@ function assembleFleet(
   board: { rows: BoardRow[] } | null,
   attention: { open?: AttentionRow[] } | null,
   artifacts: { artifacts?: AttentionRow[] } | null,
-): { crews: Crew[]; chats: LooseChat[] } {
+): { crews: Crew[]; chats: LooseChat[]; pendingRoots: PendingRoot[] } {
   // Decks leave the tree before anything else looks at it, so every downstream
   // question — who is crewed, what is under whom, what is waiting on the
   // operator — is answered as if they were never there. Filtering them later,
@@ -313,8 +336,21 @@ function assembleFleet(
     (byParent.get(t.id) ?? []).some((child) => live.has(child.id)) ||
     handleOf.has(t.id);
 
+  // Never chartered, never named, nothing under it: the standby a failed
+  // charter left behind, not something anyone chose to start.
+  const isPendingRoot = (t: ThreadRow) =>
+    !isCrewed(t) && UNNAMED_ROOT_TITLES.includes((t.title ?? "").trim());
+
+  const pendingRoots: PendingRoot[] = roots
+    .filter(isPendingRoot)
+    .map((t) => ({
+      threadId: t.id,
+      name: titleOf(t),
+      projectId: t.projectId ?? "",
+    }));
+
   const chats: LooseChat[] = roots
-    .filter((t) => !isCrewed(t))
+    .filter((t) => !isCrewed(t) && !isPendingRoot(t))
     .map((t) => ({
       threadId: t.id,
       name: titleOf(t),
@@ -346,7 +382,7 @@ function assembleFleet(
     };
   });
 
-  return { crews, chats };
+  return { crews, chats, pendingRoots };
 }
 
 /**
@@ -361,6 +397,8 @@ export interface CrewsState {
   crews: Crew[];
   /** Root threads nobody has crewed. Rendered as Chats, below the projects. */
   chats: LooseChat[];
+  /** Roots created for a crew whose charter has not gone through yet. */
+  pendingRoots: PendingRoot[];
   /** false only until the first attempt resolves — never a permanent state */
   loaded: boolean;
   /** the last attempt could not read the fleet; `crews` is the last known set */
@@ -383,6 +421,7 @@ export interface CrewsState {
 let state: CrewsSnapshot = {
   crews: [],
   chats: [],
+  pendingRoots: [],
   loaded: false,
   failed: false,
   timedOut: false,
@@ -394,6 +433,7 @@ let disposeSources: (() => void) | null = null;
 interface CrewsSnapshot {
   crews: Crew[];
   chats: LooseChat[];
+  pendingRoots: PendingRoot[];
   loaded: boolean;
   failed: boolean;
   /** Set when the last attempt ran out of patience rather than being refused. */

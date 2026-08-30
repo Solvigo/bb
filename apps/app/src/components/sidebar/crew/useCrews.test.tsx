@@ -329,6 +329,49 @@ describe("useCrews", () => {
     expect(result.current.crews.length).toBe(0);
   });
 
+  it("keeps an unchartered standby out of Chats", async () => {
+    // The defect this guards: a charter that failed left a root with no handle
+    // and nothing under it, which fell through to Chats — where it read as a
+    // conversation and, by counting as the project's root, hid the only
+    // affordance that could finish the setup.
+    const STANDBY = [
+      {
+        id: "thr_standby",
+        title: "New crew",
+        projectId: "p",
+        parentThreadId: null,
+      },
+      {
+        id: "thr_talk",
+        title: "A real conversation",
+        projectId: "p",
+        parentThreadId: null,
+      },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/threads")
+          ? { ok: true, json: async () => STANDBY }
+          : { ok: true, json: async () => ({ result: { rows: [] } }) },
+      ),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+
+    expect(result.current.pendingRoots.map((r) => r.threadId)).toEqual([
+      "thr_standby",
+    ]);
+    expect(result.current.chats.map((c) => c.threadId)).toEqual(["thr_talk"]);
+    expect(result.current.crews).toEqual([]);
+  });
+
   it("nests as deep as the pointers go", async () => {
     // Five levels. Nothing in the tree caps depth, and the roll-up has to climb
     // all of it — the deepest ask must be visible on the root.
