@@ -287,13 +287,11 @@ describe("CrewSidebarSection one-crew affordance", () => {
     expect(within(groups[1]!).getByTestId("add-crew-button")).toBeTruthy();
   });
 
-  it("tells two unresolved projects apart by name", () => {
-    // Both rendered as "this project", and so did both of their Add a crew
-    // buttons: a screen reader heard the same control twice with no way to
-    // say which one it was on.
-    useProjectNamesMock.mockReturnValue(new Map());
+  it("gives two crewless projects Add controls named for each", () => {
+    // Every card carries a control reading "Add a crew"; without the project
+    // in the name a screen reader hears the same button twice.
     useCrewsMock.mockReturnValue({
-      crews: [sampleCrew("proj_alpha", "thr_a"), sampleCrew("proj_beta", "thr_b")],
+      crews: [],
       chats: [],
       pendingRoots: [],
       loaded: true,
@@ -304,11 +302,54 @@ describe("CrewSidebarSection one-crew affordance", () => {
 
     renderSection();
 
-    const names = screen
+    const addNames = screen
+      .getAllByTestId("add-crew-button")
+      .map((b) => b.getAttribute("aria-label"));
+    expect(addNames).toEqual([
+      "Add a crew to Alpha Airways",
+      "Add a crew to Beta Build",
+    ]);
+    expect(new Set(addNames).size).toBe(addNames.length);
+  });
+
+  it("tells two UNRESOLVED projects apart, group and Retry alike", () => {
+    // A group whose name has not arrived rendered as "this project", and so
+    // did its Retry. Two of them were indistinguishable by ear.
+    //
+    // Unresolved and crewless cannot co-exist: a group exists either because
+    // it is in the project-name map — which means it HAS a name — or because
+    // it carries a crew or a standby. So the unresolved case is exercised
+    // through the standbys that create it.
+    useProjectNamesMock.mockReturnValue(new Map());
+    useCrewsMock.mockReturnValue({
+      crews: [],
+      chats: [],
+      pendingRoots: [
+        { threadId: "thr_a", name: "New crew", projectId: "proj_alpha" },
+        { threadId: "thr_b", name: "New crew", projectId: "proj_beta" },
+      ],
+      loaded: true,
+      failed: false,
+      timedOut: false,
+      reload: vi.fn(),
+    });
+
+    renderSection();
+
+    const groupNames = screen
       .getAllByRole("group")
       .map((g) => g.getAttribute("aria-label"));
-    expect(names).toEqual(["Unnamed project 1", "Unnamed project 2"]);
-    expect(new Set(names).size).toBe(names.length);
+    expect(groupNames).toEqual(["Unnamed project 1", "Unnamed project 2"]);
+    expect(new Set(groupNames).size).toBe(groupNames.length);
+
+    const retryNames = screen
+      .getAllByTestId("retry-crew-button")
+      .map((b) => b.getAttribute("aria-label"));
+    expect(retryNames).toEqual([
+      "Retry the unfinished crew setup on Unnamed project 1",
+      "Retry the unfinished crew setup on Unnamed project 2",
+    ]);
+    expect(new Set(retryNames).size).toBe(retryNames.length);
   });
 
   it("gives the personal project a card when a standby is waiting there", () => {

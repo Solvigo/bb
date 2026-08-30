@@ -93,6 +93,8 @@ interface RigOptions {
   /** The create never answers, so only the deadline can end the press. */
   createHangs?: boolean;
   hosts?: unknown[];
+  /** The thread list answers, but its BODY never finishes arriving. */
+  threadsBodyHangs?: boolean;
 }
 
 /** The shape crew_charter actually answers with: a discriminated union on `ok`
@@ -128,6 +130,7 @@ function stubRig({
   createBody,
   createHangs = false,
   hosts = [{ id: "host_one" }],
+  threadsBodyHangs = false,
 }: RigOptions = {}) {
   let charterSeen = false;
   calls = [];
@@ -232,8 +235,10 @@ function stubRig({
         return {
           ok: true,
           status: 200,
-          json: async () =>
-            init?.method === "POST" ? created : threads,
+          json:
+            init?.method !== "POST" && threadsBodyHangs
+              ? () => new Promise(() => {})
+              : async () => (init?.method === "POST" ? created : threads),
         };
       }
       if (url.includes("/api/v1/projects")) {
@@ -865,6 +870,150 @@ describe("useCreateCrew", () => {
       // Nothing to archive: an id never came back.
       expect(archive).not.toHaveBeenCalled();
       // And the press is over, even though nothing ever answered.
+      expect(result.current.creatingFor("proj_a")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("archives a standby left behind before opening the crew that won", async () => {
+    // A root recorded on an earlier press, or before a reload, or by the
+    // losing half of a cross-process race. Once a governed crew exists the
+    // card shows that crew and the Retry is gone with it, so nothing names
+    // the leftover any more.
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_leftover", projectId: "proj_a" }]),
+    );
+    stubRig({
+      threads: [
+        {
+          id: "thr_leftover",
+          title: "New crew",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+      fleet: [{ threadId: "thr_winner", handle: "AW-9", parentThreadId: null }],
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalled();
+    });
+
+    expect(archive).toHaveBeenCalledWith({ threadId: "thr_leftover" });
+    expect(window.localStorage.getItem("bb.crew.standby-roots")).not.toContain(
+      "thr_leftover",
+    );
+    // And the winner is still charter-proven before it is opened.
+    expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
+    const sent = send.mock.calls[0]?.[0] as unknown as SentTurn | undefined;
+    expect(sent?.threadId ?? "thr_winner").toBe("thr_winner");
+  });
+
+  it("keeps a leftover visible when it cannot be archived", async () => {
+    // A leftover that is merely invisible is the thing being fixed, so the
+    // winner is not opened past a cleanup that failed.
+    archive.mockImplementation(async () => {
+      throw new Error("archive route said no");
+    });
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_leftover", projectId: "proj_a" }]),
+    );
+    stubRig({
+      threads: [
+        {
+          id: "thr_leftover",
+          title: "New crew",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+      fleet: [{ threadId: "thr_winner", handle: "AW-9", parentThreadId: null }],
+    });
+    const { result } = await freshHook();
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).toContain("thr_leftover");
+    });
+
+    expect(navigate).not.toHaveBeenCalled();
+    // The note survives a failed cleanup: it is the only handle on the thread.
+    expect(window.localStorage.getItem("bb.crew.standby-roots")).toContain(
+      "thr_leftover",
+    );
+  });
+
+  it("clears busy when a response BODY never finishes arriving", async () => {
+    // Aborting the request does not bound the read of its body; only the
+    // deadline does.
+    stubRig({ threadsBodyHangs: true });
+    const { result } = await freshHook();
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        result.current.createCrew("proj_a");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(result.current.error).toContain("Could not read");
+      expect(result.current.creatingFor("proj_a")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears busy when the losing archive never answers", async () => {
+    archive.mockImplementation(() => new Promise(() => {}));
+    stubRig({
+      charter: {
+        status: 200,
+        body: {
+          ok: true,
+          result: { ok: false, error: "this project already has a crew" },
+        },
+      },
+      fleetAfterCharter: [
+        { threadId: "thr_winner", handle: "AW-9", parentThreadId: null },
+      ],
+      threads: [
+        {
+          id: "thr_winner",
+          title: "Billing",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+    });
+    const { result } = await freshHook();
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        result.current.createCrew("proj_a");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(result.current.error).toContain("could not be archived");
       expect(result.current.creatingFor("proj_a")).toBe(false);
     } finally {
       vi.useRealTimers();

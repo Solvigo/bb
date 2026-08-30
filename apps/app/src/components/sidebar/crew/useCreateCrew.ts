@@ -522,6 +522,56 @@ async function recoverLostRace({
 }
 
 /**
+ * Clear this client's own standbys out from under a crew that already won.
+ *
+ * A root recorded on an earlier press — or before a reload, or by the losing
+ * half of a cross-process race — is still sitting on the rig. Once a governed
+ * crew exists for the project, the card shows that crew and the Retry that
+ * would have finished the standby is gone with it, so nothing on screen names
+ * the leftover any more.
+ *
+ * Only ever archives a thread THIS client recorded creating, on THIS project,
+ * that is not the winner. Forgets a record only once its thread is actually
+ * gone, and refuses to open past a cleanup it could not do: a leftover that is
+ * merely invisible is the thing being fixed.
+ *
+ * Answers null when there is nothing left behind, or the message to show.
+ */
+async function archiveRecordedLosers(
+  projectId: string,
+  winnerId: string,
+  threads: readonly ThreadRow[],
+): Promise<string | null> {
+  const recorded = recordedStandbyRoots();
+  const live = new Map(threads.map((t) => [t.id, t]));
+  for (const [threadId, recordedProject] of recorded) {
+    if (recordedProject !== projectId || threadId === winnerId) continue;
+    const thread = live.get(threadId);
+    if (thread === undefined) {
+      // Already gone; the note is all that is left of it.
+      forgetStandbyRoot(threadId);
+      continue;
+    }
+    if (thread.parentThreadId) continue;
+    try {
+      await withDeadline(
+        sdk.threads.archive({ threadId }),
+        "Archiving a leftover standby",
+      );
+    } catch (e) {
+      return (
+        `This project already has a crew, but a thread left over from an ` +
+        `earlier attempt (${threadId}) could not be archived` +
+        `${e instanceof Error ? `: ${e.message}` : ""}. Archive it by hand — ` +
+        `until it is gone nothing on this card will show it.`
+      );
+    }
+    forgetStandbyRoot(threadId);
+  }
+  return null;
+}
+
+/**
  * Open a root the fleet says is already this project's crew.
  *
  * Charters it FIRST, every time and from every path. A handle proves a charter
@@ -665,6 +715,18 @@ export function useCreateCrew(): {
             return;
           }
           if (owned.status === "root") {
+            // Before this project's crew takes the card back, anything this
+            // client left half-made on it has to go — the winning crew hides
+            // the Retry that was the only way to see it.
+            const leftover = await archiveRecordedLosers(
+              wantedProjectId,
+              owned.thread.id,
+              threads,
+            );
+            if (leftover !== null) {
+              setError(leftover);
+              return;
+            }
             const opened = await openGovernedRoot(owned.thread, {
               openingRequest,
             });
@@ -816,7 +878,17 @@ export function useCreateCrew(): {
             setError("No host is connected, so a crew cannot be started yet.");
             return;
           }
-          const hostId = rawHosts.map(parseHostId).find((id) => id !== null);
+          // ALL OR NOTHING, like every other list this flow reads. Skipping a
+          // malformed row to the next valid one picks a host out of a list
+          // this code has already proved it cannot read.
+          const hostIds = rawHosts.map(parseHostId);
+          if (hostIds.some((id) => id === null)) {
+            setError(
+              "Could not read this rig's hosts, so a crew cannot be started safely right now.",
+            );
+            return;
+          }
+          const hostId = hostIds[0];
           if (!hostId) {
             setError("No host is connected, so a crew cannot be started yet.");
             return;
