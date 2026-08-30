@@ -5,6 +5,7 @@ import {
   type TransitionEvent,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -524,10 +525,12 @@ export function ThreadSecondaryPanel({
   // Chat-link navigation: a bb-tower: link in the commander chat sets this atom.
   const towerNav = useAtomValue(towerNavAtom);
   const lastNavNonce = useRef(0);
-  if (towerNav && towerNav.nonce !== lastNavNonce.current) {
-    lastNavNonce.current = towerNav.nonce;
-    surfaces.open(towerNav.view);
-  }
+  useEffect(() => {
+    if (towerNav && towerNav.nonce !== lastNavNonce.current) {
+      lastNavNonce.current = towerNav.nonce;
+      surfaces.open(towerNav.view);
+    }
+  }, [towerNav, surfaces]);
   const activeTabKind = activeTab?.kind ?? null;
   // Tower views default over the empty/info state, but yield to a new-tab the
   // operator explicitly opened (and to any real file/diff/terminal content).
