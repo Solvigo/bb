@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -44,14 +45,29 @@ function CrewEntry({
   crew: Crew;
   onNavigate?: () => void;
 }) {
-  const { editingCrewId, setEditingCrewId, beginDrag, endDrag, justMovedId } =
-    useContext(CrewEditContext);
+  const {
+    editingCrewId,
+    setEditingCrewId,
+    beginDrag,
+    endDrag,
+    justMovedId,
+    recoverable,
+  } = useContext(CrewEditContext);
   const editing = editingCrewId === crew.commanderThreadId;
   // A different crew is being edited. Dimmed by the ancestor's
   // pointer-events-none below, but that only stops the mouse — a click
   // arriving through retained or programmatic focus still reaches the
   // handler, so the handler has to refuse it itself.
   const outOfScope = editingCrewId !== null && !editing;
+  // A crew a leaf was JUST promoted into: `assembleFleet` classifies a
+  // promoted agent by whether it carries a crew handle, and a normal
+  // crew-spawned lead always does — so it comes back as a brand new root
+  // CREW with no leads, not a loose chat. Without this it would render as
+  // any other out-of-scope crew: dimmed, inert, and offering no way back.
+  const isRecoverable =
+    recoverable !== null &&
+    recoverable.threadId === crew.commanderThreadId &&
+    recoverable.fromCrewId === editingCrewId;
   // Not useInEditScope(): this component renders the CrewScopeContext
   // Provider below, so a hook called up here — before that provider exists —
   // would read the ambient value from OUTSIDE this crew, which is never this
@@ -82,8 +98,12 @@ function CrewEntry({
         className={cn(
           "transition-opacity",
           // Editing one crew dims the rest, so the operator can see the boundary
-          // of what they are rearranging rather than inferring it.
-          outOfScope && "pointer-events-none opacity-40",
+          // of what they are rearranging rather than inferring it. Skipped for
+          // the recoverable crew specifically: dimming here is pointer-events-
+          // none on the WHOLE row, which would take the move-menu button below
+          // down with it — that button is the one thing this row still has to
+          // offer.
+          outOfScope && !isRecoverable && "pointer-events-none opacity-40",
         )}
       >
         <div className="group/crew flex items-center">
@@ -128,6 +148,10 @@ function CrewEntry({
               cn(
                 "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
                 isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+                // The recoverable row's own dimming, since the ancestor's is
+                // skipped for it — this link stays inert even though the
+                // move-menu button beside it does not.
+                outOfScope && isRecoverable && "pointer-events-none opacity-40",
                 // Where the agent would land, said loudly enough to see.
                 drop.isOver && "bg-primary/20 ring-2 ring-inset ring-primary",
                 drop.isForbidden && "cursor-not-allowed opacity-40",
@@ -171,7 +195,9 @@ function CrewEntry({
               ) : null}
             </span>
           </NavLink>
-          {editing ? <AgentMoveMenu agent={movable} /> : null}
+          {editing || isRecoverable ? (
+            <AgentMoveMenu agent={movable} />
+          ) : null}
           {editingCrewId === null ? (
             // Where edit mode is entered: on the crew it will act on, not on a
             // global switch that arms the whole rail.
@@ -262,16 +288,22 @@ interface CrewEditState {
   /** What to say in the live region. */
   moveMessage: string;
   /**
-   * The loose chat a leaf was JUST promoted into, out of the crew still being
-   * edited — the one loose chat, if any, allowed a move-menu back in.
+   * The thread a leaf was JUST promoted into, out of the crew it names —
+   * the one promoted agent, if any, allowed a move-menu back in.
    *
-   * Not "every loose chat gets a menu during edit": a chat with no crew
-   * affiliation at all has no legitimate destination to offer, and offering
-   * one anyway would let the menu reparent a thread nobody meant to touch.
-   * Bound to the specific thread AND the specific edit session that promoted
-   * it — leaving the crew, or editing a different one, clears it.
+   * A normal crew-spawned leaf keeps its crew handle across the promotion, so
+   * `assembleFleet` renders it as a brand new root CREW with no leads, not a
+   * loose chat — a handle-less thread is the rarer case that actually becomes
+   * one. Either shape checks this the same way: by thread id. `fromCrewId` is
+   * the crew it left, so a later, unrelated edit session — even one that
+   * resolves to the very same crew again — never inherits someone else's
+   * recovery. Only ever set from the resolution of the reparent call that
+   * caused it, and only if that edit session is still the current one when it
+   * resolves: a Done or a switch to a different crew before the network
+   * answers must not let a stale promise plant a recovery in whatever session
+   * is running when it finally lands.
    */
-  recoverableChatId: string | null;
+  recoverable: { threadId: string; fromCrewId: string } | null;
 }
 
 /**
@@ -308,7 +340,7 @@ const CrewEditContext = createContext<CrewEditState>({
   setEditingCrewId: () => {},
   refusal: null,
   moveMessage: "",
-  recoverableChatId: null,
+  recoverable: null,
 });
 
 /** Every id in an agent's branch, so a drop onto its own descendant is refused
@@ -325,6 +357,42 @@ function subtreeIds(agent: MovableAgent): Set<string> {
   };
   walk(agent);
   return ids;
+}
+
+function findInLeads(
+  leads: readonly CrewLead[],
+  id: string,
+): CrewLead | null {
+  for (const lead of leads) {
+    if (lead.threadId === id) return lead;
+    const found = findInLeads(lead.sorties, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * An agent's CURRENT node in the live tree, or null when it is not part of
+ * any crew right now (a genuine loose chat, or gone entirely).
+ *
+ * `draggingSubtree`, by contrast, is a snapshot taken at `beginDrag` time — it
+ * answers "what was under this agent when the drag started", which is exactly
+ * the wrong question when the fleet has refreshed since: a target that moved
+ * INTO the dragged agent's branch after the drag began would not show up
+ * there, and a move-time cycle check needs the branch as it is now.
+ */
+function findCurrentNode(
+  crews: readonly Crew[],
+  id: string,
+): MovableAgent | null {
+  for (const crew of crews) {
+    if (crew.commanderThreadId === id) {
+      return { threadId: crew.commanderThreadId, name: crew.name, sorties: crew.leads };
+    }
+    const found = findInLeads(crew.leads, id);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -488,14 +556,19 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
     window.setTimeout(() => setRefusal(null), 6000);
   }, []);
   const [editingCrewId, setEditingCrewIdState] = useState<string | null>(null);
-  // The recovery menu is bound to ONE edit session: leaving it, or starting a
-  // different one, must drop the binding rather than let it point at a chat
-  // that has nothing to do with whatever crew is being edited now.
-  const [recoverableChatId, setRecoverableChatId] = useState<string | null>(
-    null,
-  );
+  // The recovery binding is good for ONE edit session. Bumped every time the
+  // session changes — entering, leaving, or switching crews — so an async
+  // reparent's `.then()` can tell, when it finally resolves, whether the
+  // session that started it is still the one running. A stale resolution
+  // must not plant a recovery in whatever session happens to be current.
+  const editSessionRef = useRef(0);
+  const [recoverable, setRecoverable] = useState<{
+    threadId: string;
+    fromCrewId: string;
+  } | null>(null);
   const setEditingCrewId = useCallback((crewId: string | null) => {
-    setRecoverableChatId(null);
+    editSessionRef.current += 1;
+    setRecoverable(null);
     setEditingCrewIdState(crewId);
   }, []);
   const [dragging, setDragging] = useState<{
@@ -544,27 +617,56 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   }, [crews, editingCrewId]);
 
   const [justMovedId, setJustMovedId] = useState<string | null>(null);
+  const refuseStaleSource = useCallback(() => {
+    reportRefusal(reparentRefusalText({ ok: false, reason: "unknown-agent" }));
+  }, [reportRefusal]);
   const move = useCallback(
     (movingId: string, newParentId: string | null) => {
-      // `destinations` and `recoverableChatId` are both live — recomputed
-      // whenever the fetched fleet or the edit session changes — so this is
-      // membership as of NOW, not as of whenever a drag started or a menu
-      // opened. draggingId/dataTransfer only prove a drag was real when it
-      // began; they say nothing about whether the fleet still agrees the
-      // source belongs where the caller thinks it does. A background refresh
-      // that reparented or removed it mid-drag must not let a stale drop or a
+      // `destinations` and `recoverable` are both live — recomputed whenever
+      // the fetched fleet or the edit session changes — so this is membership
+      // as of NOW, not as of whenever a drag started or a menu opened.
+      // draggingId/dataTransfer only prove a drag was real when it began;
+      // they say nothing about whether the fleet still agrees the source
+      // belongs where the caller thinks it does. A background refresh that
+      // reparented or removed it mid-drag must not let a stale drop or a
       // stale menu selection through.
       const crewMemberIds = new Set(destinations.map((d) => d.threadId));
-      const isLegalSource =
-        crewMemberIds.has(movingId) || movingId === recoverableChatId;
-      if (editingCrewId === null || !isLegalSource) {
-        reportRefusal(
-          reparentRefusalText({ ok: false, reason: "unknown-agent" }),
-        );
+      const isRecoveredSource =
+        recoverable !== null &&
+        recoverable.threadId === movingId &&
+        recoverable.fromCrewId === editingCrewId;
+      if (
+        editingCrewId === null ||
+        (!crewMemberIds.has(movingId) && !isRecoveredSource)
+      ) {
+        refuseStaleSource();
         return;
+      }
+      // The target is read fresh from the row/menu that called `move`, which
+      // itself renders from current data — except a menu selection can be
+      // stale if the destination it named has, in the meantime, been removed
+      // or refreshed away, or if the fleet moved it INSIDE movingId's own
+      // branch, which the drag-time subtree check (a snapshot from when the
+      // drag began) has no way to know about. Checked here, once, for both
+      // drag and menu callers.
+      if (newParentId !== null) {
+        if (!crewMemberIds.has(newParentId)) {
+          refuseStaleSource();
+          return;
+        }
+        const movingNode = findCurrentNode(crews, movingId);
+        if (movingNode !== null && subtreeIds(movingNode).has(newParentId)) {
+          reportRefusal(reparentRefusalText({ ok: false, reason: "cycle" }));
+          return;
+        }
       }
       const promotingCrewMember =
         newParentId === null && crewMemberIds.has(movingId);
+      // Captured now, not read fresh inside `.then()`: the whole point is to
+      // compare the session THIS call started under against whatever is
+      // current when the network answers.
+      const originatingCrewId = editingCrewId;
+      const sessionAtCallTime = editSessionRef.current;
       void reparentAgent(movingId, newParentId).then((outcome) => {
         if (outcome.ok) {
           announce(newParentId === null ? "Moved to the top." : "Moved.");
@@ -573,14 +675,20 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
             () => setJustMovedId((id) => (id === movingId ? null : id)),
             900,
           );
-          if (promotingCrewMember) {
-            // A leaf just left the crew being edited and landed as a loose
-            // chat — the one recovery path back in.
-            setRecoverableChatId(movingId);
-          } else if (newParentId !== null && movingId === recoverableChatId) {
-            // The recovered chat just moved back into a crew; it is no
-            // longer loose, so the menu that recovered it goes with it.
-            setRecoverableChatId(null);
+          if (editSessionRef.current === sessionAtCallTime) {
+            if (promotingCrewMember) {
+              // A crew member just left the crew being edited — however
+              // assembleFleet ends up classifying it, this is the one
+              // recovery path back in.
+              setRecoverable({
+                threadId: movingId,
+                fromCrewId: originatingCrewId,
+              });
+            } else if (newParentId !== null && isRecoveredSource) {
+              // The recovered thread just moved back into a crew; it is no
+              // longer stranded, so the menu that recovered it goes with it.
+              setRecoverable(null);
+            }
           }
           return;
         }
@@ -589,7 +697,15 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
         reportRefusal(why);
       });
     },
-    [announce, destinations, editingCrewId, recoverableChatId, reportRefusal],
+    [
+      announce,
+      crews,
+      destinations,
+      editingCrewId,
+      recoverable,
+      refuseStaleSource,
+      reportRefusal,
+    ],
   );
 
   const editState = useMemo(
@@ -604,7 +720,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       destinations,
       move,
       justMovedId,
-      recoverableChatId,
+      recoverable,
     }),
     [
       announce,
@@ -615,7 +731,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       endDrag,
       justMovedId,
       move,
-      recoverableChatId,
+      recoverable,
       reportRefusal,
     ],
   );
@@ -763,7 +879,7 @@ function AgentMoveMenu({
  * when nothing is being dragged.
  */
 function InsertionZone({ parentId }: { parentId: string | null }) {
-  const { draggingId, draggingSubtree, move, editingCrewId } =
+  const { draggingId, draggingSubtree, endDrag, move, editingCrewId } =
     useContext(CrewEditContext);
   const inScope = useInEditScope();
   const [isOver, setIsOver] = useState(false);
@@ -793,6 +909,12 @@ function InsertionZone({ parentId }: { parentId: string | null }) {
       onDragLeave={() => setIsOver(false)}
       onDrop={(event) => {
         setIsOver(false);
+        // Same as the row/project drop targets: a drop ends the drag whether
+        // or not it is accepted. This one had been skipping that, so a
+        // refused (or even an accepted) gap drop could leave draggingId set —
+        // the next crew entered for editing would inherit a drag nobody was
+        // still holding.
+        endDrag();
         const moving = readAgentDrag(event.dataTransfer);
         // Same cross-check as the row drop target: the dataTransfer's claimed
         // id is untrusted, `draggingId` (set only by a guarded onDragStart)
@@ -1332,22 +1454,26 @@ function ChatRow({
   chat: LooseChat;
   onNavigate?: () => void;
 }) {
-  const { editingCrewId, endDrag, justMovedId, recoverableChatId } =
+  const { editingCrewId, endDrag, justMovedId, recoverable } =
     useContext(CrewEditContext);
   // A loose chat belongs to no crew, so it is never part of the crew being
   // edited — and while one is being edited it steps out of the way entirely.
   const editing = false;
   const dimmed = editingCrewId !== null;
   // Dragging a chat is closed off entirely (see draggable={false} below), but
-  // that must not be the only way back INTO a crew: "make root" turned a leaf
-  // into exactly this row, and a chat with no drag and no menu had no way to
-  // undo that short of the server-side move tooling. The dropdown is a plain
-  // click calling `move` directly — no dataTransfer to spoof — so it reopens a
-  // recovery path without reopening the drag hole. Bound to the ONE chat this
-  // edit session just promoted, though: every other loose chat, same project
-  // or not, has no crew affiliation to recover into, and offering the menu
-  // there would just be a way to reparent an unrelated thread by accident.
-  const canMove = recoverableChatId === chat.threadId;
+  // that must not be the only way back INTO a crew: a handle-less thread
+  // promoted to root becomes exactly this row, and a chat with no drag and no
+  // menu had no way to undo that short of the server-side move tooling. The
+  // dropdown is a plain click calling `move` directly — no dataTransfer to
+  // spoof — so it reopens a recovery path without reopening the drag hole.
+  // Bound to the ONE thread THIS edit session just promoted, though: every
+  // other loose chat, same project or not, has no crew affiliation to recover
+  // into, and offering the menu there would just be a way to reparent an
+  // unrelated thread by accident.
+  const canMove =
+    recoverable !== null &&
+    recoverable.threadId === chat.threadId &&
+    recoverable.fromCrewId === editingCrewId;
   const movable: MovableAgent = {
     threadId: chat.threadId,
     name: chat.name,

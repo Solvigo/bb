@@ -205,7 +205,7 @@ async function crewRpc<T>(
  */
 const pendingParents = new Map<string, string | null>();
 
-function assembleFleet(
+export function assembleFleet(
   threads: ThreadRow[],
   fleet: { rows: FleetRow[] } | null,
   board: { rows: BoardRow[] } | null,
