@@ -359,7 +359,7 @@ function useAgentDrop(args: { agentId: string }): {
   };
 } {
   const { agentId } = args;
-  const { draggingId, draggingSubtree, endDrag, move } =
+  const { draggingId, draggingSubtree, endDrag, move, editingCrewId } =
     useContext(CrewEditContext);
   const [isOver, setIsOver] = useState(false);
   // An agent cannot be dropped on itself or on anything inside its own branch.
@@ -391,7 +391,7 @@ function useAgentDrop(args: { agentId: string }): {
         setIsOver(false);
         endDrag();
         const moving = readAgentDrag(event.dataTransfer);
-        if (moving === null || isForbidden) return;
+        if (moving === null || isForbidden || editingCrewId === null) return;
         event.preventDefault();
         event.stopPropagation();
         move(moving, agentId === "" ? null : agentId);
@@ -645,7 +645,7 @@ function InsertionZone({ parentId }: { parentId: string | null }) {
     useContext(CrewEditContext);
   const inScope = useInEditScope();
   const [isOver, setIsOver] = useState(false);
-  const armed = draggingId !== null && (editingCrewId === null || inScope);
+  const armed = draggingId !== null && inScope;
   const isForbidden =
     draggingId !== null && parentId !== null && draggingSubtree.has(parentId);
   if (!armed) return null;
@@ -672,7 +672,7 @@ function InsertionZone({ parentId }: { parentId: string | null }) {
       onDrop={(event) => {
         setIsOver(false);
         const moving = readAgentDrag(event.dataTransfer);
-        if (moving === null || isForbidden) return;
+        if (moving === null || isForbidden || editingCrewId === null) return;
         event.preventDefault();
         event.stopPropagation();
         move(moving, parentId);
@@ -786,7 +786,7 @@ function AgentTreeRow({
         <NavLink
           to={getThreadRoutePath({ projectId, threadId: agent.threadId })}
           onClick={onNavigate}
-          draggable
+          draggable={editing}
           onDragStart={(event) => {
             event.dataTransfer.setData(AGENT_DRAG_TYPE, agent.threadId);
             event.dataTransfer.effectAllowed = "move";
@@ -1179,7 +1179,7 @@ function ChatRow({
           // It is a source and not a destination: the crew plugin refuses a
           // childless root as a parent ("Parent thread is invalid"), so
           // offering it as a target would only ever produce a refusal.
-          draggable
+          draggable={editingCrewId !== null}
           onDragStart={(event) => {
             event.dataTransfer.setData(AGENT_DRAG_TYPE, chat.threadId);
             event.dataTransfer.effectAllowed = "move";

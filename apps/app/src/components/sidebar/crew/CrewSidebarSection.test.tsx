@@ -13,6 +13,7 @@ vi.mock("./useCrews", async () => {
   return {
     ...actual,
     useCrews: vi.fn(),
+    reparentAgent: vi.fn().mockResolvedValue({ ok: true }),
   };
 });
 
@@ -107,6 +108,9 @@ describe("CrewSidebarSection drag boundary", () => {
       fireEvent.dragOver(gap, { dataTransfer });
       // The dropEffect should be 'none' when dragging an ancestor over its descendant's gap
       expect(dataTransfer.dropEffect).toBe("none");
+
+      fireEvent.drop(gap, { dataTransfer });
+      expect(useCrewsModule.reparentAgent).not.toHaveBeenCalled();
     });
   });
 });
