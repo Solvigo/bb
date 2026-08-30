@@ -13,6 +13,7 @@ function makeController(
   return {
     isAvailable: true,
     isCreating: false,
+    createError: null,
     openCreateDialog: vi.fn(),
     platform: null,
     hostId: null,

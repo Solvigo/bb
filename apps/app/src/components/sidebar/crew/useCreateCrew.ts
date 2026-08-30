@@ -6,17 +6,23 @@ import { AGENT_PROVIDER } from "@/lib/agentProvider";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { sdk } from "@/lib/sdk";
 
-/** A root thread keeps this title until its crew is named — that is how a
- *  second press finds the unnamed root instead of starting another. The
- *  wizard's old title is still matched so a root created before the interview
- *  was retired is resumed rather than duplicated. */
 interface ProjectRow {
   id: string;
   kind?: string;
 }
 
+/** A root keeps this title until its crew is named — that is how a second
+ *  press finds the unnamed root instead of starting another. The wizard's old
+ *  title is still matched so a root created before the interview was retired
+ *  is resumed rather than duplicated. */
 const ROOT_THREAD_TITLE = "New crew";
 const UNNAMED_ROOT_TITLES = [ROOT_THREAD_TITLE, "New crew · setup"];
+
+/** The root's first input, before it is anything. It is not the brief: the
+ *  brief goes out only once the charter has made this a crew root. */
+const STANDBY_INPUT =
+  "Stand by. You are being chartered as this project's root agent and will " +
+  "receive your brief in a moment. Do not start any work yet.";
 
 async function readJson<T>(url: string): Promise<T | null> {
   try {
@@ -28,16 +34,116 @@ async function readJson<T>(url: string): Promise<T | null> {
   }
 }
 
+/** The task id a project's root is chartered under. Deterministic on purpose:
+ *  a retry after a failed charter charters the SAME work, not a second one. */
+function rootTaskId(projectId: string): string {
+  return `root-${projectId}`;
+}
+
+interface CharterOutcome {
+  ok: boolean;
+  /** True when this thread was already crew, which is a success for a retry. */
+  already: boolean;
+  message: string | null;
+}
+
 /**
- * Pressing NEW CREW stands up the project's ROOT AGENT, seeded with the
- * bootstrap brief, and lands the Captain in that chat.
+ * Turn a standby root into a governed crew root.
  *
- * STAGED: this still creates a plain thread over the threads API, which does
- * not charter the root or mint its handle. The governed path is `crew spawn` /
- * `crew charter` in the crew plugin, and neither is exposed on its RPC port
- * yet. Creating a generic thread and annotating it afterwards would skip the
- * handle, brief, ceiling and lifecycle contract, so this stays as it is until
- * the endpoint lands rather than growing a shortcut around it.
+ * The plugin refuses rather than throwing for anything the operator can act
+ * on, and wraps its payload the way every other crew verb does — so read the
+ * inner result when it is there, and treat a refusal that says the thread is
+ * already crew as the success it is for a retry.
+ */
+async function charterRoot(
+  threadId: string,
+  briefText: string,
+  taskId: string,
+): Promise<CharterOutcome> {
+  let res: Response;
+  try {
+    res = await fetch("/api/v1/plugins/crew/rpc/crew_charter", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ threadId, briefText, taskId }),
+    });
+  } catch {
+    return {
+      ok: false,
+      already: false,
+      message: "The crew plugin did not answer.",
+    };
+  }
+  const body = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    error?: string;
+    message?: string;
+    result?: { ok?: boolean; error?: string; message?: string };
+  } | null;
+  const result = body?.result ?? body ?? {};
+  const message = result.error ?? result.message ?? null;
+  // Narrow on purpose. "is already crew" is this thread, already chartered —
+  // a success for a retry. "this project already has a crew" is a different
+  // thread holding the one crew slot, and that is a refusal.
+  const already =
+    message !== null && /already crew|chartered twice/i.test(message);
+  if (already) return { ok: true, already: true, message: null };
+  if (!res.ok || result.ok === false || (result.ok === undefined && message)) {
+    return {
+      ok: false,
+      already: false,
+      message: message ?? `The crew could not be chartered (${res.status}).`,
+    };
+  }
+  return { ok: true, already: false, message: null };
+}
+
+/**
+ * What a chartered root is told: its brief, then what the Captain actually
+ * asked for. One send, so the two cannot arrive as separate turns and have the
+ * root answer the brief before it has read the request.
+ */
+async function sendRootOpening({
+  threadId,
+  includeBootstrap,
+  openingRequest,
+}: {
+  threadId: string;
+  includeBootstrap: boolean;
+  openingRequest?: string;
+}): Promise<void> {
+  const request = openingRequest?.trim();
+  const input = [
+    ...(includeBootstrap
+      ? [{ type: "text" as const, text: rootBootstrap, mentions: [] }]
+      : []),
+    ...(request
+      ? [
+          {
+            type: "text" as const,
+            text: `The Captain's opening request:\n\n${request}`,
+            mentions: [],
+          },
+        ]
+      : []),
+  ];
+  if (input.length === 0) return;
+  await sdk.threads.send({ threadId, input, mode: "auto" });
+}
+
+/**
+ * Pressing NEW CREW stands up the project's ROOT AGENT.
+ *
+ * The order is the contract. The root is created project-bound and
+ * worktree-less with a STANDBY first input only, then chartered, and only once
+ * the charter succeeds does it receive the bootstrap brief and the Captain's
+ * opening request. A root that could not be chartered is never given the brief
+ * and never navigated into: it would be a loose thread wearing a crew's name,
+ * with none of the handle, brief, ceiling or lifecycle behind it.
+ *
+ * A failed charter leaves the standby root in place on purpose. The next press
+ * finds it by title and retries the charter rather than leaving a second husk
+ * on the rail.
  *
  * The brief lives in its own file (rootAgentBootstrap.md) because it IS the
  * product surface — it should be iterated like any other reviewable text, not
@@ -90,20 +196,34 @@ export function useCreateCrew(): {
               (t.projectId ?? PERSONAL_PROJECT_ID) === wantedProjectId,
           );
           if (unfinished) {
-            const request = openingRequest?.trim();
-            if (request) {
-              await sdk.threads.send({
-                threadId: unfinished.id,
-                input: [{ type: "text", text: request, mentions: [] }],
-                mode: "auto",
-              });
+            // A root found this way may be a standby whose charter failed last
+            // time, so the charter is retried before anything else. It is
+            // idempotent under the same task id, and a thread that is already
+            // crew comes back as the success it is.
+            const rootProjectId = unfinished.projectId ?? PERSONAL_PROJECT_ID;
+            const chartered = await charterRoot(
+              unfinished.id,
+              rootBootstrap,
+              rootTaskId(rootProjectId),
+            );
+            if (!chartered.ok) {
+              setError(chartered.message);
+              return;
             }
+            await sendRootOpening({
+              threadId: unfinished.id,
+              // Only a root that had never been chartered still needs its
+              // brief; one that was already crew has been carrying it since it
+              // was chartered, and sending it twice reads as a second order.
+              includeBootstrap: !chartered.already,
+              openingRequest,
+            });
             // Scoped, like every thread link: the projectless route resolves to
-            // the Personal project, which happens to be right for a setup
-            // commander and would be silently wrong the day it is not.
+            // the Personal project, which happens to be right for a root with
+            // no code yet and would be silently wrong the day it is not.
             navigate(
               getThreadRoutePath({
-                projectId: unfinished.projectId ?? PERSONAL_PROJECT_ID,
+                projectId: rootProjectId,
                 threadId: unfinished.id,
               }),
             );
@@ -163,21 +283,18 @@ export function useCreateCrew(): {
               // fault survived being "fixed" once already.
               providerId: AGENT_PROVIDER.providerId,
               model: AGENT_PROVIDER.model,
-              // The setup thread INTERVIEWS and calls verbs — it never touches a
-              // repo, so it must not provision one. A managed worktree cost the
-              // Captain ~10 MINUTES of pnpm (2318 packages, 3.7GB) before his
-              // commander could say a word, and dragged the whole machine.
+              // The root ORCHESTRATES — it never edits this project, so it
+              // must not provision a worktree. A managed one cost the Captain
+              // ~10 MINUTES of pnpm (2318 packages, 3.7GB) before his root
+              // could say a word, and dragged the whole machine.
               //
-              // On Personal that is guaranteed by construction rather than by
-              // convention: a personal workspace has no repo to clone. Anywhere
-              // else, an unmanaged workspace with no path is the nearest thing —
-              // it provisions nothing, but only because it was asked not to.
-              // No worktree either way. On Personal that is guaranteed by
-              // construction; on a real project an unmanaged workspace with no
-              // path provisions nothing while still letting the commander parent
-              // leads that DO get worktrees. Measured on the rig: 12 seconds to
-              // first word on a repo-backed project, against ten minutes for a
-              // managed one.
+              // On Personal that is guaranteed by construction: a personal
+              // workspace has no repo to clone. On a real project an unmanaged
+              // workspace with no path is the nearest thing — it provisions
+              // nothing, but only because it was asked not to — while still
+              // letting the root parent children that DO get worktrees.
+              // Measured on the rig: 12 seconds to first word on a repo-backed
+              // project, against ten minutes for a managed one.
               environment: {
                 type: "host",
                 hostId,
@@ -185,18 +302,12 @@ export function useCreateCrew(): {
                   ? { type: "personal" }
                   : { type: "unmanaged", path: null },
               },
-              input: [
-                { type: "text", text: rootBootstrap, mentions: [] },
-                ...(openingRequest?.trim()
-                  ? [
-                      {
-                        type: "text" as const,
-                        text: `The Captain's opening request:\n\n${openingRequest.trim()}`,
-                        mentions: [],
-                      },
-                    ]
-                  : []),
-              ],
+              // STANDBY ONLY. The brief and the Captain's request are held
+              // back until the charter succeeds — a root that turns out to be
+              // uncharterable must never have been told to start work. The
+              // threads API requires a first entry, so this is the smallest
+              // honest one: an instruction to wait.
+              input: [{ type: "text", text: STANDBY_INPUT, mentions: [] }],
             }),
           });
           if (!res.ok) {
@@ -212,9 +323,30 @@ export function useCreateCrew(): {
             id: string;
             projectId?: string;
           };
+          const rootProjectId = thread.projectId ?? projectId;
+
+          const chartered = await charterRoot(
+            thread.id,
+            rootBootstrap,
+            rootTaskId(rootProjectId),
+          );
+          if (!chartered.ok) {
+            // The standby root stays, still holding nothing but the instruction
+            // to wait: the next press finds it by title and retries the charter.
+            // Navigating into it here would present a loose thread as a crew
+            // root, which is the thing the charter exists to prevent.
+            setError(chartered.message);
+            return;
+          }
+
+          await sendRootOpening({
+            threadId: thread.id,
+            includeBootstrap: !chartered.already,
+            openingRequest,
+          });
           navigate(
             getThreadRoutePath({
-              projectId: thread.projectId ?? projectId,
+              projectId: rootProjectId,
               threadId: thread.id,
             }),
           );
