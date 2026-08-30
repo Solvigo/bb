@@ -955,4 +955,172 @@ describe("CrewSidebarSection edit-scope guards", () => {
       screen.getByRole("button", { name: "Rearrange Crew A" }),
     );
   });
+
+  it("does not let a stale recovery-completion erase a re-promotion of the SAME thread that settled first", async () => {
+    vi.mocked(queryHooks.useProjectNames).mockReturnValue(
+      new Map([["p1", "Project 1"]]),
+    );
+    const threads = [
+      { id: "cmd_a", title: "Crew A", projectId: "p1", parentThreadId: null },
+      {
+        id: "lead_a",
+        title: "Lead A",
+        projectId: "p1",
+        parentThreadId: "cmd_a",
+      },
+    ];
+    const fleetRows = [
+      { threadId: "cmd_a", handle: "Crew A", rank: "commander" },
+      { threadId: "lead_a", handle: "Lead A", rank: "lead" },
+    ];
+    const assembled = (parentOfLeadA: string | null) =>
+      assembleFleet(
+        threads.map((t) =>
+          t.id === "lead_a" ? { ...t, parentThreadId: parentOfLeadA } : t,
+        ),
+        { rows: fleetRows },
+        null,
+        null,
+        null,
+      );
+
+    setFleet(assembled("cmd_a").crews, []);
+    const { rerender } = render(renderTree());
+    editCrew("Crew A");
+
+    // The FIRST promotion: Lead A leaves Crew A and becomes recoverable.
+    // Resolves normally via the default mock.
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Move Lead A" }), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Make root" }));
+    await screen.findByText("Moved to the top.");
+
+    setFleet(assembled(null).crews, []);
+    rerender(renderTree());
+    expect(
+      screen.queryByRole("button", { name: "Move Lead A" }),
+    ).not.toBeNull();
+
+    // R1: recover it back into Crew A. Held pending.
+    let resolveR1: (outcome: { ok: boolean }) => void = () => {};
+    const r1 = new Promise<{ ok: boolean }>((resolve) => {
+      resolveR1 = resolve;
+    });
+    vi.mocked(useCrewsModule.reparentAgent).mockReturnValueOnce(r1);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Move Lead A" }), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Crew A" }));
+
+    // An optimistic refresh shows Lead A back under Crew A before R1's own
+    // network reply lands — exactly what the real reparentAgent's own
+    // pendingParents bookkeeping does while a call is in flight.
+    setFleet(assembled("cmd_a").crews, []);
+    rerender(renderTree());
+
+    // P2: re-promote the SAME thread from its (optimistic) normal position.
+    let resolveP2: (outcome: { ok: boolean }) => void = () => {};
+    const p2 = new Promise<{ ok: boolean }>((resolve) => {
+      resolveP2 = resolve;
+    });
+    vi.mocked(useCrewsModule.reparentAgent).mockReturnValueOnce(p2);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Move Lead A" }), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Make root" }));
+
+    // P2 settles FIRST.
+    await act(async () => {
+      resolveP2({ ok: true });
+      await p2;
+    });
+    setFleet(assembled(null).crews, []);
+    rerender(renderTree());
+    expect(
+      screen.queryByRole("button", { name: "Move Lead A" }),
+    ).not.toBeNull();
+
+    // The STALE R1 settles LAST.
+    await act(async () => {
+      resolveR1({ ok: true });
+      await r1;
+    });
+
+    // R1's stale "it moved back in" must not erase P2's fresher "it left
+    // again" — a per-thread generation, not just the edit-session one, has
+    // to gate which settlement wins.
+    expect(
+      screen.queryByRole("button", { name: "Move Lead A" }),
+    ).not.toBeNull();
+  });
+
+  it("falls back to the Projects section when the edited crew disappears before Done can find its Rearrange control", () => {
+    vi.mocked(queryHooks.useProjectNames).mockReturnValue(
+      new Map([["p1", "Project 1"]]),
+    );
+    setFleet(
+      [
+        {
+          projectId: "p1",
+          commanderThreadId: "cmd_a",
+          name: "Crew A",
+          status: "idle",
+          liveness: null,
+          attention: 0,
+          leads: [],
+        },
+      ],
+      [],
+    );
+    const { rerender } = render(renderTree());
+    editCrew("Crew A");
+
+    // The crew disappears entirely while it is being edited — e.g. deleted,
+    // or reclassified under a different commander thread id — so there is no
+    // "Rearrange Crew A" button left to remount when Done is pressed.
+    setFleet([], []);
+    rerender(renderTree());
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    // Not the document body: the Projects section's own container, the one
+    // thing guaranteed to still exist.
+    expect(document.activeElement).toBe(
+      screen.getByTestId("crew-sidebar-fallback-focus"),
+    );
+  });
+
+  it("falls back to the Projects section when the edited crew disappears before Escape can find its Rearrange control", () => {
+    vi.mocked(queryHooks.useProjectNames).mockReturnValue(
+      new Map([["p1", "Project 1"]]),
+    );
+    setFleet(
+      [
+        {
+          projectId: "p1",
+          commanderThreadId: "cmd_a",
+          name: "Crew A",
+          status: "idle",
+          liveness: null,
+          attention: 0,
+          leads: [],
+        },
+      ],
+      [],
+    );
+    const { rerender } = render(renderTree());
+    editCrew("Crew A");
+
+    setFleet([], []);
+    rerender(renderTree());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(document.activeElement).toBe(
+      screen.getByTestId("crew-sidebar-fallback-focus"),
+    );
+  });
 });

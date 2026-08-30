@@ -328,6 +328,15 @@ interface CrewEditState {
    * focus is exactly the same lost-focus problem as leaving edit mode.
    */
   registerDoneButton: (el: HTMLButtonElement | null) => void;
+  /**
+   * Registers the deterministic fallback focus target — the Projects
+   * section's own container — for when the crew being left has disappeared
+   * or reclassified out from under its own commander thread id: there is no
+   * "that crew's Rearrange button" to hand focus back to, and the browser's
+   * default (dropping it to the document body) is not a landing anyone
+   * asked for.
+   */
+  registerFallbackFocusTarget: (el: HTMLElement | null) => void;
 }
 
 /**
@@ -367,6 +376,7 @@ const CrewEditContext = createContext<CrewEditState>({
   recoverableIds: new Set<string>(),
   registerRearrangeButton: () => {},
   registerDoneButton: () => {},
+  registerFallbackFocusTarget: () => {},
 });
 
 /** Every id in an agent's branch, so a drop onto its own descendant is refused
@@ -593,6 +603,17 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   const [recoverableIds, setRecoverableIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  // The session generation catches a stale move landing in the WRONG
+  // session; it says nothing about two moves of the SAME thread landing out
+  // of order in the SAME one. Recover a thread (pending), then — before that
+  // reply lands — an optimistic refresh shows it back under its crew and the
+  // operator promotes it again: if the re-promotion's reply arrives first and
+  // the stale recovery arrives after, the recovery's "it moved back in, drop
+  // it from the set" would erase the re-promotion's fresher "it left again,
+  // add it" the instant it landed. Each thread gets its own counter, bumped
+  // on every move() call for it; a `.then()` only touches recoverableIds if
+  // its own call is still the latest one issued for that thread.
+  const threadOperationGenerationRef = useRef(new Map<string, number>());
   const setEditingCrewId = useCallback((crewId: string | null) => {
     editSessionRef.current += 1;
     setRecoverableIds(new Set());
@@ -690,6 +711,13 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       // compare the session THIS call started under against whatever is
       // current when the network answers.
       const sessionAtCallTime = editSessionRef.current;
+      // Same idea, scoped to this ONE thread rather than the whole session:
+      // bumped on every move() call for `movingId`, so a `.then()` can tell
+      // whether some LATER move of the SAME thread has already been issued
+      // and, if so, defer to whatever that one decides instead.
+      const threadGeneration =
+        (threadOperationGenerationRef.current.get(movingId) ?? 0) + 1;
+      threadOperationGenerationRef.current.set(movingId, threadGeneration);
       void reparentAgent(movingId, newParentId).then((outcome) => {
         if (outcome.ok) {
           announce(newParentId === null ? "Moved to the top." : "Moved.");
@@ -698,7 +726,13 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
             () => setJustMovedId((id) => (id === movingId ? null : id)),
             900,
           );
-          if (editSessionRef.current === sessionAtCallTime) {
+          const isLatestForThread =
+            threadOperationGenerationRef.current.get(movingId) ===
+            threadGeneration;
+          if (
+            editSessionRef.current === sessionAtCallTime &&
+            isLatestForThread
+          ) {
             if (promotingCrewMember) {
               // A crew member just left the crew being edited — however
               // assembleFleet ends up classifying it, this is the one
@@ -762,6 +796,17 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+  // The deterministic fallback for when there is no specific control left to
+  // hand focus to — the crew being left disappeared or reclassified out from
+  // under its own commander thread id (a promotion, a deletion, a merge
+  // elsewhere) between entering edit mode and leaving it, so rearrangeId has
+  // no button registered under `previous` any more. The Projects section's
+  // own container always exists regardless of what happened to any one
+  // crew, which is the only property this fallback actually needs.
+  const fallbackFocusTargetRef = useRef<HTMLElement | null>(null);
+  const registerFallbackFocusTarget = useCallback((el: HTMLElement | null) => {
+    fallbackFocusTargetRef.current = el;
+  }, []);
   const previousEditingCrewIdRef = useRef<string | null>(null);
   useEffect(() => {
     const previous = previousEditingCrewIdRef.current;
@@ -769,11 +814,15 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
     if (editingCrewId !== null && previous === null) {
       // The clicked Rearrange button just unmounted under the operator's
       // focus; Done is the one control guaranteed to exist in its place.
-      doneButtonRef.current?.focus();
+      (doneButtonRef.current ?? fallbackFocusTargetRef.current)?.focus();
     } else if (editingCrewId === null && previous !== null) {
       // Done just unmounted; that crew's OWN Rearrange button just
-      // remounted in its place, if the crew still exists to have one.
-      rearrangeButtonsRef.current.get(previous)?.focus();
+      // remounted in its place — unless the crew itself is gone, in which
+      // case fall back rather than leave focus to drop to the document body.
+      (
+        rearrangeButtonsRef.current.get(previous) ??
+        fallbackFocusTargetRef.current
+      )?.focus();
     }
   }, [editingCrewId]);
 
@@ -792,6 +841,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       recoverableIds,
       registerRearrangeButton,
       registerDoneButton,
+      registerFallbackFocusTarget,
     }),
     [
       announce,
@@ -804,6 +854,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
       move,
       recoverableIds,
       registerDoneButton,
+      registerFallbackFocusTarget,
       registerRearrangeButton,
       reportRefusal,
     ],
@@ -1372,6 +1423,7 @@ export function CrewSidebarSection({
     refusal,
     moveMessage,
     registerDoneButton,
+    registerFallbackFocusTarget,
   } = useContext(CrewEditContext);
   const editingCrew = crews.find(
     (crew) => crew.commanderThreadId === editingCrewId,
@@ -1382,7 +1434,16 @@ export function CrewSidebarSection({
   // lives. Only that one project's header may act as the drop target.
   const editingProjectId = editingCrew?.projectId ?? null;
   return (
-    <div className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden">
+    <div
+      // Registered as the deterministic fallback focus target: if the crew
+      // being left has disappeared or reclassified, this container is the
+      // one thing guaranteed to still be here. tabIndex makes it a legal
+      // focus target even though it is not otherwise interactive.
+      ref={registerFallbackFocusTarget}
+      tabIndex={-1}
+      data-testid="crew-sidebar-fallback-focus"
+      className="flex flex-col px-2 pb-2 group-data-[collapsible=icon]:hidden"
+    >
       <div className="mb-1 mt-3 flex items-center justify-between gap-2">
         <span className={SIDEBAR_SECTION_LABEL_CLASS}>Projects</span>
         {headerTrailing}
