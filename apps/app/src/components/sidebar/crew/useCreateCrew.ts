@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import rootBootstrap from "./rootAgentBootstrap.md?raw";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { AGENT_PROVIDER } from "@/lib/agentProvider";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -17,6 +16,17 @@ interface ProjectRow {
  *  is resumed rather than duplicated. */
 const ROOT_THREAD_TITLE = "New crew";
 const UNNAMED_ROOT_TITLES = [ROOT_THREAD_TITLE, "New crew · setup"];
+
+/**
+ * The brief, fetched when someone actually presses the button.
+ *
+ * It is a couple of kilobytes of prose that the sidebar carried in its boot
+ * chunk for the whole session to spend on one click. Nothing renders it, so
+ * there is nothing to hold up: it is awaited inside the flow that needs it.
+ */
+async function loadRootBootstrap(): Promise<string> {
+  return (await import("./rootAgentBootstrap.md?raw")).default;
+}
 
 /** The root's first input, before it is anything. It is not the brief: the
  *  brief goes out only once the charter has made this a crew root. */
@@ -170,17 +180,18 @@ async function charterRoot(
  */
 async function sendRootOpening({
   threadId,
-  includeBootstrap,
+  bootstrap,
   openingRequest,
 }: {
   threadId: string;
-  includeBootstrap: boolean;
+  /** Null once the root is already carrying its brief from an earlier charter. */
+  bootstrap: string | null;
   openingRequest?: string;
 }): Promise<void> {
   const request = openingRequest?.trim();
   const input = [
-    ...(includeBootstrap
-      ? [{ type: "text" as const, text: rootBootstrap, mentions: [] }]
+    ...(bootstrap !== null
+      ? [{ type: "text" as const, text: bootstrap, mentions: [] }]
       : []),
     ...(request
       ? [
@@ -255,7 +266,7 @@ export function useCreateCrew(): {
             const chartered = await charterRoot(
               unfinished.id,
               rootProjectId,
-              rootBootstrap,
+              await loadRootBootstrap(),
               rootTaskId(rootProjectId),
             );
             if (!chartered.ok) {
@@ -267,7 +278,7 @@ export function useCreateCrew(): {
               // Only a root that had never been chartered still needs its
               // brief; one that was already crew has been carrying it since it
               // was chartered, and sending it twice reads as a second order.
-              includeBootstrap: !chartered.already,
+              bootstrap: chartered.already ? null : await loadRootBootstrap(),
               openingRequest,
             });
             // Scoped, like every thread link: the projectless route resolves to
@@ -380,7 +391,7 @@ export function useCreateCrew(): {
           const chartered = await charterRoot(
             thread.id,
             rootProjectId,
-            rootBootstrap,
+            await loadRootBootstrap(),
             rootTaskId(rootProjectId),
           );
           if (!chartered.ok) {
@@ -394,7 +405,7 @@ export function useCreateCrew(): {
 
           await sendRootOpening({
             threadId: thread.id,
-            includeBootstrap: !chartered.already,
+            bootstrap: chartered.already ? null : await loadRootBootstrap(),
             openingRequest,
           });
           navigate(
