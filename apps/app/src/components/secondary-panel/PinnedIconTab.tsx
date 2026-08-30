@@ -12,6 +12,9 @@ export interface PinnedIconTabProps {
   label: string;
   leadingVisual: ReactNode;
   onClick: () => void;
+  /** Present when the tab is one the operator opened and can close again. */
+  onClose?: () => void;
+  closeAriaLabel?: string;
   title: string;
   usesDesktopChrome: boolean;
 }
@@ -30,6 +33,8 @@ export function PinnedIconTab({
   label,
   leadingVisual,
   onClick,
+  onClose,
+  closeAriaLabel,
   title,
   usesDesktopChrome,
 }: PinnedIconTabProps) {
@@ -53,7 +58,15 @@ export function PinnedIconTab({
             isActive={isActive}
             activeTreatment={activeTreatment}
             onSelect={onClick}
-            closeAction={null}
+            closeAction={
+              onClose
+                ? {
+                    onClose,
+                    closeLabel: closeAriaLabel ?? `Close ${label}`,
+                    closeTooltip: closeAriaLabel ?? `Close ${label}`,
+                  }
+                : null
+            }
           />
         </div>
       </TooltipTrigger>

@@ -158,6 +158,11 @@ import {
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { useAgentSurfaceTabs } from "@/components/secondary-panel/useAgentSurfaceTabs";
+import { listAgentSurfaceTabs } from "@/components/secondary-panel/tower/agentSurfaceRegistry";
+import { registerBuiltInAgentSurfaceTabs } from "@/components/secondary-panel/tower/builtInAgentSurfaceTabs";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
+import type { NewTabSurfaceOption } from "@/components/secondary-panel/NewTabPage";
 import { getFileExtension } from "@/lib/file-opener-preference";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -625,6 +630,32 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openPluginPanel,
     threadId,
   });
+  // The agent's own surfaces, offered on the new-tab page instead of mounting
+  // themselves. Registered surfaces are the same set the panel strip draws
+  // from, so a surface can never be openable here and absent there.
+  //
+  // Registering from the component body is the registry's own instruction —
+  // module scope deadlocks on an import cycle — and it has to happen HERE too:
+  // the panel registers during its render, which is after this list is built,
+  // so reading the registry without this saw only the plugin surfaces.
+  registerBuiltInAgentSurfaceTabs();
+  const { agentSurfaceTabs: pluginSurfaceTabs } = usePluginSlots();
+  const agentSurfaceOptions = useMemo<NewTabSurfaceOption[]>(
+    () => [
+      ...listAgentSurfaceTabs().map((tab) => ({
+        id: tab.id,
+        label: tab.label,
+        icon: tab.icon,
+      })),
+      ...pluginSurfaceTabs.map((slot) => ({
+        id: `plugin:${slot.pluginId}:${slot.id}`,
+        label: slot.label,
+        icon: pluginIconName(slot.icon),
+      })),
+    ],
+    [pluginSurfaceTabs],
+  );
+  const { open: openAgentSurface } = useAgentSurfaceTabs(threadId, threadId);
   const {
     fileOpeners: pluginFileOpeners,
     threadPanelActions: pluginThreadPanelActions,
@@ -2445,7 +2476,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onOpenBrowser={handleOpenBrowser}
       onOpenReview={canUseGitUi ? openSecondaryPanelDiffPanel : undefined}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
+      onOpenSurface={openAgentSurface}
       pluginActions={pluginPanelActions}
+      surfaces={agentSurfaceOptions}
     />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
