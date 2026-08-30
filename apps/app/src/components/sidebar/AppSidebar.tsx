@@ -21,8 +21,8 @@ import {
   ChatsSidebarSection,
   CrewEditProvider,
   CrewSidebarSection,
-  NewCrewButton,
 } from "./crew/CrewSidebarSection";
+import { NewProjectButton } from "./crew/NewProjectButton";
 import { AirwaysMark } from "./crew/BrandLockup";
 import { PlatformSection } from "./crew/PlatformSection";
 import { PluginThreadList } from "./PluginThreadList";
@@ -318,7 +318,7 @@ export function AppSidebar({
           </div>
         )}
         <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
-          <NewCrewButton />
+          <NewProjectButton quickCreateProject={quickCreateProject} />
         </div>
         <PlatformSection onNavigate={closeOnMobile} />
         {/* Two bands, and every thread is in one of them: PROJECTS carries the

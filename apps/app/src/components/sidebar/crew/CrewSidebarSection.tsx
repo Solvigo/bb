@@ -32,6 +32,7 @@ import {
   type LooseChat,
 } from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
+export { NewProjectButton } from "./NewProjectButton";
 
 export const SIDEBAR_SECTION_LABEL_CLASS =
   "px-2 text-xs font-medium text-muted-foreground";
@@ -476,25 +477,44 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
  * so the header lights up like any other target, and says what it is while a
  * drag is in the air.
  */
-function ProjectRootDropZone({ name }: { name: string }) {
+function ProjectRootDropZone({
+  name,
+  variant = "inline",
+}: {
+  name: string;
+  /** Block header sits inside a project card; inline is the legacy row style. */
+  variant?: "inline" | "block-header";
+}) {
   const { draggingId } = useContext(CrewEditContext);
   const drop = useAgentDrop({ agentId: "" });
   const armed = draggingId !== null;
+  const isBlockHeader = variant === "block-header";
   return (
     <div
       {...drop.handlers}
       className={cn(
-        "flex min-h-6 items-center gap-1.5 rounded px-2 transition-colors",
+        "flex items-center gap-2 transition-colors",
+        isBlockHeader ? "min-h-7 px-0" : "min-h-6 gap-1.5 rounded px-2",
         armed && "ring-1 ring-inset ring-border",
         drop.isOver && "bg-primary/20 ring-2 ring-primary",
       )}
     >
       <Icon
         name="Folder"
-        className="size-3.5 shrink-0 text-subtle-foreground"
+        className={cn(
+          "shrink-0 text-subtle-foreground",
+          isBlockHeader ? "size-4" : "size-3.5",
+        )}
         aria-hidden
       />
-      <span className="truncate text-xs font-medium text-muted-foreground">
+      <span
+        className={cn(
+          "truncate font-medium",
+          isBlockHeader
+            ? "text-sm text-foreground"
+            : "text-xs text-muted-foreground",
+        )}
+      >
         {name}
       </span>
       {armed ? (
@@ -957,35 +977,48 @@ export function CrewSidebarSection({
           No projects yet — create one above.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-3">
           {groupByProject(crews, projectNameOf, projectIds).map((group) => (
-            <li key={group.projectId}>
-              {group.name === null ? null : (
-                <ProjectRootDropZone name={group.name} />
-              )}
-              {group.crews.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => createCrew(group.projectId)}
-                  disabled={creatingCrew}
-                  className="flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
-                >
-                  <Icon name="Plus" className="size-3.5 shrink-0" aria-hidden />
-                  <span className="truncate text-[13px]">
-                    {creatingCrew ? "Standing up a crew…" : "Add a crew"}
-                  </span>
-                </button>
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {group.crews.map((crew) => (
-                    <CrewEntry
-                      key={crew.commanderThreadId}
-                      crew={crew}
-                      onNavigate={onNavigate}
+            <li key={group.projectId} data-testid="sidebar-project-group">
+              <div className="overflow-hidden rounded-lg border border-sidebar-border bg-surface-recessed-solid">
+                {group.name === null ? null : (
+                  <div className="border-b border-sidebar-border px-2.5 py-2">
+                    <ProjectRootDropZone
+                      name={group.name}
+                      variant="block-header"
                     />
-                  ))}
-                </ul>
-              )}
+                  </div>
+                )}
+                <div className="flex flex-col gap-1 px-1.5 py-2">
+                  {group.crews.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => createCrew(group.projectId)}
+                      disabled={creatingCrew}
+                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
+                    >
+                      <Icon
+                        name="Plus"
+                        className="size-3.5 shrink-0"
+                        aria-hidden
+                      />
+                      <span className="truncate text-sm">
+                        {creatingCrew ? "Standing up a crew…" : "Add a crew"}
+                      </span>
+                    </button>
+                  ) : (
+                    <ul className="flex flex-col gap-0.5">
+                      {group.crews.map((crew) => (
+                        <CrewEntry
+                          key={crew.commanderThreadId}
+                          crew={crew}
+                          onNavigate={onNavigate}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
             </li>
           ))}
         </ul>
