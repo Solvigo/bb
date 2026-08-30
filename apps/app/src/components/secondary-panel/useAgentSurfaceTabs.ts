@@ -5,7 +5,11 @@ import {
   type FixedPanelTabsPanelStateId,
   type FixedPanelTabsSyncThreadId,
 } from "@/lib/fixed-panel-tabs";
-import { getFixedPanelTabsStateStorageKey } from "@/lib/fixed-panel-tabs-state";
+import {
+  getFixedPanelTabsStateStorageKey,
+  parseFixedPanelTabsState,
+  type FixedPanelTabsState,
+} from "@/lib/fixed-panel-tabs-state";
 
 export interface AgentSurfaceTabsState {
   /** Ids of the surfaces this thread has open, in strip order. */
@@ -50,6 +54,37 @@ function threadIdFromStorageKey(key: string): string | null {
   return key.slice(prefix.length, key.length - suffix.length);
 }
 
+/**
+ * Whether the thread's OWNING fixed-panel-tabs record is a live, current
+ * record right now — not merely physically present. A raw string can still
+ * sit in storage for a record that is schema-invalid or 14+ days idle
+ * (FIXED_PANEL_TABS_IDLE_EXPIRY_MS); `parseFixedPanelTabsState` is the one
+ * canonical place that already knows how to tell, since it is the exact
+ * function the owning atom itself parses through on every read. Reusing it
+ * here — rather than re-deriving "is this fresh enough" from a second,
+ * independent timestamp check — means there is exactly one answer to that
+ * question, and this one can never disagree with the atom's own.
+ *
+ * A unique sentinel (rather than some real "empty" state) as `initialValue`
+ * makes a rejected parse (never stored, corrupt JSON, failed schema, or
+ * expired) detectable by reference: `parseFixedPanelTabsState` only ever
+ * returns something else when it produced a genuinely fresh, valid record
+ * from `storedValue`.
+ */
+function isOwningFixedPanelTabsRecordCurrent(threadId: string): boolean {
+  const raw = window.localStorage.getItem(
+    getFixedPanelTabsStateStorageKey({ threadId }),
+  );
+  if (raw === null) return false;
+  const rejectionSentinel = {} as FixedPanelTabsState;
+  const parsed = parseFixedPanelTabsState({
+    initialValue: rejectionSentinel,
+    now: Date.now(),
+    storedValue: raw,
+  });
+  return parsed !== rejectionSentinel;
+}
+
 function readStored(threadId: string): StoredSurfaceTabs | null {
   try {
     const raw = window.localStorage.getItem(storageKey(threadId));
@@ -58,16 +93,14 @@ function readStored(threadId: string): StoredSurfaceTabs | null {
     // open/close/show write goes through the SAME update() that touches
     // that record too — see the writes below), so the record is the one
     // canonical answer for whether this thread's panel state is still live.
-    // Without this check, a thread idle long enough for that record to be
-    // pruned (14+ days — see FIXED_PANEL_TABS_IDLE_EXPIRY_MS) could still
-    // resurrect its old open surfaces from this second, unpruned key.
-    if (
-      window.localStorage.getItem(
-        getFixedPanelTabsStateStorageKey({ threadId }),
-      ) === null
-    ) {
-      return null;
-    }
+    // Checking only that the owning key is PHYSICALLY PRESENT is not enough:
+    // an expired record can sit in storage, unpruned, until some later sweep
+    // gets around to deleting it — and hydration runs synchronously on
+    // mount, with no guarantee any prune sweep ran first. Parsing the owning
+    // record's actual freshness here, synchronously and unconditionally,
+    // means this can never resurrect a stale open set into memory no matter
+    // what order effects fire in.
+    if (!isOwningFixedPanelTabsRecordCurrent(threadId)) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
     const { openTabIds, activeTabId } = parsed as Partial<StoredSurfaceTabs>;
@@ -204,11 +237,11 @@ export function useAgentSurfaceTabs(
 
 /**
  * Deletes this hook's own storage entries once their owning fixed-panel-tabs
- * record is gone — pruned for 14+ days idle, or never existed. `readStored`
- * already refuses to resurrect an orphan (the owning record is the one
- * canonical answer for whether a thread's panel state is still live), so
- * this is pure hygiene: without it an orphan would sit in storage forever,
- * unreadable but never removed either.
+ * record is no longer CURRENT — pruned for 14+ days idle, schema-invalid, or
+ * never existed (see `isOwningFixedPanelTabsRecordCurrent`). `readStored`
+ * already refuses to resurrect an orphan into memory on its own, synchronous
+ * and unconditional; this is pure disk hygiene on top of that guarantee,
+ * so an orphan does not sit in storage forever, unreadable but never removed.
  */
 export function pruneOrphanedAgentSurfaceTabsStorage(): void {
   let storage: Storage;
@@ -224,7 +257,7 @@ export function pruneOrphanedAgentSurfaceTabsStorage(): void {
     if (key === null) continue;
     const threadId = threadIdFromStorageKey(key);
     if (threadId === null) continue;
-    if (storage.getItem(getFixedPanelTabsStateStorageKey({ threadId })) === null) {
+    if (!isOwningFixedPanelTabsRecordCurrent(threadId)) {
       orphanedKeys.push(key);
     }
   }

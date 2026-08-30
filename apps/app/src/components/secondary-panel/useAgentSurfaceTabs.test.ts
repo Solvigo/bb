@@ -6,6 +6,7 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createEmptyFixedPanelTabsState,
+  FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
@@ -206,7 +207,76 @@ describe("useAgentSurfaceTabs persistence", () => {
     expect(result.current.activeTabId).toBeNull();
   });
 
+  it("does not resurrect a stored open set when the owning record is PRESENT but 14+ days idle-expired", () => {
+    // Physically present, unlike the "gone" case above — this is the race
+    // the fix closes: an expired owning record can sit in storage,
+    // unpruned, until some later sweep gets to it, and hydration must not
+    // trust it just because the raw string is there.
+    const threadId = "thr_orphan_expired";
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: Date.now() - FIXED_PANEL_TABS_IDLE_EXPIRY_MS - 1,
+        }),
+      }),
+    );
+    window.localStorage.setItem(
+      agentSurfaceStorageKey(threadId),
+      JSON.stringify({ openTabIds: ["brief"], activeTabId: "brief" }),
+    );
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => useAgentSurfaceTabs(threadId, threadId),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+
+    expect(result.current.openTabIds).toEqual([]);
+    expect(result.current.activeTabId).toBeNull();
+  });
+
+  it("does not resurrect a stored open set when the owning record is PRESENT but fails to parse", () => {
+    const threadId = "thr_orphan_invalid";
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      "{not valid json",
+    );
+    window.localStorage.setItem(
+      agentSurfaceStorageKey(threadId),
+      JSON.stringify({ openTabIds: ["brief"], activeTabId: "brief" }),
+    );
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => useAgentSurfaceTabs(threadId, threadId),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+
+    expect(result.current.openTabIds).toEqual([]);
+    expect(result.current.activeTabId).toBeNull();
+  });
+
   describe("pruneOrphanedAgentSurfaceTabsStorage", () => {
+    it("also removes a companion key whose owning record is PRESENT but expired", () => {
+      const threadId = "thr_prune_expired";
+      window.localStorage.setItem(
+        getFixedPanelTabsStateStorageKey({ threadId }),
+        serializeFixedPanelTabsState({
+          state: createEmptyFixedPanelTabsState({
+            lastUsedAt: Date.now() - FIXED_PANEL_TABS_IDLE_EXPIRY_MS - 1,
+          }),
+        }),
+      );
+      window.localStorage.setItem(
+        agentSurfaceStorageKey(threadId),
+        JSON.stringify({ openTabIds: ["brief"], activeTabId: "brief" }),
+      );
+
+      pruneOrphanedAgentSurfaceTabsStorage();
+
+      expect(
+        window.localStorage.getItem(agentSurfaceStorageKey(threadId)),
+      ).toBeNull();
+    });
     it("removes a companion key whose owning record is gone, keeps one whose owner still exists", () => {
       const orphanThreadId = "thr_prune_orphan";
       const liveThreadId = "thr_prune_live";
