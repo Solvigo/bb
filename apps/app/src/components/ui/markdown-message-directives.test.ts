@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginMessageDirectiveProps } from "@bb/plugin-sdk";
 import {
   buildMessageDirectiveRegistry,
+  filterUserMessageDirectiveRegistry,
   normalizeDirectiveAttributes,
   reconstructDirectiveSource,
 } from "./markdown-message-directives";
@@ -60,6 +61,33 @@ describe("buildMessageDirectiveRegistry", () => {
     expect(warn.mock.calls[0]?.[0]).toContain('message directive "inline-vis"');
     expect(warn.mock.calls[0]?.[0]).toContain("alpha");
     expect(warn.mock.calls[0]?.[0]).toContain("zeta");
+  });
+});
+
+describe("filterUserMessageDirectiveRegistry", () => {
+  it("keeps only directives that opted into experimental_userMessages", () => {
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "opted-in", pluginId: "demo", experimental_userMessages: true }),
+      slot({ id: "opted-out", pluginId: "demo" }),
+    ]);
+    const filtered = filterUserMessageDirectiveRegistry(registry);
+    expect(filtered.has("opted-in")).toBe(true);
+    expect(filtered.has("opted-out")).toBe(false);
+  });
+
+  it("drops a collision even when one claimant opted in", () => {
+    const registry = buildMessageDirectiveRegistry(
+      [
+        slot({
+          id: "inline-vis",
+          pluginId: "alpha",
+          experimental_userMessages: true,
+        }),
+        slot({ id: "inline-vis", pluginId: "zeta" }),
+      ],
+      { warn: () => {} },
+    );
+    expect(filterUserMessageDirectiveRegistry(registry).size).toBe(0);
   });
 });
 

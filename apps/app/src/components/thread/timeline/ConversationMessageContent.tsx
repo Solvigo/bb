@@ -43,6 +43,7 @@ import {
 } from "./ConversationMessageMentions.js";
 import type { MarkdownPromptMentions } from "@/components/ui/markdown-prompt-mentions.js";
 import {
+  filterUserMessageDirectiveRegistry,
   useMessageDirectiveRegistry,
   type MarkdownMessageDirectives,
 } from "@/components/ui/markdown-message-directives.js";
@@ -91,6 +92,14 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
+  /**
+   * Message identity for opted-in user-message plugin directives. Optional
+   * like `threadId` below — story/preview harnesses render a user message
+   * with no real thread behind it, and omitting either simply skips
+   * directive activation for that render.
+   */
+  id?: TimelineUserConversationRow["id"];
+  turnId?: TimelineUserConversationRow["turnId"];
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
   /** The sender thread is one of the side-chat plugin's hidden forks, so the
@@ -190,12 +199,14 @@ interface UserConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
   childOrigin: ThreadChildOrigin | null;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
+  id?: TimelineUserConversationRow["id"];
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   mobileActionDisplay: "inline" | "overflow";
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
+  onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
@@ -206,6 +217,8 @@ interface UserConversationMessageProps {
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
+  threadId?: TimelineUserConversationRow["threadId"];
+  turnId?: TimelineUserConversationRow["turnId"];
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
@@ -230,6 +243,8 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
 
 interface CollapsibleMessageTextProps {
   mentions: readonly PromptTextMention[];
+  /** Opted-in plugin directives — see `UserConversationMessage`. */
+  messageDirectives?: MarkdownMessageDirectives;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onOpenLink?: ThreadTimelineLinkHandler;
@@ -244,6 +259,7 @@ interface CollapsibleMessageTextProps {
 
 function CollapsibleMessageText({
   mentions,
+  messageDirectives,
   resolveMentionLink,
   resolveSegmentLinkHref,
   onOpenLink,
@@ -335,6 +351,7 @@ function CollapsibleMessageText({
       >
         <MarkdownPreview
           content={body.text}
+          messageDirectives={messageDirectives}
           promptMentions={promptMentions}
           threadMentions={rawThreadMentions}
           linkRouting={linkRouting}
@@ -381,12 +398,14 @@ function UserConversationMessage({
   addToChatAttachments,
   attachmentItems,
   childOrigin,
+  id,
   initiator,
   mentions,
   mobileActionDisplay,
   onAddToChat,
   onOpenLink,
   onOpenLocalFileLink,
+  onOpenPluginPanel,
   pluginActions = [],
   projectId,
   resolveMentionLink,
@@ -398,8 +417,45 @@ function UserConversationMessage({
   systemMessageKind,
   systemMessageSubject,
   text,
+  threadId,
+  turnId,
   turnRequest,
 }: UserConversationMessageProps) {
+  // Registry is subscribed once at the timeline root and provided via
+  // context; the user path activates only directives that opted into
+  // `experimental_userMessages` — see markdown-message-directives.tsx.
+  const messageDirectiveRegistry = useMessageDirectiveRegistry();
+  const messageDirectives = useMemo<MarkdownMessageDirectives | undefined>(
+    () => {
+      if (
+        messageDirectiveRegistry === null ||
+        id === undefined ||
+        threadId === undefined
+      ) {
+        return undefined;
+      }
+      const userRegistry = filterUserMessageDirectiveRegistry(
+        messageDirectiveRegistry,
+      );
+      if (userRegistry.size === 0) {
+        return undefined;
+      }
+      return {
+        registry: userRegistry,
+        message: {
+          id,
+          threadId,
+          turnId: turnId ?? null,
+          projectId: projectId ?? null,
+        },
+        // No workspace file viewer on the plain user-message surface (no
+        // `workspaceRootPath` to resolve a relative path against).
+        openWorkspaceFile: null,
+        openThreadPanel: onOpenPluginPanel ?? null,
+      };
+    },
+    [messageDirectiveRegistry, id, threadId, turnId, projectId, onOpenPluginPanel],
+  );
   if (initiator === "agent" && senderThreadId !== null) {
     const body = generatedConversationBodySlice({ initiator, text });
     const bodyMentions = shiftMentionsToTextRange({
@@ -481,6 +537,7 @@ function UserConversationMessage({
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}
+              messageDirectives={messageDirectives}
               resolveMentionLink={resolveMentionLink}
               resolveSegmentLinkHref={resolveSegmentLinkHref}
               onOpenLink={onOpenLink}
@@ -718,12 +775,14 @@ export function ConversationMessageContent(
         attachmentItems={attachmentItems}
         childOrigin={props.childOrigin}
         pluginActions={props.pluginActions}
+        id={props.id}
         initiator={props.initiator}
         mentions={props.mentions}
         mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
         onAddToChat={props.onAddToChat}
         onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
+        onOpenPluginPanel={onOpenPluginPanel}
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}
         resolveSegmentLinkHref={props.resolveSegmentLinkHref}
@@ -734,6 +793,8 @@ export function ConversationMessageContent(
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
         text={text}
+        threadId={threadId}
+        turnId={props.turnId}
         turnRequest={props.turnRequest}
       />
     );

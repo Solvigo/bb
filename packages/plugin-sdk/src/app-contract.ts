@@ -615,6 +615,16 @@ export interface PluginMessageDirectiveRegistration {
    */
   id: string;
   component: ComponentType<PluginMessageDirectiveProps>;
+  /**
+   * Opt into also mounting when this directive's marker appears in a USER
+   * message. Default false: user messages carry pasted untrusted text, so a
+   * directive mounts there only when its plugin explicitly asks for it.
+   *
+   * A directive that opts in must treat its attributes as a reference to
+   * data the component resolves itself; pasted forgeries must render inert.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_userMessages?: boolean;
 }
 
 /**

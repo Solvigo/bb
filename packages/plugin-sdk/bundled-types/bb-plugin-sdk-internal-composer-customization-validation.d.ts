@@ -19,6 +19,7 @@ declare function requireSlotId(kind: string, value: unknown): string;
 declare function requireMessageDirectiveId(kind: string, value: unknown): string;
 declare function requireNonEmptyString(kind: string, field: string, value: unknown): string;
 declare function requireOptionalString(kind: string, field: string, value: unknown): string | undefined;
+declare function requireOptionalBoolean(kind: string, field: string, value: unknown): boolean | undefined;
 declare function requireComponent<T>(kind: string, value: unknown): T;
 declare function requireUniqueId(kind: string, seen: Set<string>, id: string): void;
 /**
@@ -27,4 +28,4 @@ declare function requireUniqueId(kind: string, seen: Set<string>, id: string): v
  */
 declare function collectComposerCustomization(registration: unknown, seenIds: Set<string>, onRejected: RejectionReporter): ComposerCustomization | null;
 
-export { PLUGIN_SLOT_ID_PATTERN, collectComposerCustomization, normalizePluginThreadRowStatus, requireComponent, requireMessageDirectiveId, requireNonEmptyString, requireOptionalString, requireSlotId, requireUniqueId };
+export { PLUGIN_SLOT_ID_PATTERN, collectComposerCustomization, normalizePluginThreadRowStatus, requireComponent, requireMessageDirectiveId, requireNonEmptyString, requireOptionalBoolean, requireOptionalString, requireSlotId, requireUniqueId };

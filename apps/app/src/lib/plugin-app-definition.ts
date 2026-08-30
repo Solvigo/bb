@@ -22,6 +22,7 @@ import {
   requireComponent,
   requireMessageDirectiveId,
   requireNonEmptyString,
+  requireOptionalBoolean,
   requireOptionalString,
   requireSlotId,
   requireUniqueId,
@@ -282,9 +283,17 @@ export function collectPluginAppRegistrations(
         const kind = "slots.messageDirective";
         const id = requireMessageDirectiveId(kind, registration?.id);
         requireUniqueId(kind, seenIds.messageDirective, id);
+        const experimentalUserMessages = requireOptionalBoolean(
+          kind,
+          "experimental_userMessages",
+          registration?.experimental_userMessages,
+        );
         messageDirectives.push({
           id,
           component: requireComponent(kind, registration.component),
+          ...(experimentalUserMessages !== undefined
+            ? { experimental_userMessages: experimentalUserMessages }
+            : {}),
         });
       },
       messageAction(registration) {

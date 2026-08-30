@@ -33,6 +33,7 @@ import { towerNavAtom } from "./tower/towerNav";
 import {
   listAgentSurfaceTabs,
   onAgentTeardown,
+  resolveAgentSurfaceTabId,
   type AgentSurfaceTab,
 } from "./tower/agentSurfaceRegistry";
 import { AgentSurfaceTabContent } from "./tower/AgentSurfaceTabContent";
@@ -476,8 +477,9 @@ export function ThreadSecondaryPanel({
   // server's strict tab contract). It shows by default and yields to any real
   // fixed view (Info/Diff) or file tab the operator opens.
   // Tower views are CLIENT-ONLY (never synced to the pinned server's strict tab
-  // contract). "crew" is the default surface; the views show over the empty
-  // new-tab / info states but yield to any real content the operator opens.
+  // contract). The first registered surface tab is the default; the views show
+  // over the empty new-tab / info states but yield to any real content the
+  // operator opens.
   // The agent this panel belongs to: in this app an agent IS a thread, and the
   // panel is opened inside one. The board already resolved it this way; now the
   // whole surface does, so every tab is handed the same agent.
@@ -510,7 +512,15 @@ export function ThreadSecondaryPanel({
     () => towerTabs.filter((tab) => surfaces.openTabIds.includes(tab.id)),
     [surfaces.openTabIds, towerTabs],
   );
-  const towerView = surfaces.activeTabId;
+  // The persisted active id can point at a surface that no longer exists — a
+  // stale `crew` id from before that built-in was removed, or a plugin tab
+  // that has not registered yet — so resolve it against what is actually open
+  // instead of letting the panel go blank while a valid open surface sits
+  // right there. An empty open set still resolves to null: nothing auto-mounts.
+  const towerView = resolveAgentSurfaceTabId(
+    surfaces.activeTabId,
+    openTowerTabs,
+  );
   const setTowerView = surfaces.show;
   // Same contract the per-agent surface gives a tab: a disposer narrowed to
   // this agent, so a tab never tears down its context because a different

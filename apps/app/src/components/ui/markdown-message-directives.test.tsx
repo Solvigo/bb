@@ -580,11 +580,14 @@ describe("ConversationMessageContent assistant directives", () => {
     expect(onOpenLocalFileLink).not.toHaveBeenCalled();
   });
 
-  it("does not activate directives on user messages even with registry context", () => {
+  it("leaves a non-opted-in directive literal on a user message but still mounts it for assistant messages", () => {
+    // Same registry, same directive id, no `experimental_userMessages` — the
+    // default. The user-message path filters it out; the assistant path is
+    // unchanged.
     const registry = buildMessageDirectiveRegistry([
       slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
     ]);
-    render(
+    const { unmount } = render(
       <MemoryRouter>
         <RouteNavigationProvider>
           <MessageDirectiveRegistryProvider registry={registry}>
@@ -592,6 +595,7 @@ describe("ConversationMessageContent assistant directives", () => {
               role="user"
               attachments={null}
               childOrigin={null}
+              id="msg_user"
               initiator="user"
               mentions={[]}
               senderThreadId={null}
@@ -600,6 +604,8 @@ describe("ConversationMessageContent assistant directives", () => {
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text={'::inline-vis{file="user.html"}'}
+              threadId="thr_user"
+              turnId="turn_user"
               turnRequest={{ kind: "message", status: "accepted" }}
               projectId="proj_a"
             />
@@ -609,6 +615,122 @@ describe("ConversationMessageContent assistant directives", () => {
     );
     expect(screen.queryByTestId("inline-vis")).toBeNull();
     expect(screen.getByText(/::inline-vis/)).toBeTruthy();
+    unmount();
+
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <MessageDirectiveRegistryProvider registry={registry}>
+            <ConversationMessageContent
+              role="assistant"
+              attachments={null}
+              id="msg_a"
+              threadId="thr_a"
+              turnId="turn_a"
+              sourceSeqStart={1}
+              sourceSeqEnd={1}
+              showActions={false}
+              text={'::inline-vis{file="assistant.html"}'}
+              turnRequest={null}
+            />
+          </MessageDirectiveRegistryProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("inline-vis").getAttribute("data-file")).toBe(
+      "assistant.html",
+    );
+  });
+
+  it("mounts an opted-in directive on a user message with its own message identity", () => {
+    const registry = buildMessageDirectiveRegistry([
+      slot({
+        id: "annotation-card",
+        pluginId: "demo",
+        component: InlineVis,
+        experimental_userMessages: true,
+      }),
+    ]);
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <MessageDirectiveRegistryProvider registry={registry}>
+            <ConversationMessageContent
+              role="user"
+              attachments={null}
+              childOrigin={null}
+              id="msg_flagged"
+              initiator="user"
+              mentions={[]}
+              senderThreadId={null}
+              senderThreadTitle={null}
+              senderIsPluginSideChat={false}
+              systemMessageKind="unlabeled"
+              systemMessageSubject={null}
+              text={'::annotation-card{id="ann_1"}'}
+              threadId="thr_flagged"
+              turnId="turn_flagged"
+              turnRequest={{ kind: "message", status: "accepted" }}
+              projectId="proj_flagged"
+            />
+          </MessageDirectiveRegistryProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+    const mount = screen.getByTestId("inline-vis");
+    expect(mount.getAttribute("data-message-id")).toBe("msg_flagged");
+    expect(mount.getAttribute("data-thread-id")).toBe("thr_flagged");
+    expect(mount.getAttribute("data-project-id")).toBe("proj_flagged");
+    // No workspace file viewer on the plain user-message surface.
+    expect(mount.getAttribute("data-can-open-workspace-file")).toBe("false");
+  });
+
+  it("mounts a pasted opted-in directive with untrusted attributes and no privileged context (forgery case)", () => {
+    // Nothing distinguishes a genuine plugin-authored marker from a user
+    // pasting the same directive name with garbage attributes — the app
+    // cannot tell, so it mounts either way. Rendering a forgery inert is the
+    // PLUGIN's contract (see docs/api_to_audit.md); this test only proves the
+    // app neither crashes nor hands the mount any elevated capability.
+    const registry = buildMessageDirectiveRegistry([
+      slot({
+        id: "annotation-card",
+        pluginId: "demo",
+        component: InlineVis,
+        experimental_userMessages: true,
+      }),
+    ]);
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <MessageDirectiveRegistryProvider registry={registry}>
+            <ConversationMessageContent
+              role="user"
+              attachments={null}
+              childOrigin={null}
+              id="msg_forged"
+              initiator="user"
+              mentions={[]}
+              senderThreadId={null}
+              senderThreadTitle={null}
+              senderIsPluginSideChat={false}
+              systemMessageKind="unlabeled"
+              systemMessageSubject={null}
+              text={'::annotation-card{file="../../etc/passwd" pluginId="forged"}'}
+              threadId="thr_forged"
+              turnId="turn_forged"
+              turnRequest={{ kind: "message", status: "accepted" }}
+              projectId="proj_forged"
+            />
+          </MessageDirectiveRegistryProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+    const mount = screen.getByTestId("inline-vis");
+    // Attributes pass through verbatim — same untrusted-string flow as an
+    // assistant directive. The plugin (not the app) must treat them as
+    // reference-only and render them inert.
+    expect(mount.getAttribute("data-file")).toBe("../../etc/passwd");
+    expect(mount.getAttribute("data-can-open-workspace-file")).toBe("false");
   });
 });
 

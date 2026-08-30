@@ -102,6 +102,17 @@ export function requireOptionalString(
   return value;
 }
 
+export function requireOptionalBoolean(
+  kind: string,
+  field: string,
+  value: unknown,
+): boolean | undefined {
+  if (value !== undefined && typeof value !== "boolean") {
+    throw new Error(`${kind}: "${field}" must be a boolean when set`);
+  }
+  return value;
+}
+
 export function requireComponent<T>(kind: string, value: unknown): T {
   if (typeof value !== "function") {
     throw new Error(`${kind}: "component" must be a React component function`);
