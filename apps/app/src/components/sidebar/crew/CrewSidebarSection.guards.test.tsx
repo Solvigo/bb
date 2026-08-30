@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import type { Crew } from "./useCrews";
 
 const createCrew = vi.fn();
@@ -59,9 +60,11 @@ describe("CrewSidebarSection one-crew affordance", () => {
 
   it("offers Add a crew only on projects that have none yet", () => {
     render(
-      <CrewEditProvider>
-        <CrewSidebarSection />
-      </CrewEditProvider>,
+      <MemoryRouter>
+        <CrewEditProvider>
+          <CrewSidebarSection />
+        </CrewEditProvider>
+      </MemoryRouter>,
     );
 
     const groups = screen.getAllByTestId("sidebar-project-group");
@@ -84,9 +87,11 @@ describe("CrewSidebarSection one-crew affordance", () => {
     });
 
     render(
-      <CrewEditProvider>
-        <CrewSidebarSection />
-      </CrewEditProvider>,
+      <MemoryRouter>
+        <CrewEditProvider>
+          <CrewSidebarSection />
+        </CrewEditProvider>
+      </MemoryRouter>,
     );
 
     const groups = screen.getAllByTestId("sidebar-project-group");
