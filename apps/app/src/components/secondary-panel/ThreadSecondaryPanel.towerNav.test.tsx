@@ -4,9 +4,9 @@ import { cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { useHydrateAtoms } from "jotai/utils";
-import { Provider as JotaiProvider } from "jotai";
+import { createStore, Provider as JotaiProvider } from "jotai";
 import { createThreadInfoFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
@@ -24,40 +24,35 @@ afterEach(() => {
 
 const noop = () => {};
 
-function HydrateAtoms({ initialValues, children }: any) {
-  useHydrateAtoms(initialValues);
-  return children;
-}
-
 function renderPanel(towerNavValue: any) {
-  const { wrapper: Wrapper } = createQueryClientTestHarness();
+  const { queryClient } = createQueryClientTestHarness();
+  const store = createStore();
+  store.set(towerNavAtom, towerNavValue);
   return render(
-    <JotaiProvider>
-      <HydrateAtoms initialValues={[[towerNavAtom, towerNavValue]]}>
-        <Wrapper>
-          <MemoryRouter>
-            <TooltipProvider>
-              <PanelGroup direction="horizontal">
-                <ThreadSecondaryPanel
-                  activeTab={createThreadInfoFixedPanelTab()}
-                  canUseGitUi={false}
-                  isOpen
-                  metadataContent={null}
-                  onClose={noop}
-                  onCollapse={noop}
-                  onFileTabReorder={noop}
-                  onOpenNewTab={noop}
-                  onPanelChange={noop}
-                  onPanelFocus={noop}
-                  renderAsDrawer={false}
-                  isConversationCollapsed={false}
-                  onToggleConversationCollapse={noop}
-                />
-              </PanelGroup>
-            </TooltipProvider>
-          </MemoryRouter>
-        </Wrapper>
-      </HydrateAtoms>
+    <JotaiProvider store={store}>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <TooltipProvider>
+            <PanelGroup direction="horizontal">
+              <ThreadSecondaryPanel
+                activeTab={createThreadInfoFixedPanelTab()}
+                canUseGitUi={false}
+                isOpen
+                metadataContent={null}
+                onClose={noop}
+                onCollapse={noop}
+                onFileTabReorder={noop}
+                onOpenNewTab={noop}
+                onPanelChange={noop}
+                onPanelFocus={noop}
+                renderAsDrawer={false}
+                isConversationCollapsed={false}
+                onToggleConversationCollapse={noop}
+              />
+            </PanelGroup>
+          </TooltipProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
     </JotaiProvider>
   );
 }

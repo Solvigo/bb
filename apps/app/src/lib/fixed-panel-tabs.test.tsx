@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { Provider } from "jotai";
-import { useQueryClient, QueryClientProvider, QueryClient } from "@tanstack/react-query";
+import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import {
   useFixedPanelTabsState,
   useOpenFixedSecondaryPanel,
@@ -11,6 +11,7 @@ import {
   useUpdateFixedPanelTabsState,
   useRemoveFixedRightTerminalTab,
 } from "./fixed-panel-tabs";
+import { createGitDiffFixedPanelTab } from "./fixed-panel-tabs-state";
 
 function createTestWrapper() {
   const queryClient = new QueryClient();
@@ -73,7 +74,9 @@ describe("fixed-panel-tabs state-boundary writers", () => {
     });
 
     // Verify preservation
-    expect(result.current.state.secondary.activeTabId).toEqual("git-diff");
+    expect(result.current.state.secondary.activeTabId).toEqual(
+      createGitDiffFixedPanelTab().id,
+    );
     expect(result.current.state.secondary.surfaceTabIds).toEqual(["crew", "brief"]);
     expect(result.current.state.secondary.activeSurfaceTabId).toEqual("crew");
 
