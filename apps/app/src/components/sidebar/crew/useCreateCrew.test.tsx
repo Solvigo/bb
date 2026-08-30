@@ -1051,6 +1051,19 @@ describe("useCreateCrew", () => {
       act(() => {
         result.current.createCrew("proj_a");
       });
+      // The archive is several awaited legs in — create, charter, a second
+      // fleet read — and its deadline timer does not exist until it is
+      // reached. Spending the clock first ran the whole 20s out before there
+      // was anything to time out, which is why this read as a product bug and
+      // was not one. Drive the flow to the seam on zero virtual time, prove
+      // it arrived, THEN run out its deadline.
+      await act(async () => {
+        for (let i = 0; i < 50 && archive.mock.calls.length === 0; i += 1) {
+          await vi.advanceTimersByTimeAsync(0);
+        }
+      });
+      expect(archive).toHaveBeenCalledWith({ threadId: "thr_root" });
+
       await act(async () => {
         await vi.advanceTimersByTimeAsync(20_000);
       });
