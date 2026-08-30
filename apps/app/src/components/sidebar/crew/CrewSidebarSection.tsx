@@ -77,7 +77,7 @@ function CrewEntry({
             event.dataTransfer.setData(AGENT_DRAG_TYPE, crew.commanderThreadId);
             event.dataTransfer.effectAllowed = "move";
             setAgentDragImage(event.dataTransfer, crew.name);
-            beginDrag(movable);
+            beginDrag(movable, crew.projectId);
           }}
           onDragEnd={endDrag}
           {...drop.handlers}
@@ -161,9 +161,11 @@ const AGENT_DRAG_TYPE = "application/x-bb-agent";
 interface CrewEditState {
   /** The agent currently being dragged, or null when nothing is. */
   draggingId: string | null;
+  /** Project the dragged agent belongs to — scopes root drop zones. */
+  draggingProjectId: string | null;
   /** Every id inside the dragged agent's branch, itself included. */
   draggingSubtree: ReadonlySet<string>;
-  beginDrag: (agent: MovableAgent) => void;
+  beginDrag: (agent: MovableAgent, projectId: string) => void;
   endDrag: () => void;
   /** Edit mode: grips out, drop zones shown, navigation held back. */
   editing: boolean;
@@ -203,6 +205,7 @@ interface AgentDestination {
 
 const CrewEditContext = createContext<CrewEditState>({
   draggingId: null,
+  draggingProjectId: null,
   draggingSubtree: new Set<string>(),
   beginDrag: () => {},
   endDrag: () => {},
@@ -293,7 +296,7 @@ function readAgentDrag(dataTransfer: DataTransfer | null): string | null {
  * `announce` is not decoration: a drag is invisible to a screen reader, and a
  * refusal that only shows as a row springing back is a refusal nobody heard.
  */
-function useAgentDrop(args: { agentId: string }): {
+function useAgentDrop(args: { agentId: string; enabled?: boolean }): {
   isOver: boolean;
   /** A drag is in the air and this row cannot take it. */
   isForbidden: boolean;
@@ -304,7 +307,7 @@ function useAgentDrop(args: { agentId: string }): {
     onDrop: (event: React.DragEvent) => void;
   };
 } {
-  const { agentId } = args;
+  const { agentId, enabled = true } = args;
   const { draggingId, draggingSubtree, endDrag, move } =
     useContext(CrewEditContext);
   const [isOver, setIsOver] = useState(false);
@@ -312,6 +315,18 @@ function useAgentDrop(args: { agentId: string }): {
   // Saying so DURING the drag is the point: the server would refuse it anyway,
   // and a cursor that only finds out on release taught the operator nothing.
   const isForbidden = draggingId !== null && draggingSubtree.has(agentId);
+  if (!enabled) {
+    return {
+      isOver: false,
+      isForbidden: false,
+      handlers: {
+        onDragEnter: () => {},
+        onDragOver: () => {},
+        onDragLeave: () => {},
+        onDrop: () => {},
+      },
+    };
+  }
   return {
     isOver: isOver && !isForbidden,
     isForbidden,
@@ -375,9 +390,14 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   const [dragging, setDragging] = useState<{
     id: string;
     subtree: ReadonlySet<string>;
+    projectId: string;
   } | null>(null);
-  const beginDrag = useCallback((agent: MovableAgent) => {
-    setDragging({ id: agent.threadId, subtree: subtreeIds(agent) });
+  const beginDrag = useCallback((agent: MovableAgent, projectId: string) => {
+    setDragging({
+      id: agent.threadId,
+      subtree: subtreeIds(agent),
+      projectId,
+    });
   }, []);
   const endDrag = useCallback(() => setDragging(null), []);
   // Esc leaves the mode, because a mode you cannot back out of is a trap.
@@ -432,6 +452,7 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
   const editState = useMemo(
     () => ({
       draggingId: dragging?.id ?? null,
+      draggingProjectId: dragging?.projectId ?? null,
       draggingSubtree: dragging?.subtree ?? new Set<string>(),
       beginDrag,
       endDrag,
@@ -478,19 +499,26 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
  */
 function ProjectRootDropZone({
   name,
+  projectId,
   variant = "inline",
 }: {
   name: string;
+  projectId: string;
   /** Block header sits inside a project card; inline is the legacy row style. */
   variant?: "inline" | "block-header";
 }) {
-  const { draggingId } = useContext(CrewEditContext);
-  const drop = useAgentDrop({ agentId: "" });
-  const armed = draggingId !== null;
+  const { draggingId, draggingProjectId, editing } =
+    useContext(CrewEditContext);
+  const acceptsDrop =
+    editing && draggingId !== null && draggingProjectId === projectId;
+  const drop = useAgentDrop({ agentId: "", enabled: acceptsDrop });
+  const armed = acceptsDrop;
   const isBlockHeader = variant === "block-header";
   return (
     <div
       {...drop.handlers}
+      data-testid={`project-root-drop-${projectId}`}
+      data-project-drop-active={armed ? "true" : "false"}
       className={cn(
         "flex items-center gap-2 transition-colors",
         isBlockHeader ? "min-h-7 px-0" : "min-h-6 gap-1.5 rounded px-2",
@@ -690,7 +718,7 @@ function AgentTreeRow({
             event.dataTransfer.setData(AGENT_DRAG_TYPE, agent.threadId);
             event.dataTransfer.effectAllowed = "move";
             setAgentDragImage(event.dataTransfer, agent.name);
-            beginDrag(agent);
+            beginDrag(agent, projectId);
           }}
           onDragEnd={endDrag}
           // In edit mode a click edits, it does not travel. Navigating away
@@ -822,6 +850,21 @@ interface ProjectGroup {
 }
 
 /**
+ * Whether a project already has a root thread — crewed commander or loose chat.
+ * Setup commanders and renamed roots that land in chats still count.
+ */
+export function projectHasRootThread(
+  projectId: string,
+  crews: readonly Crew[],
+  chats: readonly LooseChat[],
+): boolean {
+  return (
+    crews.some((c) => c.projectId === projectId) ||
+    chats.some((c) => c.projectId === projectId)
+  );
+}
+
+/**
  * Crews under the project they belong to, which is the tree's real root: a
  * project is a folder someone chose, and its agents live inside it.
  *
@@ -900,10 +943,15 @@ export function CrewSidebarSection({
   headerTrailing?: ReactNode;
   onNavigate?: () => void;
 }) {
-  const { crews, loaded, failed, timedOut, reload } = useCrews();
+  const { crews, chats, loaded, failed, timedOut, reload } = useCrews();
   const projectNameOf = useProjectNames();
   const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
-  const { createCrew, creating: creatingCrew } = useCreateCrew();
+  const projectGroups = useMemo(
+    () => groupByProject(crews, projectNameOf, projectIds),
+    [crews, projectNameOf, projectIds],
+  );
+  const { createCrew, creating: creatingCrew, error: createCrewError } =
+    useCreateCrew();
   const { editing, setEditing, refusal, moveMessage } =
     useContext(CrewEditContext);
   return (
@@ -948,6 +996,15 @@ export function CrewSidebarSection({
           {`Not moved — ${refusal}.`}
         </p>
       ) : null}
+      {createCrewError !== null ? (
+        <p
+          role="alert"
+          data-testid="crew-create-error"
+          className="mx-2 mb-1 rounded-md border border-destructive-text/40 px-2 py-1 text-[11px] text-destructive-text"
+        >
+          {createCrewError}
+        </p>
+      ) : null}
       {/* Politely, so a completed or refused move announces itself without
           interrupting. A drag is invisible to a screen reader, and a refusal
           that shows only as a row springing back is a refusal nobody heard. */}
@@ -958,7 +1015,10 @@ export function CrewSidebarSection({
         <p className="px-2 py-1 text-xs italic text-muted-foreground">
           Reading the fleet…
         </p>
-      ) : failed && crews.length === 0 ? (
+      ) : failed &&
+        crews.length === 0 &&
+        chats.length === 0 &&
+        projectGroups.length === 0 ? (
         <p className="px-2 py-1 text-xs text-muted-foreground">
           {timedOut
             ? "The fleet hasn't answered yet."
@@ -971,25 +1031,26 @@ export function CrewSidebarSection({
             {timedOut ? "Wait longer" : "Try again"}
           </button>
         </p>
-      ) : crews.length === 0 ? (
+      ) : projectGroups.length === 0 ? (
         <p className="px-2 py-1 text-xs italic text-muted-foreground">
           No projects yet — create one above.
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {groupByProject(crews, projectNameOf, projectIds).map((group) => (
+          {projectGroups.map((group) => (
             <li key={group.projectId} data-testid="sidebar-project-group">
               <div className="overflow-hidden rounded-lg border border-sidebar-border bg-surface-recessed-solid">
                 {group.name === null ? null : (
                   <div className="border-b border-sidebar-border px-2.5 py-2">
                     <ProjectRootDropZone
                       name={group.name}
+                      projectId={group.projectId}
                       variant="block-header"
                     />
                   </div>
                 )}
                 <div className="flex flex-col gap-1 px-1.5 py-2">
-                  {group.crews.length === 0 ? (
+                  {!projectHasRootThread(group.projectId, crews, chats) ? (
                     <button
                       type="button"
                       data-testid="add-crew-button"
@@ -1073,7 +1134,7 @@ function ChatRow({
             event.dataTransfer.setData(AGENT_DRAG_TYPE, chat.threadId);
             event.dataTransfer.effectAllowed = "move";
             setAgentDragImage(event.dataTransfer, chat.name);
-            beginDrag(movable);
+            beginDrag(movable, chat.projectId);
           }}
           onDragEnd={endDrag}
           className={({ isActive }) =>
