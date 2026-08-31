@@ -147,6 +147,50 @@ describe("PendingSendLiveRegion", () => {
     );
     expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
   });
+
+  it("forces a DOM mutation for identical consecutive announcements", () => {
+    const send1 = pendingSend("send1", 2500, "hello world");
+    const { rerender } = render(
+      <PendingSendLiveRegion entries={[send1]} windowMs={1500} />
+    );
+
+    const liveRegion = screen.getByRole("status");
+    const firstInnerSpan = liveRegion.firstElementChild;
+    expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
+    
+    // Simulate removing send1 and adding send2 in separate renders but with the same text
+    rerender(<PendingSendLiveRegion entries={[]} windowMs={1500} />);
+    
+    const send2 = pendingSend("send2", 3500, "hello world");
+    rerender(<PendingSendLiveRegion entries={[send2]} windowMs={1500} />);
+    
+    // The text content is the same
+    expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
+    
+    // But the inner element must be a new DOM node to trigger the screen reader
+    const secondInnerSpan = liveRegion.firstElementChild;
+    expect(secondInnerSpan).not.toBe(firstInnerSpan);
+  });
+
+  it("detects simultaneous remove/add replacement with the same ID", () => {
+    const send1 = pendingSend("send1", 2500, "");
+    const { rerender } = render(
+      <PendingSendLiveRegion entries={[send1]} windowMs={1500} />
+    );
+
+    const liveRegion = screen.getByRole("status");
+    const firstInnerSpan = liveRegion.firstElementChild;
+    
+    // Replace send1 with a NEW entry object that has the SAME ID and SAME TEXT (e.g. an empty preview)
+    const send1Replacement = pendingSend("send1", 3500, "");
+    
+    rerender(<PendingSendLiveRegion entries={[send1Replacement]} windowMs={1500} />);
+    
+    expect(liveRegion.textContent).toBe("Sending . Undo available for 1.5 seconds.");
+    
+    const secondInnerSpan = liveRegion.firstElementChild;
+    expect(secondInnerSpan).not.toBe(firstInnerSpan);
+  });
 });
 
 describe("PendingSendList", () => {

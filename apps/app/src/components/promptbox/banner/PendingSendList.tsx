@@ -89,43 +89,42 @@ export function PendingSendLiveRegion({
   entries,
   windowMs = UNDO_SEND_WINDOW_MS,
 }: PendingSendLiveRegionProps) {
-  const [liveRegionText, setLiveRegionText] = React.useState("");
-  const previousIds = React.useRef<Set<string>>(new Set());
+  const [liveRegion, setLiveRegion] = React.useState({ text: "", id: 0 });
+  const previousEntries = React.useRef<readonly PendingSend[]>([]);
 
   React.useEffect(() => {
-    const currentIds = new Set(entries.map((e) => e.id));
-    
-    // Find newly added entries
-    const addedEntries = entries.filter((e) => !previousIds.current.has(e.id));
+    const prev = previousEntries.current;
+    previousEntries.current = entries;
+
+    const currentSet = new Set(entries);
+    const prevSet = new Set(prev);
+
+    // Find newly added entries (object identity, detects replaced entries with same ID)
+    const addedEntries = entries.filter((e) => !prevSet.has(e));
     
     // Check if any were removed
-    let anyRemoved = false;
-    for (const id of previousIds.current) {
-      if (!currentIds.has(id)) {
-        anyRemoved = true;
-        break;
-      }
-    }
-
-    previousIds.current = currentIds;
+    const anyRemoved = prev.some((e) => !currentSet.has(e));
 
     if (addedEntries.length > 0) {
-      setLiveRegionText(
-        addedEntries
+      setLiveRegion(prevLive => ({
+        text: addedEntries
           .map(
             (entry) =>
               `Sending ${entry.draft.text.trim()}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`
           )
-          .join(" ")
-      );
+          .join(" "),
+        id: prevLive.id + 1,
+      }));
     } else if (anyRemoved) {
-      setLiveRegionText("");
+      setLiveRegion({ text: "", id: 0 });
     }
   }, [entries, windowMs]);
 
   return (
     <span className="sr-only" role="status" aria-live="polite">
-      {liveRegionText}
+      {liveRegion.text ? (
+        <span key={liveRegion.id}>{liveRegion.text}</span>
+      ) : null}
     </span>
   );
 }
