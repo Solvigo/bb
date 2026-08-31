@@ -1132,10 +1132,10 @@ describe("useCreateCrew", () => {
       await act(async () => {
         for (
           let i = 0;
-          i < 200 && !calls.includes("POST /api/v1/threads");
+          i < 5000 && !calls.includes("POST /api/v1/threads");
           i += 1
         ) {
-          await vi.advanceTimersByTimeAsync(0);
+          await vi.advanceTimersByTimeAsync(1);
         }
       });
       await act(async () => {
@@ -1211,9 +1211,15 @@ describe("useCreateCrew", () => {
       // reached. Spending the clock first ran the whole 20s out before there
       // was anything to time out. Drive the flow to the seam on zero virtual
       // time, prove it arrived, THEN run out its deadline.
+      // Nudged a MILLISECOND at a time, not zero. A zero advance flushes only
+      // whatever microtasks are already queued, so a leg that needs the clock
+      // to move at all — or simply needs more turns than the loop had — left
+      // the archive unreached and the deadline unarmed. This bound is 5s of
+      // virtual time against a 15s deadline, so the seam is reached with room
+      // to spare and the loop exits on the condition rather than on patience.
       await act(async () => {
-        for (let i = 0; i < 200 && archive.mock.calls.length === 0; i += 1) {
-          await vi.advanceTimersByTimeAsync(0);
+        for (let i = 0; i < 5000 && archive.mock.calls.length === 0; i += 1) {
+          await vi.advanceTimersByTimeAsync(1);
         }
       });
       expect(archive).toHaveBeenCalledWith({ threadId: "thr_root" });
