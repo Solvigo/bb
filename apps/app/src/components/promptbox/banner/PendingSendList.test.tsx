@@ -212,7 +212,7 @@ describe("PendingSendLiveRegion", () => {
   it("uses established attachment fallback wording for attachment-only drafts", () => {
     // Provide an attachment-only input
     const input: PromptInput[] = [
-      { type: "localFile", path: "test.png", name: "test.png", visibility: "visible" }
+      { type: "localFile", path: "test.png", name: "test.png" }
     ];
     const send1 = pendingSend("send1", 2500, input);
 
@@ -246,7 +246,7 @@ describe("PendingSendList", () => {
 
   it("uses attachment fallback for row preview and aria label", () => {
     const input: PromptInput[] = [
-      { type: "localFile", path: "test.png", name: "test.png", visibility: "visible" }
+      { type: "localFile", path: "test.png", name: "test.png" }
     ];
     const send1 = pendingSend("send1", 2500, input);
     
