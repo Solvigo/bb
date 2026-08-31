@@ -54,6 +54,11 @@ function host(
 }
 
 beforeEach(() => {
+  // The native picker belongs to the desktop shell; these cases are about
+  // what it does once it is legitimately in play.
+  (window as unknown as { bbDesktop?: unknown }).bbDesktop = {
+    platform: "macos",
+  };
   mocks.primaryHost = atum;
   mocks.supportsNativeFolderPicker = true;
   mocks.hosts = [atum];
@@ -63,6 +68,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  delete (window as unknown as { bbDesktop?: unknown }).bbDesktop;
   vi.clearAllMocks();
 });
 
@@ -147,6 +153,49 @@ describe("useLocalPathPicker openPathEntry", () => {
 
     expect(mocks.pickFolder).toHaveBeenCalled();
     expect(result.current.projectPathDialog.isOpen).toBe(false);
+  });
+
+  it("never asks the host for a native panel from a browser tab", async () => {
+    // THE DEFECT, as served: the host could raise an AppleScript folder panel
+    // and the app asked it to — from a browser tab, where the operator could
+    // not see or answer it. The press looked dead, then the in-app browser
+    // arrived seconds later when the request gave up.
+    delete (window as unknown as { bbDesktop?: unknown }).bbDesktop;
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
+    );
+
+    act(() => {
+      result.current.openPathEntry({ kind: "create" });
+    });
+
+    expect(mocks.pickFolder).not.toHaveBeenCalled();
+    // Straight to the surface a browser can actually show.
+    expect(result.current.projectPathDialog.target).toEqual({ kind: "create" });
+  });
+
+  it("falls back to the in-app dialog when the native picker returns no path", async () => {
+    // THE DEFECT: a daemon that advertises the native picker and then answers
+    // null — no desktop shell in front of it, or a cancelled picker — made the
+    // press do literally nothing. No dialog, no message, no error, on a button
+    // that looked perfectly enabled.
+    mocks.pickFolder.mockResolvedValue({ path: null });
+    const submit = vi.fn();
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit }),
+    );
+
+    act(() => {
+      result.current.openPathEntry({ kind: "create" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.projectPathDialog.target).toEqual({
+        kind: "create",
+      });
+    });
+    // The absence of a path is not a path: nothing is submitted.
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it("keeps the native picker when the only other machine is offline", () => {

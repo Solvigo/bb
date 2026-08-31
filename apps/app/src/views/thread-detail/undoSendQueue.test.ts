@@ -33,12 +33,24 @@ describe("remainingMs", () => {
 });
 
 describe("remainingSeconds", () => {
-  it("shows the full window before any time has passed", () => {
-    expect(remainingSeconds(pendingSend("a", UNDO_SEND_WINDOW_MS), 0)).toBe(2);
+  it("tells the truth about a window that is not a whole number of seconds", () => {
+    // It read 2 over a 1.5s window: time the operator never had. Whole
+    // seconds cannot describe this window, so the countdown does not try.
+    expect(remainingSeconds(pendingSend("a", UNDO_SEND_WINDOW_MS), 0)).toBe(
+      1.5,
+    );
   });
 
-  it("still shows a second while any time is left", () => {
-    expect(remainingSeconds(pendingSend("a", 3000), 2999)).toBe(1);
+  it("never claims more time than is left", () => {
+    expect(remainingSeconds(pendingSend("a", 3000), 1050)).toBe(1.9);
+    expect(remainingSeconds(pendingSend("a", 3000), 1099)).toBe(1.9);
+  });
+
+  it("still shows time left while any remains, however little", () => {
+    // The older intent, kept: a 0 beside a live Undo says the chance has gone
+    // when it has not.
+    expect(remainingSeconds(pendingSend("a", 3000), 2999)).toBe(0.1);
+    expect(remainingSeconds(pendingSend("a", 3000), 2951)).toBe(0.1);
   });
 
   it("shows zero at expiry", () => {

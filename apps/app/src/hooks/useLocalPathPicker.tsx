@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { normalizeProjectPathInput } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { useDialogState } from "@/hooks/useDialogState";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
@@ -60,7 +61,16 @@ export function usePathPickerHost(): PathPickerHost {
   const hostId = connectedPrimaryHostId ?? localDaemonHostId;
   const hostName =
     primaryHost && primaryHost.id === hostId ? primaryHost.name : null;
+  // AND THIS CLIENT MUST BE THE DESKTOP SHELL. The other three conditions say
+  // the HOST can raise a native folder panel — they say nothing about whether
+  // the person who clicked is sitting in front of it. Served in a browser
+  // tab, this asked the host machine to run an AppleScript `choose folder`
+  // that the operator could not see or answer: the press produced no dialog,
+  // no message and no error, and the in-app browser only arrived seconds
+  // later when the request finally gave up. A native panel belongs to the
+  // app that can actually show one.
   const canUseNativeFolderPicker =
+    getBbDesktopInfo() !== null &&
     supportsNativeFolderPicker &&
     localDaemonHostId !== null &&
     hostId === localDaemonHostId;
@@ -118,7 +128,17 @@ export function useLocalPathPicker({
             projectPathDialog.onOpen(target);
             return;
           }
-          if (!selectedPath) return;
+          // NO PATH IS NOT AN ANSWER, it is the absence of one — and the
+          // response carries nothing that tells a cancelled picker apart from
+          // a picker that never appeared. Returning here made the press do
+          // literally nothing: no dialog, no message, no error, on a daemon
+          // that advertises the native picker and then answers null because
+          // there is no desktop shell in front of it. The in-app browser is
+          // the same fallback a thrown request already gets.
+          if (!selectedPath) {
+            projectPathDialog.onOpen(target);
+            return;
+          }
           submitPath(normalizeProjectPathInput(selectedPath), target, hostId);
         })();
         return;

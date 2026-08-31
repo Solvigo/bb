@@ -29,11 +29,22 @@ export function remainingMs(entry: PendingSend, now: number): number {
 }
 
 /**
- * Whole seconds still left on the clock, as a countdown reads them: a window
- * with any time at all on it shows at least 1.
+ * Seconds still left on the clock, to a tenth, as a countdown may honestly
+ * read them.
+ *
+ * TENTHS because a 1.5s window cannot be told truthfully in whole seconds.
+ * Rounding up said "2s" over a window that was never two seconds long — the
+ * countdown promised time the operator did not have.
+ *
+ * FLOORED so it can never overstate: whatever this says, at least that much
+ * is really left. And clamped above zero while any time remains, which is the
+ * older intent this keeps — a countdown reading 0 beside a live Undo button
+ * says the chance has gone when it has not.
  */
 export function remainingSeconds(entry: PendingSend, now: number): number {
-  return Math.ceil(remainingMs(entry, now) / 1000);
+  const ms = remainingMs(entry, now);
+  if (ms === 0) return 0;
+  return Math.max(0.1, Math.floor(ms / 100) / 10);
 }
 
 export function hasExpired(entry: PendingSend, now: number): boolean {

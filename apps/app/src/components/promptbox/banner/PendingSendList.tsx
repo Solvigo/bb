@@ -49,7 +49,7 @@ function PendingSendRow({
           aria-live="polite"
           className="shrink-0 tabular-nums text-muted-foreground"
         >
-          {secondsLeft}s
+          {secondsLeft.toFixed(1)}s
         </span>
         <button
           type="button"
