@@ -174,11 +174,9 @@ describe("useLocalPathPicker openPathEntry", () => {
     expect(result.current.projectPathDialog.target).toEqual({ kind: "create" });
   });
 
-  it("falls back to the in-app dialog when the native picker returns no path", async () => {
-    // THE DEFECT: a daemon that advertises the native picker and then answers
-    // null — no desktop shell in front of it, or a cancelled picker — made the
-    // press do literally nothing. No dialog, no message, no error, on a button
-    // that looked perfectly enabled.
+  it("takes a cancelled native picker as the answer it is", async () => {
+    // The request SUCCEEDED and the desktop user said no. Opening the in-app
+    // browser here answers "no" with another dialog.
     mocks.pickFolder.mockResolvedValue({ path: null });
     const submit = vi.fn();
     const { result } = renderHook(() =>
@@ -188,14 +186,29 @@ describe("useLocalPathPicker openPathEntry", () => {
     act(() => {
       result.current.openPathEntry({ kind: "create" });
     });
+    await waitFor(() => {
+      expect(mocks.pickFolder).toHaveBeenCalled();
+    });
 
+    expect(result.current.projectPathDialog.target).toBeNull();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the in-app browser only when the request itself failed", async () => {
+    // Could not ask, as opposed to asked and told no.
+    mocks.pickFolder.mockRejectedValue(new Error("daemon went away"));
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
+    );
+
+    act(() => {
+      result.current.openPathEntry({ kind: "create" });
+    });
     await waitFor(() => {
       expect(result.current.projectPathDialog.target).toEqual({
         kind: "create",
       });
     });
-    // The absence of a path is not a path: nothing is submitted.
-    expect(submit).not.toHaveBeenCalled();
   });
 
   it("keeps the native picker when the only other machine is offline", () => {

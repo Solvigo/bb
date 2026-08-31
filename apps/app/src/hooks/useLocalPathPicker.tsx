@@ -128,17 +128,12 @@ export function useLocalPathPicker({
             projectPathDialog.onOpen(target);
             return;
           }
-          // NO PATH IS NOT AN ANSWER, it is the absence of one — and the
-          // response carries nothing that tells a cancelled picker apart from
-          // a picker that never appeared. Returning here made the press do
-          // literally nothing: no dialog, no message, no error, on a daemon
-          // that advertises the native picker and then answers null because
-          // there is no desktop shell in front of it. The in-app browser is
-          // the same fallback a thrown request already gets.
-          if (!selectedPath) {
-            projectPathDialog.onOpen(target);
-            return;
-          }
+          // A CANCEL IS AN ANSWER. The request succeeded and the desktop user
+          // said no, so this is finished — offering a second picker in place
+          // of the one they just dismissed answers "no" with another dialog.
+          // Only a request that FAILED (the catch above) means we could not
+          // ask, and only that falls back to the in-app browser.
+          if (!selectedPath) return;
           submitPath(normalizeProjectPathInput(selectedPath), target, hostId);
         })();
         return;

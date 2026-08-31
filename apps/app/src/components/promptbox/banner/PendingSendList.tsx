@@ -2,7 +2,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
   remainingMs,
-  remainingSeconds,
+  remainingLabel,
   UNDO_SEND_WINDOW_MS,
   type PendingSend,
 } from "@/views/thread-detail/undoSendQueue";
@@ -25,7 +25,7 @@ function PendingSendRow({
   onUndo: (id: string) => void;
   windowMs: number;
 }) {
-  const secondsLeft = remainingSeconds(entry, now);
+  const timeLeft = remainingLabel(entry, now);
   const elapsedFraction = 1 - remainingMs(entry, now) / windowMs;
   const preview = entry.draft.text.trim();
 
@@ -44,12 +44,20 @@ function PendingSendRow({
         >
           {preview}
         </span>
+        {/* VISUAL ONLY. This ticks ten times a second; in a live region that
+            is ten announcements a second, which makes the banner unusable
+            with a screen reader. The stable announcement is below. */}
         <span
-          role="status"
-          aria-live="polite"
+          aria-hidden="true"
           className="shrink-0 tabular-nums text-muted-foreground"
         >
-          {secondsLeft.toFixed(1)}s
+          {timeLeft}
+        </span>
+        {/* Said ONCE. The string does not change as the clock runs, so a
+            polite region announces the pending send and the way out of it and
+            then stays quiet. The window is stated rather than counted. */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {`Sending ${preview}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`}
         </span>
         <button
           type="button"

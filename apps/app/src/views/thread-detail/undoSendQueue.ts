@@ -29,22 +29,36 @@ export function remainingMs(entry: PendingSend, now: number): number {
 }
 
 /**
- * Seconds still left on the clock, to a tenth, as a countdown may honestly
- * read them.
+ * Seconds still left on the clock, to a tenth, FLOORED.
  *
- * TENTHS because a 1.5s window cannot be told truthfully in whole seconds.
- * Rounding up said "2s" over a window that was never two seconds long — the
- * countdown promised time the operator did not have.
- *
- * FLOORED so it can never overstate: whatever this says, at least that much
- * is really left. And clamped above zero while any time remains, which is the
- * older intent this keeps — a countdown reading 0 beside a live Undo button
- * says the chance has gone when it has not.
+ * Floored so it can never overstate: whatever this says, at least that much
+ * is really left. It reads 0 in the final sliver under a tenth of a second,
+ * because that is the truth — see `remainingLabel` for what a countdown shows
+ * there, which is not "0".
  */
 export function remainingSeconds(entry: PendingSend, now: number): number {
+  return Math.floor(remainingMs(entry, now) / 100) / 10;
+}
+
+/**
+ * What the countdown may honestly display.
+ *
+ * TENTHS, because a 1.5s window cannot be told truthfully in whole seconds:
+ * rounding up said "2s" over a window that was never two seconds long.
+ *
+ * And the last sliver is named rather than rounded. Clamping it to "0.1s"
+ * claimed a tenth of a second that was not there — the same overstatement as
+ * the old "2s", one order of magnitude down. Between expiry and a tenth there
+ * is real time left but less than the smallest unit this can print, so it says
+ * exactly that.
+ *
+ * Never more time than remains; never zero while time remains.
+ */
+export function remainingLabel(entry: PendingSend, now: number): string {
   const ms = remainingMs(entry, now);
-  if (ms === 0) return 0;
-  return Math.max(0.1, Math.floor(ms / 100) / 10);
+  if (ms === 0) return "0s";
+  if (ms < 100) return "<0.1s";
+  return `${remainingSeconds(entry, now).toFixed(1)}s`;
 }
 
 export function hasExpired(entry: PendingSend, now: number): boolean {
