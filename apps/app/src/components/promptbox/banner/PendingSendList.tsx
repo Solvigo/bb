@@ -7,12 +7,23 @@ import {
   UNDO_SEND_WINDOW_MS,
   type PendingSend,
 } from "@/views/thread-detail/undoSendQueue";
+import { formatQueuedMessagePreview } from "@/views/thread-detail/threadQueuedMessages";
 
 export interface PendingSendListProps {
   entries: readonly PendingSend[];
   now: number;
   onUndo: (id: string) => void;
   windowMs?: number;
+}
+
+function getSemanticFingerprint(entry: PendingSend): string {
+  // A genuine same-ID replacement will have a new expiresAt and potentially a new input.
+  return `${entry.id}|${entry.expiresAt}|${getSendPreview(entry)}`;
+}
+
+function getSendPreview(entry: PendingSend): string {
+  // Use formatting for attachments and truncation matching queued messages.
+  return formatQueuedMessagePreview(entry.input, { truncate: false });
 }
 
 function PendingSendRow({
@@ -28,7 +39,7 @@ function PendingSendRow({
 }) {
   const timeLeft = remainingLabel(entry, now);
   const elapsedFraction = 1 - remainingMs(entry, now) / windowMs;
-  const preview = entry.draft.text.trim();
+  const preview = getSendPreview(entry);
 
   return (
     <PromptStackCard ariaLabel="Message sending" className="overflow-hidden">
@@ -90,27 +101,30 @@ export function PendingSendLiveRegion({
   windowMs = UNDO_SEND_WINDOW_MS,
 }: PendingSendLiveRegionProps) {
   const [liveRegion, setLiveRegion] = React.useState({ text: "", id: 0 });
-  const previousEntries = React.useRef<readonly PendingSend[]>([]);
+  
+  // Keep track of the entries by a stable semantic fingerprint to detect replacement
+  const previousFingerprints = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
-    const prev = previousEntries.current;
-    previousEntries.current = entries;
-
-    const currentSet = new Set(entries);
-    const prevSet = new Set(prev);
-
-    // Find newly added entries (object identity, detects replaced entries with same ID)
-    const addedEntries = entries.filter((e) => !prevSet.has(e));
+    const currentFingerprints = new Set(
+      entries.map(getSemanticFingerprint)
+    );
+    const prevFingerprints = previousFingerprints.current;
     
-    // Check if any were removed
-    const anyRemoved = prev.some((e) => !currentSet.has(e));
+    previousFingerprints.current = currentFingerprints;
+
+    const addedEntries = entries.filter(
+      (e) => !prevFingerprints.has(getSemanticFingerprint(e))
+    );
+
+    const anyRemoved = [...prevFingerprints].some((f) => !currentFingerprints.has(f));
 
     if (addedEntries.length > 0) {
       setLiveRegion(prevLive => ({
         text: addedEntries
           .map(
             (entry) =>
-              `Sending ${entry.draft.text.trim()}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`
+              `Sending ${getSendPreview(entry)}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`
           )
           .join(" "),
         id: prevLive.id + 1,

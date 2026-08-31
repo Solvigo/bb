@@ -5,14 +5,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PendingSendList, PendingSendLiveRegion } from "./PendingSendList";
 import type { PendingSend } from "@/views/thread-detail/undoSendQueue";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
+import type { PromptInput } from "@bb/domain";
 
 afterEach(cleanup);
 
-function pendingSend(id: string, expiresAt: number, text = id): PendingSend {
+function pendingSend(id: string, expiresAt: number, textOrInput: string | PromptInput[] = id): PendingSend {
+  const input: PromptInput[] = typeof textOrInput === "string" 
+    ? [{ type: "text", text: textOrInput, mentions: [] }] 
+    : textOrInput;
+  
+  const text = input.filter((i): i is Extract<PromptInput, { type: "text" }> => i.type === "text").map(i => i.text).join("");
+
   return {
     id,
     draft: { ...emptyPromptDraftState(), text },
-    input: [{ type: "text", text, mentions: [] }],
+    input,
     dispatch: { kind: "auto" },
     expiresAt,
   };
@@ -59,7 +66,7 @@ describe("PendingSendLiveRegion", () => {
     const liveRegion = screen.getByRole("status");
     const initialText = liveRegion.textContent;
 
-    // Re-render with same entries (simulate clock tick which might cause re-render if it was bound to now)
+    // Re-render with same entries
     rerender(
       <PendingSendLiveRegion
         entries={[send1]}
@@ -85,34 +92,28 @@ describe("PendingSendLiveRegion", () => {
 
     const send2 = pendingSend("send2", 3000, "second message");
 
-    // Add second send
     rerender(
       <PendingSendLiveRegion
         entries={[send1, send2]}
         windowMs={1500}
       />
     );
-    // Should ONLY announce the second send to avoid repeating the first
     expect(liveRegion.textContent).toBe("Sending second message. Undo available for 1.5 seconds.");
 
-    // Remove second send (e.g., undo or expired)
     rerender(
       <PendingSendLiveRegion
         entries={[send1]}
         windowMs={1500}
       />
     );
-    // Should clear the announcement so it doesn't leave stale text, but shouldn't re-announce the first send
     expect(liveRegion.textContent).toBe("");
 
-    // Remove all sends
     rerender(
       <PendingSendLiveRegion
         entries={[]}
         windowMs={1500}
       />
     );
-    // Should remain completely empty when idle
     expect(liveRegion.textContent).toBe("");
   });
 
@@ -129,7 +130,6 @@ describe("PendingSendLiveRegion", () => {
     const liveRegion = screen.getByRole("status");
     expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
 
-    // Remove send1
     rerender(
       <PendingSendLiveRegion
         entries={[]}
@@ -138,7 +138,6 @@ describe("PendingSendLiveRegion", () => {
     );
     expect(liveRegion.textContent).toBe("");
 
-    // Re-add send1
     rerender(
       <PendingSendLiveRegion
         entries={[send1]}
@@ -158,22 +157,20 @@ describe("PendingSendLiveRegion", () => {
     const firstInnerSpan = liveRegion.firstElementChild;
     expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
     
-    // Simulate removing send1 and adding send2 in separate renders but with the same text
     rerender(<PendingSendLiveRegion entries={[]} windowMs={1500} />);
     
     const send2 = pendingSend("send2", 3500, "hello world");
     rerender(<PendingSendLiveRegion entries={[send2]} windowMs={1500} />);
     
-    // The text content is the same
     expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
     
-    // But the inner element must be a new DOM node to trigger the screen reader
     const secondInnerSpan = liveRegion.firstElementChild;
     expect(secondInnerSpan).not.toBe(firstInnerSpan);
   });
 
-  it("detects simultaneous remove/add replacement with the same ID", () => {
-    const send1 = pendingSend("send1", 2500, "");
+  it("detects genuine same-ID replacement", () => {
+    // Start with a send
+    const send1 = pendingSend("send1", 2500, "hello world");
     const { rerender } = render(
       <PendingSendLiveRegion entries={[send1]} windowMs={1500} />
     );
@@ -181,15 +178,52 @@ describe("PendingSendLiveRegion", () => {
     const liveRegion = screen.getByRole("status");
     const firstInnerSpan = liveRegion.firstElementChild;
     
-    // Replace send1 with a NEW entry object that has the SAME ID and SAME TEXT (e.g. an empty preview)
-    const send1Replacement = pendingSend("send1", 3500, "");
+    // Replace send1 with a NEW entry object that has the SAME ID but different expiry
+    // (representing a real resend with the same optimistic ID)
+    const send1Replacement = pendingSend("send1", 3500, "hello world");
     
     rerender(<PendingSendLiveRegion entries={[send1Replacement]} windowMs={1500} />);
     
-    expect(liveRegion.textContent).toBe("Sending . Undo available for 1.5 seconds.");
+    // Since it's a genuine replacement, it should announce again.
+    expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
     
     const secondInnerSpan = liveRegion.firstElementChild;
     expect(secondInnerSpan).not.toBe(firstInnerSpan);
+  });
+
+  it("ignores identical reconstruction of an unchanged entry", () => {
+    const send1 = pendingSend("send1", 2500, "hello world");
+    const { rerender } = render(
+      <PendingSendLiveRegion entries={[send1]} windowMs={1500} />
+    );
+
+    const liveRegion = screen.getByRole("status");
+    const firstInnerSpan = liveRegion.firstElementChild;
+    
+    // Rerender with a deeply identical but distinct object
+    const send1Recreated = { ...send1 };
+    
+    rerender(<PendingSendLiveRegion entries={[send1Recreated]} windowMs={1500} />);
+    
+    // The DOM should not have mutated since it's semantically the exact same send
+    expect(liveRegion.firstElementChild).toBe(firstInnerSpan);
+  });
+
+  it("uses established attachment fallback wording for attachment-only drafts", () => {
+    // Provide an attachment-only input
+    const input: PromptInput[] = [
+      { type: "localFile", path: "test.png", name: "test.png", visibility: "visible" }
+    ];
+    const send1 = pendingSend("send1", 2500, input);
+
+    const { rerender } = render(
+      <PendingSendLiveRegion entries={[]} windowMs={1500} />
+    );
+
+    rerender(<PendingSendLiveRegion entries={[send1]} windowMs={1500} />);
+
+    const liveRegion = screen.getByRole("status");
+    expect(liveRegion.textContent).toBe("Sending Attachment only (test.png). Undo available for 1.5 seconds.");
   });
 });
 
@@ -205,10 +239,31 @@ describe("PendingSendList", () => {
       />
     );
 
-    // Should NOT have a role="status"
     expect(screen.queryByRole("status")).toBeNull();
-    // But it should render the row (which has an aria-label="Message sending" or something similar)
     expect(screen.getByText("Sending")).toBeTruthy();
     expect(screen.getByText("hello world")).toBeTruthy();
+  });
+
+  it("uses attachment fallback for row preview and aria label", () => {
+    const input: PromptInput[] = [
+      { type: "localFile", path: "test.png", name: "test.png", visibility: "visible" }
+    ];
+    const send1 = pendingSend("send1", 2500, input);
+    
+    render(
+      <PendingSendList
+        entries={[send1]}
+        now={1000}
+        windowMs={1500}
+        onUndo={vi.fn()}
+      />
+    );
+
+    // The text content in the row
+    expect(screen.getByText("Attachment only (test.png)")).toBeTruthy();
+
+    // The Undo button label
+    const undoButton = screen.getByRole("button", { name: 'Undo sending "Attachment only (test.png)"' });
+    expect(undoButton).not.toBeNull();
   });
 });
