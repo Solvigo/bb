@@ -1,6 +1,6 @@
 {
   "appId": "dev.bb.desktop",
-  "productName": "bb",
+  "productName": "Airways",
   "artifactName": "${productName}-${version}-${arch}.${ext}",
   "afterPack": "scripts/prepare-native-modules.cjs",
   "asar": true,

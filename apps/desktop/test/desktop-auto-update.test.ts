@@ -394,4 +394,13 @@ describe("desktop auto-update service", () => {
       }),
     ).toBe(true);
   });
+
+  it("disables auto-update when BB_DESKTOP_AUTO_UPDATE=0", () => {
+    expect(
+      shouldEnableDesktopAutoUpdate({
+        env: { BB_DESKTOP_AUTO_UPDATE: "0" },
+        isPackaged: true,
+      }),
+    ).toBe(false);
+  });
 });

@@ -29,7 +29,7 @@ export function createDesktopReleaseConfig(channel) {
 
   return {
     appId: "dev.bb.desktop",
-    applicationName: "bb",
+    applicationName: "Airways",
     artifactName: "${productName}-${version}-${arch}.${ext}",
     iconFileName: "icon.png",
     macIconPath: "assets/icon.icns",
