@@ -80,6 +80,56 @@ function PendingSendRow({
   );
 }
 
+export interface PendingSendLiveRegionProps {
+  entries: readonly PendingSend[];
+  windowMs?: number;
+}
+
+export function PendingSendLiveRegion({
+  entries,
+  windowMs = UNDO_SEND_WINDOW_MS,
+}: PendingSendLiveRegionProps) {
+  const [liveRegionText, setLiveRegionText] = React.useState("");
+  const previousIds = React.useRef<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    const currentIds = new Set(entries.map((e) => e.id));
+    
+    // Find newly added entries
+    const addedEntries = entries.filter((e) => !previousIds.current.has(e.id));
+    
+    // Check if any were removed
+    let anyRemoved = false;
+    for (const id of previousIds.current) {
+      if (!currentIds.has(id)) {
+        anyRemoved = true;
+        break;
+      }
+    }
+
+    previousIds.current = currentIds;
+
+    if (addedEntries.length > 0) {
+      setLiveRegionText(
+        addedEntries
+          .map(
+            (entry) =>
+              `Sending ${entry.draft.text.trim()}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`
+          )
+          .join(" ")
+      );
+    } else if (anyRemoved) {
+      setLiveRegionText("");
+    }
+  }, [entries, windowMs]);
+
+  return (
+    <span className="sr-only" role="status" aria-live="polite">
+      {liveRegionText}
+    </span>
+  );
+}
+
 /**
  * The messages sitting in their undo window, oldest first — the same order they
  * will reach the agent in.
@@ -90,41 +140,8 @@ export function PendingSendList({
   onUndo,
   windowMs = UNDO_SEND_WINDOW_MS,
 }: PendingSendListProps) {
-  const [liveRegionText, setLiveRegionText] = React.useState("");
-  const seenIds = React.useRef<Set<string>>(new Set());
-
-  React.useEffect(() => {
-    if (entries.length === 0) {
-      if (seenIds.current.size > 0) {
-        seenIds.current.clear();
-        setLiveRegionText("");
-      }
-      return;
-    }
-
-    const newEntries = entries.filter((e) => !seenIds.current.has(e.id));
-    if (newEntries.length > 0) {
-      newEntries.forEach((e) => seenIds.current.add(e.id));
-      setLiveRegionText(
-        newEntries
-          .map(
-            (entry) =>
-              `Sending ${entry.draft.text.trim()}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`
-          )
-          .join(" ")
-      );
-    }
-  }, [entries, windowMs]);
-
   return (
     <>
-      {/* Said ONCE per change. The string does not change as the clock runs, so a
-          polite region announces the pending send and the way out of it and
-          then stays quiet. The window is stated rather than counted. 
-          The region is persistently mounted so screen readers reliably observe mutations. */}
-      <span className="sr-only" role="status" aria-live="polite">
-        {liveRegionText}
-      </span>
       {entries.map((entry) => (
         <PendingSendRow
           key={entry.id}

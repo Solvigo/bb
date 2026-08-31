@@ -45,7 +45,10 @@ import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPrompt
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
-import { PendingSendList } from "@/components/promptbox/banner/PendingSendList";
+import {
+  PendingSendList,
+  PendingSendLiveRegion,
+} from "@/components/promptbox/banner/PendingSendList";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -1411,6 +1414,7 @@ export function ThreadDetailPromptArea({
         promptDraft.addPath(path);
       }}
     >
+      <PendingSendLiveRegion entries={undoSend.entries} />
       <FollowUpPromptBox
         id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
         attachments={bottomAttachmentsConfig}

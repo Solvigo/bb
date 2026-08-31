@@ -1,13 +1,26 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { PendingSendList } from "./PendingSendList";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PendingSendList, PendingSendLiveRegion } from "./PendingSendList";
 import type { PendingSend } from "@/views/thread-detail/undoSendQueue";
+import { emptyPromptDraftState } from "@/lib/prompt-draft";
 
-describe("PendingSendList", () => {
+afterEach(cleanup);
+
+function pendingSend(id: string, expiresAt: number, text = id): PendingSend {
+  return {
+    id,
+    draft: { ...emptyPromptDraftState(), text },
+    input: [{ type: "text", text, mentions: [] }],
+    dispatch: { kind: "auto" },
+    expiresAt,
+  };
+}
+
+describe("PendingSendLiveRegion", () => {
   it("renders a persistent, empty polite live region when idle", () => {
-    render(<PendingSendList entries={[]} now={1000} onUndo={vi.fn()} />);
+    render(<PendingSendLiveRegion entries={[]} />);
 
     const liveRegion = screen.getByRole("status");
     expect(liveRegion).not.toBeNull();
@@ -17,23 +30,15 @@ describe("PendingSendList", () => {
 
   it("updates the live region text when a send goes pending", () => {
     const { rerender } = render(
-      <PendingSendList entries={[]} now={1000} onUndo={vi.fn()} />
+      <PendingSendLiveRegion entries={[]} />
     );
 
-    const pendingSend: PendingSend = {
-      id: "send1",
-      draft: { text: "hello world", files: [] },
-      input: [{ type: "text", text: "hello world" }],
-      dispatch: { kind: "auto" },
-      expiresAt: 2500,
-    };
+    const send1 = pendingSend("send1", 2500, "hello world");
 
     rerender(
-      <PendingSendList
-        entries={[pendingSend]}
-        now={1000}
+      <PendingSendLiveRegion
+        entries={[send1]}
         windowMs={1500}
-        onUndo={vi.fn()}
       />
     );
 
@@ -42,75 +47,49 @@ describe("PendingSendList", () => {
   });
 
   it("does not update the live region text on every tick", () => {
-    const pendingSend: PendingSend = {
-      id: "send1",
-      draft: { text: "hello world", files: [] },
-      input: [{ type: "text", text: "hello world" }],
-      dispatch: { kind: "auto" },
-      expiresAt: 2500,
-    };
+    const send1 = pendingSend("send1", 2500, "hello world");
 
     const { rerender } = render(
-      <PendingSendList
-        entries={[pendingSend]}
-        now={1000}
+      <PendingSendLiveRegion
+        entries={[send1]}
         windowMs={1500}
-        onUndo={vi.fn()}
       />
     );
 
     const liveRegion = screen.getByRole("status");
     const initialText = liveRegion.textContent;
 
-    // Simulate clock ticking by advancing `now`
+    // Re-render with same entries (simulate clock tick which might cause re-render if it was bound to now)
     rerender(
-      <PendingSendList
-        entries={[pendingSend]}
-        now={1200}
+      <PendingSendLiveRegion
+        entries={[send1]}
         windowMs={1500}
-        onUndo={vi.fn()}
       />
     );
 
     expect(liveRegion.textContent).toBe(initialText);
   });
 
-  it("announces a newly added second send once, without repeating existing, and does not announce on removal", () => {
-    const pendingSend1: PendingSend = {
-      id: "send1",
-      draft: { text: "hello world", files: [] },
-      input: [{ type: "text", text: "hello world" }],
-      dispatch: { kind: "auto" },
-      expiresAt: 2500,
-    };
+  it("announces a newly added second send once, without repeating existing, and clears on removal", () => {
+    const send1 = pendingSend("send1", 2500, "hello world");
 
     const { rerender } = render(
-      <PendingSendList
-        entries={[pendingSend1]}
-        now={1000}
+      <PendingSendLiveRegion
+        entries={[send1]}
         windowMs={1500}
-        onUndo={vi.fn()}
       />
     );
 
     const liveRegion = screen.getByRole("status");
     expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
 
-    const pendingSend2: PendingSend = {
-      id: "send2",
-      draft: { text: "second message", files: [] },
-      input: [{ type: "text", text: "second message" }],
-      dispatch: { kind: "auto" },
-      expiresAt: 3000,
-    };
+    const send2 = pendingSend("send2", 3000, "second message");
 
     // Add second send
     rerender(
-      <PendingSendList
-        entries={[pendingSend1, pendingSend2]}
-        now={1500}
+      <PendingSendLiveRegion
+        entries={[send1, send2]}
         windowMs={1500}
-        onUndo={vi.fn()}
       />
     );
     // Should ONLY announce the second send to avoid repeating the first
@@ -118,26 +97,74 @@ describe("PendingSendList", () => {
 
     // Remove second send (e.g., undo or expired)
     rerender(
-      <PendingSendList
-        entries={[pendingSend1]}
-        now={2000}
+      <PendingSendLiveRegion
+        entries={[send1]}
         windowMs={1500}
-        onUndo={vi.fn()}
       />
     );
-    // Should not re-announce the first send, so the text should remain the same
-    expect(liveRegion.textContent).toBe("Sending second message. Undo available for 1.5 seconds.");
+    // Should clear the announcement so it doesn't leave stale text, but shouldn't re-announce the first send
+    expect(liveRegion.textContent).toBe("");
 
     // Remove all sends
     rerender(
-      <PendingSendList
+      <PendingSendLiveRegion
         entries={[]}
-        now={2500}
+        windowMs={1500}
+      />
+    );
+    // Should remain completely empty when idle
+    expect(liveRegion.textContent).toBe("");
+  });
+
+  it("re-announces an ID if it is removed and then re-added", () => {
+    const send1 = pendingSend("send1", 2500, "hello world");
+
+    const { rerender } = render(
+      <PendingSendLiveRegion
+        entries={[send1]}
+        windowMs={1500}
+      />
+    );
+
+    const liveRegion = screen.getByRole("status");
+    expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
+
+    // Remove send1
+    rerender(
+      <PendingSendLiveRegion
+        entries={[]}
+        windowMs={1500}
+      />
+    );
+    expect(liveRegion.textContent).toBe("");
+
+    // Re-add send1
+    rerender(
+      <PendingSendLiveRegion
+        entries={[send1]}
+        windowMs={1500}
+      />
+    );
+    expect(liveRegion.textContent).toBe("Sending hello world. Undo available for 1.5 seconds.");
+  });
+});
+
+describe("PendingSendList", () => {
+  it("renders pending sends but no status region", () => {
+    const send1 = pendingSend("send1", 2500, "hello world");
+    render(
+      <PendingSendList
+        entries={[send1]}
+        now={1000}
         windowMs={1500}
         onUndo={vi.fn()}
       />
     );
-    // Should be completely empty when idle
-    expect(liveRegion.textContent).toBe("");
+
+    // Should NOT have a role="status"
+    expect(screen.queryByRole("status")).toBeNull();
+    // But it should render the row (which has an aria-label="Message sending" or something similar)
+    expect(screen.getByText("Sending")).toBeTruthy();
+    expect(screen.getByText("hello world")).toBeTruthy();
   });
 });
