@@ -53,12 +53,6 @@ function PendingSendRow({
         >
           {timeLeft}
         </span>
-        {/* Said ONCE. The string does not change as the clock runs, so a
-            polite region announces the pending send and the way out of it and
-            then stays quiet. The window is stated rather than counted. */}
-        <span className="sr-only" role="status" aria-live="polite">
-          {`Sending ${preview}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`}
-        </span>
         <button
           type="button"
           aria-label={`Undo sending "${preview}"`}
@@ -95,11 +89,22 @@ export function PendingSendList({
   onUndo,
   windowMs = UNDO_SEND_WINDOW_MS,
 }: PendingSendListProps) {
-  if (entries.length === 0) {
-    return null;
-  }
+  const liveRegionText = entries
+    .map(
+      (entry) =>
+        `Sending ${entry.draft.text.trim()}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`
+    )
+    .join(" ");
+
   return (
     <>
+      {/* Said ONCE per change. The string does not change as the clock runs, so a
+          polite region announces the pending send and the way out of it and
+          then stays quiet. The window is stated rather than counted. 
+          The region is persistently mounted so screen readers reliably observe mutations. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {liveRegionText}
+      </span>
       {entries.map((entry) => (
         <PendingSendRow
           key={entry.id}
