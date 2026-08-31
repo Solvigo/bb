@@ -1,3 +1,4 @@
+import * as React from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
@@ -89,12 +90,31 @@ export function PendingSendList({
   onUndo,
   windowMs = UNDO_SEND_WINDOW_MS,
 }: PendingSendListProps) {
-  const liveRegionText = entries
-    .map(
-      (entry) =>
-        `Sending ${entry.draft.text.trim()}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`
-    )
-    .join(" ");
+  const [liveRegionText, setLiveRegionText] = React.useState("");
+  const seenIds = React.useRef<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    if (entries.length === 0) {
+      if (seenIds.current.size > 0) {
+        seenIds.current.clear();
+        setLiveRegionText("");
+      }
+      return;
+    }
+
+    const newEntries = entries.filter((e) => !seenIds.current.has(e.id));
+    if (newEntries.length > 0) {
+      newEntries.forEach((e) => seenIds.current.add(e.id));
+      setLiveRegionText(
+        newEntries
+          .map(
+            (entry) =>
+              `Sending ${entry.draft.text.trim()}. Undo available for ${(windowMs / 1000).toFixed(1)} seconds.`
+          )
+          .join(" ")
+      );
+    }
+  }, [entries, windowMs]);
 
   return (
     <>
