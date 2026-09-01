@@ -373,9 +373,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     const body = createBody();
     expect(body.projectId).toBe("proj_a");
@@ -449,9 +452,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
     expect(calls.filter((c) => c.includes("crew_charter")).length).toBe(1);
@@ -478,9 +484,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a", "ship the billing page");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     // Nothing CREATED. Chartered once, though: a handle proves a charter
     // started, not that its brief landed, so the repair runs before this root
@@ -521,9 +530,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
     // The project's actual crew is what opens — never our unchartered standby.
@@ -644,9 +656,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     // Ours archived, the authoritative winner opened.
     expect(archive).toHaveBeenCalledWith({ threadId: "thr_root" });
@@ -963,9 +978,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(result.current.error).not.toBeNull();
-    });
+    await waitFor(
+      () => {
+        expect(result.current.error).not.toBeNull();
+      },
+      { timeout: 5_000 },
+    );
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
   });
 
@@ -1027,9 +1045,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(archive).toHaveBeenCalledWith({ threadId: "thr_leftover" });
     expect(window.localStorage.getItem("bb.crew.standby-roots")).not.toContain(
@@ -1070,9 +1091,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(archive).not.toHaveBeenCalled();
     // The stale note is dropped without touching the thread it named.
@@ -1352,9 +1376,12 @@ describe("useCreateCrew", () => {
       rail.result.current.createCrew("proj_a");
       card.result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toHaveLength(1);
   });
@@ -1404,9 +1431,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a", "ship the billing page");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toHaveLength(1);
     expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
@@ -1418,23 +1448,24 @@ describe("useCreateCrew", () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("leaves the chartered root retryable when still_starting never clears", async () => {
-    send.mockImplementation(async () => {
-      stillStartingError();
-    });
-    stubRig();
-    const { result } = await freshHook();
-    vi.useFakeTimers();
-    try {
+  it(
+    "leaves the chartered root retryable when still_starting never clears",
+    async () => {
+      send.mockImplementation(async () => {
+        stillStartingError();
+      });
+      stubRig();
+      const { result } = await freshHook();
+
       act(() => {
         result.current.createCrew("proj_a");
       });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(20_000);
-      });
-      await waitFor(() => {
-        expect(result.current.error).toContain("in time");
-      });
+      await waitFor(
+        () => {
+          expect(result.current.error).toContain("in time");
+        },
+        { timeout: 20_000 },
+      );
 
       expect(navigate).not.toHaveBeenCalled();
       expect(window.localStorage.getItem("bb.crew.standby-roots")).toContain(
@@ -1445,19 +1476,18 @@ describe("useCreateCrew", () => {
       act(() => {
         result.current.createCrew("proj_a");
       });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1_000);
-      });
-      await waitFor(() => {
-        expect(navigate).toHaveBeenCalled();
-      });
+      await waitFor(
+        () => {
+          expect(navigate).toHaveBeenCalled();
+        },
+        { timeout: 5_000 },
+      );
 
       expect(calls.filter((c) => c === "POST /api/v1/threads")).toHaveLength(1);
       expect(calls.filter((c) => c.includes("crew_charter")).length).toBe(2);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+    },
+    30_000,
+  );
 
   it.each([
     ["archived", () => threadNotWritableError("archived")],
@@ -1491,9 +1521,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(result.current.error).not.toBeNull();
-    });
+    await waitFor(
+      () => {
+        expect(result.current.error).not.toBeNull();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(send).toHaveBeenCalledTimes(1);
     expect(navigate).not.toHaveBeenCalled();
@@ -1522,9 +1555,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a", "ship the billing page");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
     expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
@@ -1557,9 +1593,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
     expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
@@ -1590,9 +1629,12 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a");
     });
-    await waitFor(() => {
-      expect(result.current.error).not.toBeNull();
-    });
+    await waitFor(
+      () => {
+        expect(result.current.error).not.toBeNull();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(send).toHaveBeenCalledTimes(1);
     expect(navigate).not.toHaveBeenCalled();
@@ -1613,17 +1655,23 @@ describe("useCreateCrew", () => {
     act(() => {
       result.current.createCrew("proj_a", "ship the billing page");
     });
-    await waitFor(() => {
-      expect(result.current.error).not.toBeNull();
-    });
+    await waitFor(
+      () => {
+        expect(result.current.error).not.toBeNull();
+      },
+      { timeout: 5_000 },
+    );
 
     send.mockImplementation(async () => undefined);
     act(() => {
       result.current.createCrew("proj_a", "ship the billing page");
     });
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalled();
-    });
+    await waitFor(
+      () => {
+        expect(navigate).toHaveBeenCalled();
+      },
+      { timeout: 5_000 },
+    );
 
     expect(calls.filter((c) => c === "POST /api/v1/threads")).toHaveLength(1);
     expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(2);

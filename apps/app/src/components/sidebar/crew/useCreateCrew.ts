@@ -415,9 +415,9 @@ function buildRootOpeningInput({
 }: {
   bootstrap: string | null;
   openingRequest?: string;
-}): { type: "text"; text: string; mentions: readonly [] }[] {
+}) {
   const request = openingRequest?.trim();
-  const emptyMentions = [] as const;
+  const emptyMentions: [] = [];
   return [
     ...(bootstrap !== null
       ? [{ type: "text" as const, text: bootstrap, mentions: emptyMentions }]
