@@ -32,11 +32,24 @@ import {
   type Crew,
   type CrewLead,
   type LooseChat,
+  type PendingRoot,
 } from "./useCrews";
 export { NewCrewButton } from "./NewCrewButton";
 
 export const SIDEBAR_SECTION_LABEL_CLASS =
   "px-2 text-xs font-medium text-muted-foreground";
+
+// Three row types share one visual vocabulary: the row you are on, the row a
+// drag is hovering, and the row that just arrived. Naming each state once is
+// what keeps the three rows looking like one list.
+const ROW_RESTING_CLASS = "hover:bg-sidebar-accent";
+const ROW_CURRENT_CLASS = "bg-sidebar-accent";
+const ROW_DROP_TARGET_CLASS = "bg-primary/20 ring-2 ring-inset ring-primary";
+const ROW_JUST_MOVED_CLASS = "bg-primary/25 ring-2 ring-inset ring-primary/70";
+// The one control a project card offers when it has no crew: add one, or
+// finish the one whose charter did not go through. Same row either way.
+const CARD_ACTION_CLASS =
+  "flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50";
 
 function CrewEntry({
   crew,
@@ -132,13 +145,7 @@ function CrewEntry({
                 event.preventDefault();
                 return;
               }
-              event.dataTransfer.setData(
-                AGENT_DRAG_TYPE,
-                crew.commanderThreadId,
-              );
-              event.dataTransfer.effectAllowed = "move";
-              setAgentDragImage(event.dataTransfer, crew.name);
-              beginDrag(movable);
+              startAgentDrag(event, movable, beginDrag);
             }}
             onDragEnd={endDrag}
             // Dimmed for every crew but the one being edited; pointer-events
@@ -148,15 +155,15 @@ function CrewEntry({
             className={({ isActive }) =>
               cn(
                 "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
-                isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+                isActive ? ROW_CURRENT_CLASS : ROW_RESTING_CLASS,
                 // The recoverable row's own dimming, since the ancestor's is
                 // skipped for it — this link stays inert even though the
                 // move-menu button beside it does not.
                 outOfScope && isRecoverable && "pointer-events-none opacity-40",
                 // Where the agent would land, said loudly enough to see.
-                drop.isOver && "bg-primary/20 ring-2 ring-inset ring-primary",
+                drop.isOver && ROW_DROP_TARGET_CLASS,
                 drop.isForbidden && "cursor-not-allowed opacity-40",
-                justMoved && "bg-primary/25 ring-2 ring-inset ring-primary/70",
+                justMoved && ROW_JUST_MOVED_CLASS,
               )
             }
           >
@@ -442,26 +449,27 @@ function findCurrentNode(
 function setAgentDragImage(dataTransfer: DataTransfer, name: string): void {
   if (typeof document === "undefined") return;
   const card = document.createElement("div");
+  card.className = "agent-drag-card";
   card.textContent = name;
-  card.style.cssText = [
-    "position:fixed",
-    "top:-1000px",
-    "left:-1000px",
-    "max-width:220px",
-    "overflow:hidden",
-    "text-overflow:ellipsis",
-    "white-space:nowrap",
-    "padding:6px 10px",
-    "border-radius:10px",
-    "font:500 12px/1.2 system-ui,sans-serif",
-    "background:#1f1f1e",
-    "border:1px solid #2c2c2b",
-    "color:#e7e7e7",
-    "box-shadow:0 6px 16px rgba(0,0,0,0.45)",
-  ].join(";");
   document.body.appendChild(card);
   dataTransfer.setDragImage(card, 14, 14);
   requestAnimationFrame(() => card.remove());
+}
+
+/**
+ * Everything a row does when it is picked up. Three rows start an agent drag
+ * and all three have to set the same payload, effect and cursor card; keeping
+ * one copy is what stops them drifting apart.
+ */
+function startAgentDrag(
+  event: React.DragEvent,
+  agent: MovableAgent,
+  beginDrag: (agent: MovableAgent) => void,
+): void {
+  event.dataTransfer.setData(AGENT_DRAG_TYPE, agent.threadId);
+  event.dataTransfer.effectAllowed = "move";
+  setAgentDragImage(event.dataTransfer, agent.name);
+  beginDrag(agent);
 }
 
 /**
@@ -897,9 +905,11 @@ export function CrewEditProvider({ children }: { children: ReactNode }) {
  */
 function ProjectRootDropZone({
   name,
+  projectId,
   inScope,
 }: {
   name: string;
+  projectId: string;
   inScope: boolean;
 }) {
   const { draggingId, editingCrewId } = useContext(CrewEditContext);
@@ -909,8 +919,10 @@ function ProjectRootDropZone({
   return (
     <div
       {...drop.handlers}
+      data-testid={`project-root-drop-${projectId}`}
+      data-project-drop-active={armed ? "true" : "false"}
       className={cn(
-        "flex min-h-6 items-center gap-1.5 rounded px-2 transition-colors",
+        "flex min-h-7 items-center gap-2 px-0 transition-colors",
         armed && "ring-1 ring-inset ring-border",
         drop.isOver && "bg-primary/20 ring-2 ring-primary",
         dimmed && "pointer-events-none opacity-40",
@@ -918,10 +930,10 @@ function ProjectRootDropZone({
     >
       <Icon
         name="Folder"
-        className="size-3.5 shrink-0 text-subtle-foreground"
+        className="size-4 shrink-0 text-subtle-foreground"
         aria-hidden
       />
-      <span className="truncate text-xs font-medium text-muted-foreground">
+      <span className="truncate text-sm font-medium text-foreground">
         {name}
       </span>
       {armed ? (
@@ -1193,10 +1205,7 @@ function AgentTreeRow({
               event.preventDefault();
               return;
             }
-            event.dataTransfer.setData(AGENT_DRAG_TYPE, agent.threadId);
-            event.dataTransfer.effectAllowed = "move";
-            setAgentDragImage(event.dataTransfer, agent.name);
-            beginDrag(agent);
+            startAgentDrag(event, agent, beginDrag);
           }}
           onDragEnd={endDrag}
           // In edit mode a click edits, it does not travel — and dimmed for a
@@ -1231,10 +1240,10 @@ function AgentTreeRow({
               // A row grows while something is in the air: the target the
               // operator has to hit is the thing they said was hard to use.
               draggingId !== null ? "min-h-9 py-2" : "min-h-7 py-0.5",
-              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
-              drop.isOver && "bg-primary/20 ring-2 ring-inset ring-primary",
+              isActive ? ROW_CURRENT_CLASS : ROW_RESTING_CLASS,
+              drop.isOver && ROW_DROP_TARGET_CLASS,
               drop.isForbidden && "cursor-not-allowed opacity-40",
-              justMoved && "bg-primary/25 ring-2 ring-inset ring-primary/70",
+              justMoved && ROW_JUST_MOVED_CLASS,
             )
           }
         >
@@ -1342,6 +1351,30 @@ interface ProjectGroup {
 }
 
 /**
+ * Whether a project already has a CREW.
+ *
+ * Only a crew counts. An ordinary chat on a project is a conversation, not a
+ * crew, and letting one stand in for a root meant a project the operator had
+ * only ever talked in could never be given a crew at all — Add a crew simply
+ * was not there, with nothing on screen to say why. An unchartered standby is
+ * not counted here either; it renders its own retry.
+ */
+export function projectHasCrew(
+  projectId: string,
+  crews: readonly Crew[],
+): boolean {
+  return crews.some((c) => c.projectId === projectId);
+}
+
+/** The unchartered standby waiting on this project, if there is one. */
+export function pendingRootOf(
+  pendingRoots: readonly PendingRoot[],
+  projectId: string,
+): PendingRoot | null {
+  return pendingRoots.find((r) => r.projectId === projectId) ?? null;
+}
+
+/**
  * Crews under the project they belong to, which is the tree's real root: a
  * project is a folder someone chose, and its agents live inside it.
  *
@@ -1354,6 +1387,7 @@ function groupByProject(
   crews: readonly Crew[],
   nameOf: ReadonlyMap<string, string>,
   projectIds: readonly string[],
+  pendingRoots: readonly PendingRoot[],
 ): ProjectGroup[] {
   const groups = new Map<string, ProjectGroup>();
 
@@ -1382,6 +1416,17 @@ function groupByProject(
       crews: [crew],
     });
   }
+  // A pending root needs a card to carry its Retry. Personal is the one
+  // project that is not seeded from the project list, so a standby created
+  // with no project had nowhere on screen to be finished from.
+  for (const pending of pendingRoots) {
+    if (groups.has(pending.projectId)) continue;
+    groups.set(pending.projectId, {
+      projectId: pending.projectId,
+      name: nameOf.get(pending.projectId) ?? null,
+      crews: [],
+    });
+  }
   // Real projects first and alphabetical. Personal sinks below them — an agent
   // tree belongs in Projects wherever it lives, but the projectless bucket is
   // not a folder anyone chose, so it does not compete for the top. Anything
@@ -1397,7 +1442,9 @@ function groupByProject(
       // an empty "Personal" folder invites you to fill something that is not a
       // place.
       (group) =>
-        group.projectId !== PERSONAL_PROJECT_ID || group.crews.length > 0,
+        group.projectId !== PERSONAL_PROJECT_ID ||
+        group.crews.length > 0 ||
+        pendingRoots.some((r) => r.projectId === PERSONAL_PROJECT_ID),
     )
     .sort((a, b) => {
       const byWeight = weightOf(a) - weightOf(b);
@@ -1413,17 +1460,32 @@ function groupByProject(
  * they are simply no longer what the operator reads first.
  */
 export function CrewSidebarSection({
-  headerTrailing,
   onNavigate,
 }: {
-  /** Sits on the Crews heading — search belongs beside what it searches. */
-  headerTrailing?: ReactNode;
   onNavigate?: () => void;
 }) {
-  const { crews, loaded, failed, timedOut, reload } = useCrews();
+  const { crews, chats, pendingRoots, loaded, failed, timedOut, reload } =
+    useCrews();
   const projectNameOf = useProjectNames();
   const projectIds = useMemo(() => [...projectNameOf.keys()], [projectNameOf]);
-  const { createCrew, creating: creatingCrew } = useCreateCrew();
+  const projectGroups = useMemo(
+    () => groupByProject(crews, projectNameOf, projectIds, pendingRoots),
+    [crews, pendingRoots, projectNameOf, projectIds],
+  );
+  // Ordinals follow the rendered order, so the same unresolved project keeps
+  // the same spoken name for as long as the list holds still.
+  const unnamedOrdinals = useMemo(() => {
+    const ordinals = new Map<string, number>();
+    for (const group of projectGroups) {
+      if (group.name === null) ordinals.set(group.projectId, ordinals.size + 1);
+    }
+    return ordinals;
+  }, [projectGroups]);
+  const {
+    createCrew,
+    creatingFor: creatingCrewFor,
+    error: createCrewError,
+  } = useCreateCrew();
   const {
     editingCrewId,
     setEditingCrewId,
@@ -1466,7 +1528,6 @@ export function CrewSidebarSection({
         >
           Projects
         </span>
-        {headerTrailing}
       </div>
       {editingCrewId !== null ? (
         // A MODE has to announce itself. The old hint was a grey paragraph
@@ -1518,6 +1579,15 @@ export function CrewSidebarSection({
           {`Not moved — ${refusal}.`}
         </p>
       ) : null}
+      {createCrewError !== null ? (
+        <p
+          role="alert"
+          data-testid="crew-create-error"
+          className="mx-2 mb-1 rounded-md border border-destructive-text/40 px-2 py-1 text-[11px] text-destructive-text"
+        >
+          {createCrewError}
+        </p>
+      ) : null}
       {/* Politely, so a completed or refused move announces itself without
           interrupting. A drag is invisible to a screen reader, and a refusal
           that shows only as a row springing back is a refusal nobody heard. */}
@@ -1528,7 +1598,10 @@ export function CrewSidebarSection({
         <p className="px-2 py-1 text-xs italic text-muted-foreground">
           Reading the fleet…
         </p>
-      ) : failed && crews.length === 0 ? (
+      ) : failed &&
+        crews.length === 0 &&
+        chats.length === 0 &&
+        projectGroups.length === 0 ? (
         <p className="px-2 py-1 text-xs text-muted-foreground">
           {timedOut
             ? "The fleet hasn't answered yet."
@@ -1541,60 +1614,105 @@ export function CrewSidebarSection({
             {timedOut ? "Wait longer" : "Try again"}
           </button>
         </p>
-      ) : crews.length === 0 ? (
+      ) : projectGroups.length === 0 ? (
         <p className="px-2 py-1 text-xs italic text-muted-foreground">
           No projects yet — create one above.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {groupByProject(crews, projectNameOf, projectIds).map((group) => {
+        <ul className="flex flex-col gap-3">
+          {projectGroups.map((group) => {
             const projectInScope = group.projectId === editingProjectId;
             // Every other project goes inert during an edit session, same as
             // its header: an empty project's only affordance is standing up a
             // brand new crew, which has nothing to do with the crew being
             // rearranged and shouldn't be reachable mid-session.
             const projectOutOfScope = editingCrewId !== null && !projectInScope;
+            // A standby whose charter did not go through stays HERE, inside
+            // the project it was made for, carrying the retry. Sent to Chats
+            // it read as a conversation and, by counting as the project's
+            // root, hid the only control that could finish it.
+            const pending =
+              pendingRootOf(pendingRoots, group.projectId) !== null;
+            // Per project: a crew standing up on one project is no reason for
+            // another project's card to go dead.
+            const busyHere = creatingCrewFor(group.projectId);
+            // Two unresolved projects both announced as "this project", and
+            // so did both of their Add a crew buttons. A deterministic ordinal
+            // gives each one a name that is stable across renders and does not
+            // read an id out loud.
+            const projectLabel =
+              group.name ?? `Unnamed project ${unnamedOrdinals.get(group.projectId) ?? 1}`;
             return (
-              <li key={group.projectId}>
-                {group.name === null ? null : (
-                  <ProjectRootDropZone
-                    name={group.name}
-                    inScope={projectInScope}
-                  />
-                )}
-                {group.crews.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (projectOutOfScope) return;
-                      createCrew(group.projectId);
-                    }}
-                    disabled={creatingCrew || projectOutOfScope}
-                    className={cn(
-                      "flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50",
-                      projectOutOfScope && "pointer-events-none opacity-40",
-                    )}
-                  >
-                    <Icon
-                      name="Plus"
-                      className="size-3.5 shrink-0"
-                      aria-hidden
-                    />
-                    <span className="truncate text-[13px]">
-                      {creatingCrew ? "Standing up a crew…" : "Add a crew"}
-                    </span>
-                  </button>
-                ) : (
-                  <ul className="flex flex-col gap-1">
-                    {group.crews.map((crew) => (
-                      <CrewEntry
-                        key={crew.commanderThreadId}
-                        crew={crew}
-                        onNavigate={onNavigate}
+              <li key={group.projectId} data-testid="sidebar-project-group">
+                {/* The GROUP is the card, not the list item: a role here would
+                    take the listitem semantics with it, and the projects band
+                    stops being a list at all. */}
+                <div
+                  role="group"
+                  aria-label={projectLabel}
+                  className="overflow-hidden rounded-lg border border-sidebar-border bg-surface-recessed-solid"
+                >
+                  {group.name === null ? null : (
+                    <div className="border-b border-sidebar-border px-2.5 py-2">
+                      <ProjectRootDropZone
+                        name={group.name}
+                        projectId={group.projectId}
+                        inScope={projectInScope}
                       />
-                    ))}
-                  </ul>
-                )}
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1 px-1.5 py-2">
+                    {!projectHasCrew(group.projectId, crews) ? (
+                      <button
+                        type="button"
+                        data-testid={
+                          pending ? "retry-crew-button" : "add-crew-button"
+                        }
+                        // Named for its project. Every card carries a control
+                        // reading "Add a crew", so the bare label told a screen
+                        // reader which ACTION this was and never which project
+                        // it would act on.
+                        aria-label={
+                          pending
+                            ? `Retry the unfinished crew setup on ${projectLabel}`
+                            : `Add a crew to ${projectLabel}`
+                        }
+                        onClick={() => {
+                          if (projectOutOfScope) return;
+                          createCrew(group.projectId);
+                        }}
+                        disabled={busyHere || projectOutOfScope}
+                        className={cn(
+                          CARD_ACTION_CLASS,
+                          projectOutOfScope && "pointer-events-none opacity-40",
+                        )}
+                      >
+                        <Icon
+                          name={pending ? "RotateCcw" : "Plus"}
+                          className="size-3.5 shrink-0"
+                          aria-hidden
+                        />
+                        <span className="truncate text-sm">
+                          {busyHere
+                            ? "Standing up a crew…"
+                            : pending
+                              ? "Setup did not finish — retry"
+                              : "Add a crew"}
+                        </span>
+                      </button>
+                    ) : (
+                      <ul className="flex flex-col gap-0.5">
+                        {group.crews.map((crew) => (
+                          <CrewEntry
+                            key={crew.commanderThreadId}
+                            crew={crew}
+                            onNavigate={onNavigate}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
               </li>
             );
           })}
@@ -1681,10 +1799,9 @@ function ChatRow({
           className={({ isActive }) =>
             cn(
               "flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 transition-colors",
-              isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+              isActive ? ROW_CURRENT_CLASS : ROW_RESTING_CLASS,
               dimmed && "pointer-events-none opacity-40",
-              justMovedId === chat.threadId &&
-                "bg-primary/25 ring-2 ring-inset ring-primary/70",
+              justMovedId === chat.threadId && ROW_JUST_MOVED_CLASS,
             )
           }
         >

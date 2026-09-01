@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { stripRankPrefix } from "@/lib/agent-title";
 import { wsManager } from "@/lib/ws";
+import { recordedStandbyRoots } from "./standbyRoots";
 
 export interface CrewLead {
   threadId: string;
@@ -54,6 +56,26 @@ export interface Crew {
  * ABSENCE, exactly as the model intends — there is no second kind of thread,
  * and any of these can be chartered later without moving.
  */
+/** The title a root carries from creation until its crew names it. It names
+ *  the thread and nothing more — provenance is recorded, never inferred from
+ *  a sentence anyone is free to write. */
+export const ROOT_THREAD_TITLE = "New crew";
+
+/**
+ * A root that was created for a crew and never chartered.
+ *
+ * It is not a chat — nobody started it to talk in — and it is not a crew,
+ * because the charter that would have made it one did not go through. Kept as
+ * its own kind so it renders inside its project with a retry rather than
+ * settling into Chats, where it would both look like a conversation and, by
+ * counting as the project's root, hide the affordance that could fix it.
+ */
+export interface PendingRoot {
+  threadId: string;
+  name: string;
+  projectId: string;
+}
+
 export interface LooseChat {
   threadId: string;
   name: string;
@@ -211,7 +233,7 @@ export function assembleFleet(
   board: { rows: BoardRow[] } | null,
   attention: { open?: AttentionRow[] } | null,
   artifacts: { artifacts?: AttentionRow[] } | null,
-): { crews: Crew[]; chats: LooseChat[] } {
+): { crews: Crew[]; chats: LooseChat[]; pendingRoots: PendingRoot[] } {
   // Decks leave the tree before anything else looks at it, so every downstream
   // question — who is crewed, what is under whom, what is waiting on the
   // operator — is answered as if they were never there. Filtering them later,
@@ -294,7 +316,15 @@ export function assembleFleet(
         };
       });
 
-  const roots = agentThreads.filter((t) => !t.parentThreadId && live.has(t.id));
+  // parentOf, not the raw pointer: it is the ONE answer to "whose child is
+  // this", and the optimistic reparent already moved the row everywhere else.
+  // Reading the server's stale pointer here rendered a dragged root twice —
+  // once as its new parent's child, once as a loose chat that had not moved —
+  // and made a promotion to root vanish from both bands until the server
+  // caught up.
+  const roots = agentThreads.filter(
+    (t) => parentOf(t) === null && live.has(t.id),
+  );
 
   // Crewed or not, decided by ABSENCE: a root with agents under it is a crew,
   // and so is one carrying a crew handle — chartered but not yet staffed. Both
@@ -305,8 +335,35 @@ export function assembleFleet(
     (byParent.get(t.id) ?? []).some((child) => live.has(child.id)) ||
     handleOf.has(t.id);
 
+  // The standby a failed charter left behind — identified by what this client
+  // RECORDED creating, never by what the thread is called. A title is a
+  // sentence anyone may write, and classifying "New crew" as a broken setup
+  // turned the operator's own chat into a repair prompt.
+  //
+  // The record only ever narrows: the thread must still be a root, still carry
+  // no handle, and still sit on the project it was recorded for. A record that
+  // has gone stale stops matching rather than asserting anything.
+  const recorded = recordedStandbyRoots();
+  // A HANDLE IS NOT COMPLETION. charter writes the handle before the brief, so
+  // a root whose charter died in between wears a handle and has no brief — and
+  // dropping it from pending here is what took the only Retry off the screen.
+  // The record is removed when a charter SUCCEEDS, and until then this stays
+  // pending however crewed it looks.
+  const isPendingRoot = (t: ThreadRow) =>
+    recorded.get(t.id) === (t.projectId ?? PERSONAL_PROJECT_ID);
+
+  const pendingRoots: PendingRoot[] = roots
+    .filter(isPendingRoot)
+    .map((t) => ({
+      threadId: t.id,
+      name: titleOf(t),
+      // One spelling, so a personal standby is findable by the same id the
+      // rest of the app groups it under.
+      projectId: t.projectId ?? PERSONAL_PROJECT_ID,
+    }));
+
   const chats: LooseChat[] = roots
-    .filter((t) => !isCrewed(t))
+    .filter((t) => !isCrewed(t) && !isPendingRoot(t))
     .map((t) => ({
       threadId: t.id,
       name: titleOf(t),
@@ -314,31 +371,33 @@ export function assembleFleet(
       liveness: livenessOf.get(t.id) ?? null,
     }));
 
-  const crews = roots.filter(isCrewed).map((commander) => {
-    const leads: CrewLead[] = agentsUnder(commander.id);
-    const working = leads.filter((l) => l.working).length;
-    return {
-      commanderThreadId: commander.id,
-      name: titleOf(commander),
-      projectId: commander.projectId ?? "",
-      liveness: livenessOf.get(commander.id) ?? null,
-      leads,
-      attention:
-        (asksOf.get(commander.id) ?? 0) +
-        leads.reduce((total, lead) => total + lead.attention, 0),
-      // An agent is an agent. Depth is the only hierarchy there is, and it is
-      // shown by where a row sits — so the words here count agents rather than
-      // naming a rank the structure no longer has.
-      status:
-        leads.length === 0
-          ? "nothing under it yet"
-          : working > 0
-            ? `${working} of ${leads.length} working`
-            : `${leads.length} agent${leads.length === 1 ? "" : "s"} standing by`,
-    };
-  });
+  const crews = roots
+    .filter((t) => isCrewed(t) && !isPendingRoot(t))
+    .map((commander) => {
+      const leads: CrewLead[] = agentsUnder(commander.id);
+      const working = leads.filter((l) => l.working).length;
+      return {
+        commanderThreadId: commander.id,
+        name: titleOf(commander),
+        projectId: commander.projectId ?? "",
+        liveness: livenessOf.get(commander.id) ?? null,
+        leads,
+        attention:
+          (asksOf.get(commander.id) ?? 0) +
+          leads.reduce((total, lead) => total + lead.attention, 0),
+        // An agent is an agent. Depth is the only hierarchy there is, and it is
+        // shown by where a row sits — so the words here count agents rather than
+        // naming a rank the structure no longer has.
+        status:
+          leads.length === 0
+            ? "nothing under it yet"
+            : working > 0
+              ? `${working} of ${leads.length} working`
+              : `${leads.length} agent${leads.length === 1 ? "" : "s"} standing by`,
+      };
+    });
 
-  return { crews, chats };
+  return { crews, chats, pendingRoots };
 }
 
 /**
@@ -353,6 +412,8 @@ export interface CrewsState {
   crews: Crew[];
   /** Root threads nobody has crewed. Rendered as Chats, below the projects. */
   chats: LooseChat[];
+  /** Roots created for a crew whose charter has not gone through yet. */
+  pendingRoots: PendingRoot[];
   /** false only until the first attempt resolves — never a permanent state */
   loaded: boolean;
   /** the last attempt could not read the fleet; `crews` is the last known set */
@@ -375,6 +436,7 @@ export interface CrewsState {
 let state: CrewsSnapshot = {
   crews: [],
   chats: [],
+  pendingRoots: [],
   loaded: false,
   failed: false,
   timedOut: false,
@@ -386,6 +448,7 @@ let disposeSources: (() => void) | null = null;
 interface CrewsSnapshot {
   crews: Crew[];
   chats: LooseChat[];
+  pendingRoots: PendingRoot[];
   loaded: boolean;
   failed: boolean;
   /** Set when the last attempt ran out of patience rather than being refused. */
@@ -528,7 +591,9 @@ export type ReparentRefusal =
   | "cycle"
   | "self"
   | "unknown-agent"
-  | "not-permitted";
+  | "not-permitted"
+  /** A domain-holding agent's custody is protected from the drag. */
+  | "domain-agent";
 
 export interface ReparentOutcome {
   ok: boolean;
@@ -538,6 +603,7 @@ export interface ReparentOutcome {
 }
 
 const REFUSAL_TEXT: Record<ReparentRefusal, string> = {
+  "domain-agent": "that agent holds a domain, so its custody cannot be moved",
   cycle: "that would put an agent inside its own branch",
   self: "an agent cannot report to itself",
   "unknown-agent": "that agent is no longer there",

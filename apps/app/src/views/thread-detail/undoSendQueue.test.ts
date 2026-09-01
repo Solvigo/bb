@@ -6,6 +6,7 @@ import {
   latestUndoTarget,
   partitionExpired,
   remainingMs,
+  remainingLabel,
   remainingSeconds,
   UNDO_SEND_WINDOW_MS,
   withoutEntry,
@@ -33,16 +34,48 @@ describe("remainingMs", () => {
 });
 
 describe("remainingSeconds", () => {
-  it("shows the full window before any time has passed", () => {
-    expect(remainingSeconds(pendingSend("a", UNDO_SEND_WINDOW_MS), 0)).toBe(2);
+  it("floors, so it can never claim time that is not there", () => {
+    expect(remainingSeconds(pendingSend("a", UNDO_SEND_WINDOW_MS), 0)).toBe(1.5);
+    expect(remainingSeconds(pendingSend("a", 3000), 1050)).toBe(1.9);
+    expect(remainingSeconds(pendingSend("a", 3000), 1099)).toBe(1.9);
   });
 
-  it("still shows a second while any time is left", () => {
-    expect(remainingSeconds(pendingSend("a", 3000), 2999)).toBe(1);
+  it("is honestly zero in the final sliver under a tenth", () => {
+    // Not what the countdown SHOWS there — see remainingLabel — but what is
+    // actually true to a tenth of a second.
+    expect(remainingSeconds(pendingSend("a", 3000), 2999)).toBe(0);
+  });
+});
+
+describe("remainingLabel", () => {
+  it("tells the truth about a window that is not a whole number of seconds", () => {
+    // It read "2s" over a 1.5s window: time the operator never had.
+    expect(remainingLabel(pendingSend("a", UNDO_SEND_WINDOW_MS), 0)).toBe(
+      "1.5s",
+    );
   });
 
-  it("shows zero at expiry", () => {
-    expect(remainingSeconds(pendingSend("a", 3000), 3000)).toBe(0);
+  it("never claims more time than remains", () => {
+    expect(remainingLabel(pendingSend("a", 3000), 1099)).toBe("1.9s");
+  });
+
+  it("names the last sliver instead of rounding it up", () => {
+    // "0.1s" here claimed a tenth of a second that was not there — the same
+    // overstatement as the old "2s", one order of magnitude down.
+    expect(remainingLabel(pendingSend("a", 3000), 2999)).toBe("<0.1s");
+    expect(remainingLabel(pendingSend("a", 3000), 2901)).toBe("<0.1s");
+  });
+
+  it("never reads zero while any time remains", () => {
+    for (const now of [0, 1400, 1499]) {
+      expect(remainingLabel(pendingSend("a", UNDO_SEND_WINDOW_MS), now)).not.toBe(
+        "0s",
+      );
+    }
+  });
+
+  it("reads zero at expiry", () => {
+    expect(remainingLabel(pendingSend("a", 3000), 3000)).toBe("0s");
   });
 });
 

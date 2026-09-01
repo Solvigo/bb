@@ -247,6 +247,259 @@ describe("useCrews", () => {
     expect(root?.attention).toBe(1);
   });
 
+  it("shows a dragged root once while the move is still in the air", async () => {
+    // The defect this guards: `roots` read the SERVER's parent pointer while
+    // every other read honoured the optimistic one. Drag one root onto another
+    // and the dragged agent rendered twice — as its new parent's child in
+    // Projects, and as an untouched loose chat in Chats — until the server
+    // answered. Two rows, one agent, and no way to tell which was real.
+    const PAIR = [
+      { id: "thr_a", title: "alpha", projectId: "p", parentThreadId: null },
+      { id: "thr_b", title: "beta", projectId: "p", parentThreadId: null },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    // The reparent call never settles, so the assertions run inside the
+    // optimistic window rather than after the server has confirmed anything.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("crew_reparent")) return new Promise(() => {});
+        if (url.includes("/threads"))
+          return { ok: true, json: async () => PAIR };
+        return { ok: true, json: async () => ({ result: { rows: [] } }) };
+      }),
+    );
+
+    const { useCrews, reparentAgent } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.chats.length).toBe(2);
+    });
+
+    act(() => {
+      void reparentAgent("thr_b", "thr_a");
+    });
+
+    await waitFor(() => {
+      expect(result.current.crews.length).toBe(1);
+    });
+    expect(result.current.crews[0]?.commanderThreadId).toBe("thr_a");
+    expect(result.current.crews[0]?.leads.map((l) => l.name)).toEqual(["beta"]);
+    // The whole point: beta moved, so it is no longer standing in Chats too.
+    expect(result.current.chats.map((c) => c.threadId)).toEqual([]);
+  });
+
+  it("promotes an agent to root the moment it is dropped there", async () => {
+    // The mirror of the same defect: dropping a child onto the project root
+    // cleared its optimistic parent, but `roots` still saw the server's old
+    // pointer, so the agent belonged to nobody and rendered nowhere.
+    const NESTED = [
+      { id: "thr_a", title: "alpha", projectId: "p", parentThreadId: null },
+      { id: "thr_b", title: "beta", projectId: "p", parentThreadId: "thr_a" },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("crew_reparent")) return new Promise(() => {});
+        if (url.includes("/threads"))
+          return { ok: true, json: async () => NESTED };
+        return { ok: true, json: async () => ({ result: { rows: [] } }) };
+      }),
+    );
+
+    const { useCrews, reparentAgent } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.crews.length).toBe(1);
+    });
+
+    act(() => {
+      void reparentAgent("thr_b", null);
+    });
+
+    await waitFor(() => {
+      expect(result.current.chats.map((c) => c.threadId).sort()).toEqual([
+        "thr_a",
+        "thr_b",
+      ]);
+    });
+    expect(result.current.crews.length).toBe(0);
+  });
+
+  it("tells a standby from a chat by what it recorded, never by the title", async () => {
+    // Two roots, same title, no handles. Only one of them was created by this
+    // flow; the other is the operator's own thinking, and classifying it as a
+    // broken setup put a repair prompt on a perfectly good conversation.
+    const ROOTS = [
+      {
+        id: "thr_standby",
+        title: "New crew",
+        projectId: "p",
+        parentThreadId: null,
+      },
+      {
+        id: "thr_talk",
+        title: "New crew",
+        projectId: "p",
+        parentThreadId: null,
+      },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_standby", projectId: "p" }]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/threads")
+          ? { ok: true, json: async () => ROOTS }
+          : { ok: true, json: async () => ({ result: { rows: [] } }) },
+      ),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+
+    expect(result.current.pendingRoots.map((r) => r.threadId)).toEqual([
+      "thr_standby",
+    ]);
+    expect(result.current.chats.map((c) => c.threadId)).toEqual(["thr_talk"]);
+    window.localStorage.clear();
+  });
+
+  it("keeps a recorded standby pending even once a handle was minted", async () => {
+    // charter writes the handle BEFORE the brief, so a root whose charter died
+    // in between wears a handle and has no brief. Reading the handle as
+    // completion took the only Retry off the screen.
+    const ROOTS = [
+      {
+        id: "thr_partial",
+        title: "New crew",
+        projectId: "p",
+        parentThreadId: null,
+      },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_partial", projectId: "p" }]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/threads"))
+          return { ok: true, json: async () => ROOTS };
+        if (url.includes("crew_fleet")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result: {
+                rows: [
+                  {
+                    threadId: "thr_partial",
+                    handle: "AW-3",
+                    parentThreadId: null,
+                    rank: "commander",
+                  },
+                ],
+              },
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ result: { rows: [] } }) };
+      }),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+
+    expect(result.current.pendingRoots.map((r) => r.threadId)).toEqual([
+      "thr_partial",
+    ]);
+    // And it is NOT presented as a working crew while it is half made.
+    expect(result.current.crews).toEqual([]);
+    window.localStorage.clear();
+  });
+
+  it("gives a projectless standby the personal project's own id", async () => {
+    // The thread list omits projectId for a personal thread. Emitting "" left
+    // the pending root in a project nothing groups under, so its Retry had no
+    // card to live on.
+    const ROOTS = [{ id: "thr_p", title: "New crew", parentThreadId: null }];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_p", projectId: "proj_personal" }]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/threads")
+          ? { ok: true, json: async () => ROOTS }
+          : { ok: true, json: async () => ({ result: { rows: [] } }) },
+      ),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+
+    expect(result.current.pendingRoots[0]?.projectId).toBe("proj_personal");
+    window.localStorage.clear();
+  });
+
+  it("drops a recorded standby whose project no longer matches", async () => {
+    // The record only ever narrows. A thread that moved, or a record written
+    // for another project, stops matching rather than asserting anything.
+    const ROOTS = [
+      {
+        id: "thr_standby",
+        title: "New crew",
+        projectId: "p",
+        parentThreadId: null,
+      },
+    ];
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_standby", projectId: "other" }]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/threads")
+          ? { ok: true, json: async () => ROOTS }
+          : { ok: true, json: async () => ({ result: { rows: [] } }) },
+      ),
+    );
+
+    const { useCrews } = await import("./useCrews");
+    const { result } = renderHook(() => useCrews());
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+    });
+
+    expect(result.current.pendingRoots).toEqual([]);
+    expect(result.current.chats.map((c) => c.threadId)).toEqual(["thr_standby"]);
+    window.localStorage.clear();
+  });
+
   it("nests as deep as the pointers go", async () => {
     // Five levels. Nothing in the tree caps depth, and the roll-up has to climb
     // all of it — the deepest ask must be visible on the root.

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { normalizeProjectPathInput } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { useDialogState } from "@/hooks/useDialogState";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
@@ -60,7 +61,16 @@ export function usePathPickerHost(): PathPickerHost {
   const hostId = connectedPrimaryHostId ?? localDaemonHostId;
   const hostName =
     primaryHost && primaryHost.id === hostId ? primaryHost.name : null;
+  // AND THIS CLIENT MUST BE THE DESKTOP SHELL. The other three conditions say
+  // the HOST can raise a native folder panel — they say nothing about whether
+  // the person who clicked is sitting in front of it. Served in a browser
+  // tab, this asked the host machine to run an AppleScript `choose folder`
+  // that the operator could not see or answer: the press produced no dialog,
+  // no message and no error, and the in-app browser only arrived seconds
+  // later when the request finally gave up. A native panel belongs to the
+  // app that can actually show one.
   const canUseNativeFolderPicker =
+    getBbDesktopInfo() !== null &&
     supportsNativeFolderPicker &&
     localDaemonHostId !== null &&
     hostId === localDaemonHostId;
@@ -118,6 +128,11 @@ export function useLocalPathPicker({
             projectPathDialog.onOpen(target);
             return;
           }
+          // A CANCEL IS AN ANSWER. The request succeeded and the desktop user
+          // said no, so this is finished — offering a second picker in place
+          // of the one they just dismissed answers "no" with another dialog.
+          // Only a request that FAILED (the catch above) means we could not
+          // ask, and only that falls back to the in-app browser.
           if (!selectedPath) return;
           submitPath(normalizeProjectPathInput(selectedPath), target, hostId);
         })();

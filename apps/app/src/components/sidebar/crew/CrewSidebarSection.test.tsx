@@ -25,7 +25,13 @@ vi.mock("./useCrews", async () => {
 });
 
 vi.mock("./useCreateCrew", () => ({
-  useCreateCrew: () => ({ createCrew: vi.fn(), creating: false }),
+  useCreateCrew: () => ({
+    createCrew: vi.fn(),
+    creating: false,
+    creatingFor: () => false,
+    error: null,
+    lastAttempt: null,
+  }),
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
@@ -76,6 +82,7 @@ describe("CrewSidebarSection drag boundary", () => {
     vi.mocked(useCrewsModule.useCrews).mockReturnValue({
       crews: mockCrews,
       chats: [],
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,
@@ -225,6 +232,7 @@ describe("CrewSidebarSection edit-scope guards", () => {
     vi.mocked(useCrewsModule.useCrews).mockReturnValue({
       crews,
       chats,
+      pendingRoots: [],
       loaded: true,
       failed: false,
       timedOut: false,
@@ -808,9 +816,10 @@ describe("CrewSidebarSection edit-scope guards", () => {
   it("disables Add a crew for an empty project while a different crew is being edited", () => {
     renderTwoCrewsAndAChat();
 
-    // Project 3 is the only empty one, so this is unambiguous.
+    // Named for its project: every card carries an "Add a crew" control, so
+    // the bare label said which action and never which project it acts on.
     const addCrewButton = screen.getByRole("button", {
-      name: "Add a crew",
+      name: "Add a crew to Project 3",
     }) as HTMLButtonElement;
     expect(addCrewButton.disabled).toBe(false);
 

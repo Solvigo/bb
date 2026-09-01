@@ -3,8 +3,10 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { deriveProjectNameFromPath, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
@@ -13,8 +15,7 @@ import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
-import {} from "@/lib/route-paths";
-import { useCreateCrew } from "@/components/sidebar/crew/useCreateCrew";
+import { APP_ROOT_ROUTE_PATH } from "@/lib/route-paths";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import type {
   ProjectPathDialogSubmitHandler,
@@ -30,6 +31,8 @@ export interface QuickCreateProjectDialogState {
 export interface QuickCreateProjectController {
   isAvailable: boolean;
   isCreating: boolean;
+  /** Why the last create failed, for the dialog that is still open on it. */
+  createError: string | null;
   openCreateDialog: () => void;
   platform: HostPlatform | null;
   hostId: string | null;
@@ -48,8 +51,8 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const hostsQuery = useHosts();
   const hosts = hostsQuery.data ?? EMPTY_HOSTS;
   const setRootComposeProjectId = useSetRootComposeProjectId();
-
-  const { createCrew } = useCreateCrew();
+  const navigate = useNavigate();
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const submit = useCallback(
     ({ path, hostId, target, closeDialog }: LocalPathSubmitParams) => {
@@ -57,6 +60,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       const name = deriveProjectNameFromPath(path).trim();
       if (!name) return;
 
+      setCreateError(null);
       mutate(
         {
           name,
@@ -64,20 +68,33 @@ export function useQuickCreateProject(): QuickCreateProjectController {
         },
         {
           onSuccess: (project) => {
+            // Creating a project creates a PROJECT. It does not stand up an
+            // agent: a root agent is governed — chartered, handled, bound to
+            // its project — and pressing "New project" is not consent to spawn
+            // one. The picker closes and the new project becomes the composer's
+            // target, so the next thing typed starts there.
             closeDialog();
             setRootComposeProjectId(project.id);
-            // A new project used to land on an empty compose view: the folder
-            // existed and nothing was in it. Creating a project IS starting to
-            // work on it, so it stands up the crew and drops you into that
-            // chat, ready to type. createCrew owns the navigation, and it is
-            // idempotent — a second create resumes an unfinished setup rather
-            // than leaving another husk on the rail.
-            createCrew(project.id);
+            // Selecting the project is invisible from a thread route: the
+            // composer that reads the selection is not on screen. Creating a
+            // project ended with the dialog closing over the same thread the
+            // operator was already looking at, and nothing to show for it.
+            navigate(APP_ROOT_ROUTE_PATH);
+          },
+          // A failed create used to leave the dialog sitting there with the
+          // button live again and nothing said. The picker is the only surface
+          // on screen, so the refusal has to arrive in it.
+          onError: (failure: unknown) => {
+            setCreateError(
+              failure instanceof Error && failure.message
+                ? failure.message
+                : "Could not create the project.",
+            );
           },
         },
       );
     },
-    [createCrew, mutate, setRootComposeProjectId],
+    [mutate, navigate, setRootComposeProjectId],
   );
 
   const controller = useLocalPathPicker({
@@ -86,6 +103,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   });
 
   const openCreateDialog = useCallback(() => {
+    setCreateError(null);
     controller.openPathEntry({ kind: "create" });
   }, [controller]);
 
@@ -93,6 +111,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
     () => ({
       isAvailable: controller.isAvailable,
       isCreating: isPending,
+      createError,
       openCreateDialog,
       platform: controller.platform,
       hostId: controller.hostId,
@@ -101,7 +120,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
     }),
-    [controller, hosts, isPending, openCreateDialog],
+    [controller, createError, hosts, isPending, openCreateDialog],
   );
 }
 

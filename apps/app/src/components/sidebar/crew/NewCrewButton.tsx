@@ -11,6 +11,8 @@ import { Icon } from "@bb/shared-ui/icon";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useCreateCrew } from "./useCreateCrew";
+import { CrewCreateRecovery } from "./crewCreateRecovery";
+import { useCrews } from "./useCrews";
 
 /**
  * The one action the rail is built around — and the one question it has to ask.
@@ -60,7 +62,7 @@ export function NewCrewButton({
   openingRequest?: string;
   variant?: "rail" | "page";
 }) {
-  const { createCrew, creating, error } = useCreateCrew();
+  const { createCrew, creating } = useCreateCrew();
   // Only pass a request when there IS one. With nothing typed the call keeps
   // its original shape — createCrew(projectId), createCrew() — rather than
   // trailing an explicit undefined. Callers that assert on how this is invoked
@@ -75,8 +77,15 @@ export function NewCrewButton({
     createCrew(forProjectId, request);
   };
   const navigation = useSidebarNavigation();
+  // A project holds one crew, so a project that has one is not an answer to
+  // "what is this crew for?". Offering it produced a press that could only
+  // ever end in a refusal, and — before the fleet was consulted first — a
+  // loose standby left behind by the attempt.
+  const { crews } = useCrews();
+  const crewedProjectIds = new Set(crews.map((crew) => crew.projectId));
   const projects = (navigation.data?.projects ?? []).filter(
-    (project) => project.id !== PERSONAL_PROJECT_ID,
+    (project) =>
+      project.id !== PERSONAL_PROJECT_ID && !crewedProjectIds.has(project.id),
   );
 
   const trigger =
@@ -123,6 +132,11 @@ export function NewCrewButton({
         <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
         <DropdownMenuContent align="start" mobileTitle="New crew">
           <DropdownMenuLabel>What is this crew for?</DropdownMenuLabel>
+          {projects.length === 0 ? (
+            <DropdownMenuLabel className="font-normal text-subtle-foreground">
+              Every project already has a crew.
+            </DropdownMenuLabel>
+          ) : null}
           {projects.map((project) => (
             <DropdownMenuItem
               key={project.id}
@@ -140,9 +154,7 @@ export function NewCrewButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {error ? (
-        <p className="px-2 text-xs text-destructive-text">{error}</p>
-      ) : null}
+      <CrewCreateRecovery className="hidden px-2 md:flex" />
     </div>
   );
 }

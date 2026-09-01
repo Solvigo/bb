@@ -21,7 +21,6 @@ import {
   ChatsSidebarSection,
   CrewEditProvider,
   CrewSidebarSection,
-  NewCrewButton,
 } from "./crew/CrewSidebarSection";
 import { AirwaysMark } from "./crew/BrandLockup";
 import { PlatformSection } from "./crew/PlatformSection";
@@ -317,9 +316,32 @@ export function AppSidebar({
             {sidebarIdentityControls}
           </div>
         )}
-        <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
-          <NewCrewButton />
-        </div>
+        {quickCreateProject.isAvailable ? (
+          <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
+            <button
+              type="button"
+              data-testid="new-project-button"
+              onClick={quickCreateProject.openCreateDialog}
+              disabled={quickCreateProject.isCreating}
+              aria-label="New project from a folder"
+              className={cn(
+                "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors",
+                "text-sidebar-foreground hover:bg-sidebar-accent disabled:opacity-60",
+              )}
+            >
+              <Icon
+                name="FolderPlus"
+                className="size-4 shrink-0 text-sidebar-foreground"
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate">
+                {quickCreateProject.isCreating
+                  ? "Creating a project…"
+                  : "New project"}
+              </span>
+            </button>
+          </div>
+        ) : null}
         <PlatformSection onNavigate={closeOnMobile} />
         {/* Two bands, and every thread is in one of them: PROJECTS carries the
             agent trees, CHATS carries the threads nobody has crewed. The old
@@ -344,26 +366,11 @@ export function AppSidebar({
             )
           ) : (
             <CrewEditProvider>
-              <CrewSidebarSection
-                onNavigate={closeOnMobile}
-                headerTrailing={
-                  quickCreateProject.isAvailable ? (
-                    <button
-                      type="button"
-                      aria-label="New project from a folder"
-                      onClick={quickCreateProject.openCreateDialog}
-                      disabled={quickCreateProject.isCreating}
-                      className="grid size-5 shrink-0 place-items-center rounded text-subtle-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      <Icon
-                        name="FolderPlus"
-                        className="size-3.5"
-                        aria-hidden
-                      />
-                    </button>
-                  ) : null
-                }
-              />
+              {/* ONE New project action in the rail. The Projects header used
+                  to carry a second, icon-only copy of the button already sitting
+                  above it — same dialog, same permission, two places to find it
+                  and two names for a screen reader to read out. */}
+              <CrewSidebarSection onNavigate={closeOnMobile} />
               <ChatsSidebarSection
                 onNavigate={closeOnMobile}
                 onNewChat={handleNewChat}
