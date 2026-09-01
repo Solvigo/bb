@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
+import {
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+} from "@/lib/plugin-frontend-boot-state";
 import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
+import { PLUGIN_SHELL_READY_TIMEOUT_MS } from "@/lib/plugin-shell-readiness";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 import { PluginThreadList } from "./PluginThreadList";
@@ -50,12 +55,16 @@ function renderList(
 
 beforeEach(() => {
   resetDeprecatedAliasWarningsForTests();
+  resetPluginFrontendBootStateForTest();
+  markPluginFrontendsSettled();
 });
 
 afterEach(() => {
   cleanup();
   resetAllCrashedPluginSlotsForTest();
+  resetPluginFrontendBootStateForTest();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("PluginThreadList experimental_Original alias", () => {
@@ -91,5 +100,75 @@ describe("PluginThreadList experimental_Original alias", () => {
 
     expect(screen.getByTestId("bb-thread-list")).toBeDefined();
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("PluginThreadList cold-load readiness gate", () => {
+  it("renders nothing before plugins settle", () => {
+    resetPluginFrontendBootStateForTest();
+    renderList(pluginReplacement(() => <div data-testid="plugin-list" />));
+
+    expect(screen.queryByTestId("bb-thread-list")).toBeNull();
+    expect(screen.queryByTestId("plugin-list")).toBeNull();
+  });
+
+  it("renders the registered replacement once settled, without ever showing native first", () => {
+    resetPluginFrontendBootStateForTest();
+    renderList(pluginReplacement(() => <div data-testid="plugin-list" />));
+
+    expect(screen.queryByTestId("bb-thread-list")).toBeNull();
+    expect(screen.queryByTestId("plugin-list")).toBeNull();
+
+    act(() => {
+      markPluginFrontendsSettled();
+    });
+
+    expect(screen.getByTestId("plugin-list")).toBeDefined();
+    expect(screen.queryByTestId("bb-thread-list")).toBeNull();
+  });
+
+  it("renders native once settled when no plugin has registered a replacement", () => {
+    resetPluginFrontendBootStateForTest();
+    renderList({ kind: "owner" });
+
+    expect(screen.queryByTestId("bb-thread-list")).toBeNull();
+
+    act(() => {
+      markPluginFrontendsSettled();
+    });
+
+    expect(screen.getByTestId("bb-thread-list")).toBeDefined();
+  });
+
+  it("falls back to native after the readiness timeout elapses without settling", () => {
+    vi.useFakeTimers();
+    resetPluginFrontendBootStateForTest();
+    renderList({ kind: "owner" });
+
+    expect(screen.queryByTestId("bb-thread-list")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(PLUGIN_SHELL_READY_TIMEOUT_MS);
+    });
+
+    expect(screen.getByTestId("bb-thread-list")).toBeDefined();
+  });
+
+  it("recovers to native, not a permanent blank, when a settled replacement crashes", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    resetPluginFrontendBootStateForTest();
+    function Crash(): never {
+      throw new Error("replacement failed");
+    }
+    renderList(pluginReplacement(() => <Crash />));
+
+    expect(screen.queryByTestId("bb-thread-list")).toBeNull();
+
+    act(() => {
+      markPluginFrontendsSettled();
+    });
+
+    expect(screen.getByTestId("bb-thread-list")).toBeDefined();
   });
 });
