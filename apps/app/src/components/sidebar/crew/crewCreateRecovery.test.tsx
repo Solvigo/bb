@@ -8,7 +8,7 @@ const useCreateCrewMock = vi.hoisted(() =>
   vi.fn(() => ({
     createCrew,
     creating: false,
-    creatingFor: () => false,
+    creatingFor: (_projectId: string) => false,
     error: null as string | null,
     lastAttempt: null as { projectId: string; openingRequest?: string } | null,
   })),
@@ -48,7 +48,7 @@ describe("CrewCreateRecovery", () => {
       </div>,
     );
 
-    expect(screen.getByRole("alert")).toHaveTextContent("in time");
+    expect(screen.getByRole("alert").textContent).toContain("in time");
     expect(
       screen.getByRole("button", {
         name: "Retry the unfinished crew setup",
@@ -80,8 +80,7 @@ describe("CrewCreateRecovery", () => {
     });
 
     await waitFor(() => {
-      expect(document.activeElement).toHaveAttribute(
-        "data-testid",
+      expect(document.activeElement?.getAttribute("data-testid")).toBe(
         "crew-create-recovery",
       );
     });

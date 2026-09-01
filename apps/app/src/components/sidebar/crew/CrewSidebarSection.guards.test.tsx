@@ -16,9 +16,9 @@ const useCreateCrewMock = vi.hoisted(() =>
   vi.fn(() => ({
     createCrew,
     creating: false,
-    creatingFor: () => false,
+    creatingFor: (_projectId: string) => false,
     error: null as string | null,
-    lastAttempt: null,
+    lastAttempt: null as { projectId: string; openingRequest?: string } | null,
   })),
 );
 const useCrewsMock = vi.hoisted(() => vi.fn());
@@ -121,6 +121,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
       creating: false,
       creatingFor: () => false,
       error: null,
+      lastAttempt: null,
     });
     useCrewsMock.mockReturnValue({
       crews: [sampleCrew("proj_alpha", "thr_alpha")],

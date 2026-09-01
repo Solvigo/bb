@@ -1564,4 +1564,69 @@ describe("useCreateCrew", () => {
     expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
     expect(send).toHaveBeenCalledTimes(2);
   });
+
+  it("does not retry a still_starting body unless the refusal is HTTP 409", async () => {
+    send.mockImplementation(async () => {
+      const body = {
+        code: "thread_not_writable",
+        message: "Thread is still starting",
+        details: {
+          archivedAt: null,
+          reason: "still_starting",
+          threadStatus: "starting",
+        },
+      };
+      throw new BbHttpError({
+        status: 500,
+        code: "thread_not_writable",
+        message: "Thread is still starting",
+        body,
+      });
+    });
+    stubRig();
+    const { result } = await freshHook();
+
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("resends bootstrap when a governed root still owes its opening", async () => {
+    send.mockImplementationOnce(async () => {
+      throw new Error("opening refused");
+    });
+    stubRig({
+      fleet: [],
+      fleetAfterCharter: [
+        { threadId: "thr_root", handle: "AW-1", parentThreadId: null },
+      ],
+    });
+    const { result } = await freshHook();
+
+    act(() => {
+      result.current.createCrew("proj_a", "ship the billing page");
+    });
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+
+    send.mockImplementation(async () => undefined);
+    act(() => {
+      result.current.createCrew("proj_a", "ship the billing page");
+    });
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalled();
+    });
+
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toHaveLength(1);
+    expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(2);
+    const retrySend = send.mock.calls[1]?.[0] as SentTurn;
+    expect(retrySend.input[0]?.text).toBe(rootBootstrap);
+  });
 });

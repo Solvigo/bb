@@ -15,6 +15,7 @@ import {
   formatLifecycleErrorDescription,
   parseLifecycleError,
 } from "@/lib/lifecycle-errors";
+import { BbHttpError } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
 
 interface ProjectRow {
@@ -419,14 +420,14 @@ function buildRootOpeningInput({
   const request = openingRequest?.trim();
   return [
     ...(bootstrap !== null
-      ? [{ type: "text" as const, text: bootstrap, mentions: [] as const }]
+      ? [{ type: "text" as const, text: bootstrap, mentions: [] }]
       : []),
     ...(request
       ? [
           {
             type: "text" as const,
             text: `The Captain's opening request:\n\n${request}`,
-            mentions: [] as const,
+            mentions: [],
           },
         ]
       : []),
@@ -434,10 +435,14 @@ function buildRootOpeningInput({
 }
 
 function isThreadStillStarting(error: unknown): boolean {
+  if (!(error instanceof BbHttpError) || error.status !== 409) {
+    return false;
+  }
   const lifecycle = parseLifecycleError(error);
   return (
     lifecycle?.code === "thread_not_writable" &&
-    lifecycle.details.reason === "still_starting"
+    lifecycle.details.reason === "still_starting" &&
+    lifecycle.details.threadStatus === "starting"
   );
 }
 
@@ -483,11 +488,12 @@ async function sendRootOpening({
       throw new Error(OPENING_TIMED_OUT);
     }
 
+    let attemptTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
         sdk.threads.send({ threadId, input, mode: "auto" }),
         new Promise<never>((_, reject) => {
-          setTimeout(
+          attemptTimer = setTimeout(
             () => reject(new Error(OPENING_TIMED_OUT)),
             remaining,
           );
@@ -499,6 +505,8 @@ async function sendRootOpening({
       const wait = Math.min(OPENING_SEND_BACKOFF_MS, remaining);
       if (wait <= 0) throw new Error(OPENING_TIMED_OUT);
       await sleep(wait);
+    } finally {
+      if (attemptTimer !== undefined) clearTimeout(attemptTimer);
     }
   }
 }
@@ -511,9 +519,15 @@ async function finishCharteredRootOpening(
     openingRequest?: string;
   },
 ): Promise<void> {
-  await sendRootOpening({ threadId, ...opening });
-  charteredRoots.add(threadId);
-  forgetStandbyRoot(threadId);
+  try {
+    await sendRootOpening({ threadId, ...opening });
+    charteredRoots.add(threadId);
+    forgetStandbyRoot(threadId);
+    pendingOpeningBootstrap.delete(threadId);
+  } catch (error) {
+    pendingOpeningBootstrap.add(threadId);
+    throw error;
+  }
 }
 
 /** The id of a thread that WAS created, when the body still yields one. */
@@ -706,9 +720,10 @@ async function openGovernedRoot(
     rootTaskId(projectId),
   );
   if (!repaired.ok) return repaired.message ?? "The crew could not be opened.";
+  const needsBootstrap = pendingOpeningBootstrap.has(thread.id);
   try {
     await finishCharteredRootOpening(thread.id, {
-      bootstrap: null,
+      bootstrap: needsBootstrap ? await loadRootBootstrap() : null,
       openingRequest,
     });
   } catch (error) {
@@ -747,6 +762,9 @@ async function openGovernedRoot(
  *  handle is not: charter writes the handle before the brief. */
 const charteredRoots = new Set<string>();
 
+/** Governed roots whose charter landed but the opening message has not yet. */
+const pendingOpeningBootstrap = new Set<string>();
+
 const creatingProjects = new Set<string>();
 const creatingListeners = new Set<() => void>();
 
@@ -776,21 +794,17 @@ export interface LastCrewAttempt {
   openingRequest?: string;
 }
 
-let lastCrewAttempt: LastCrewAttempt | null = null;
-let createCrewError: string | null = null;
 let createCrewErrorSnapshot: string | null = null;
 const createCrewErrorListeners = new Set<() => void>();
 let lastCrewAttemptSnapshot: LastCrewAttempt | null = null;
 const lastCrewAttemptListeners = new Set<() => void>();
 
 function publishCreateCrewError(error: string | null): void {
-  createCrewError = error;
   createCrewErrorSnapshot = error;
   for (const listener of createCrewErrorListeners) listener();
 }
 
 function publishLastCrewAttempt(attempt: LastCrewAttempt | null): void {
-  lastCrewAttempt = attempt;
   lastCrewAttemptSnapshot = attempt;
   for (const listener of lastCrewAttemptListeners) listener();
 }
