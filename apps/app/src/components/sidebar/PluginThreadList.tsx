@@ -2,6 +2,7 @@ import { useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
+import { usePluginShellReady } from "@/lib/plugin-shell-readiness";
 import { useSidebar } from "@/components/ui/sidebar.js";
 import { useRouteState } from "@/hooks/useRouteState";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
@@ -24,6 +25,7 @@ export function PluginThreadList({
 }: PluginThreadListProps) {
   const { projectId, threadId } = useRouteState();
   const { isCompactViewport } = useSidebar();
+  const shellReady = usePluginShellReady();
   const title =
     replacement.kind === "plugin" ? replacement.registration.title : "Plugin";
 
@@ -35,6 +37,8 @@ export function PluginThreadList({
     },
     [title],
   );
+
+  if (!shellReady) return null;
 
   return (
     <PluginReplacementSlot
