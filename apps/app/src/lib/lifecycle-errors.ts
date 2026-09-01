@@ -1,10 +1,8 @@
 import { assertNever } from "@bb/core-ui";
-import { BbHttpError } from "@bb/sdk/browser";
 import {
   lifecycleApiErrorSchema,
   type LifecycleApiError,
 } from "@bb/server-contract";
-import { HttpError } from "./api";
 
 export type LifecycleErrorSeverity = "info" | "warning" | "error";
 export type LifecycleErrorOperation =
@@ -414,12 +412,18 @@ function describeParentThreadInvalid({
   }
 }
 
-export function parseLifecycleError(error: unknown): LifecycleApiError | null {
-  if (!(error instanceof HttpError) && !(error instanceof BbHttpError)) {
-    return null;
-  }
+function readHttpErrorBody(error: unknown): unknown | null {
+  if (typeof error !== "object" || error === null) return null;
+  if (!("body" in error) || !("status" in error)) return null;
+  const { status } = error as { status: unknown };
+  return typeof status === "number" ? (error as { body: unknown }).body : null;
+}
 
-  const result = lifecycleApiErrorSchema.safeParse(error.body);
+export function parseLifecycleError(error: unknown): LifecycleApiError | null {
+  const body = readHttpErrorBody(error);
+  if (body === null) return null;
+
+  const result = lifecycleApiErrorSchema.safeParse(body);
   return result.success ? result.data : null;
 }
 
