@@ -13,6 +13,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { RESOURCE_ROUTE_LABEL_EVENT } from "@bb/shared-ui/resource-list";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import { CrewCreateRecovery } from "@/components/sidebar/crew/crewCreateRecovery";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
@@ -762,6 +763,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   />
                 ) : null}
                 <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
+                  <CrewCreateRecovery className="mb-3 md:hidden" />
                   {children}
                 </main>
               </div>

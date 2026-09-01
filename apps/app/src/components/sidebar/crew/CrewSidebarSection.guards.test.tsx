@@ -18,6 +18,7 @@ const useCreateCrewMock = vi.hoisted(() =>
     creating: false,
     creatingFor: () => false,
     error: null as string | null,
+    lastAttempt: null,
   })),
 );
 const useCrewsMock = vi.hoisted(() => vi.fn());
@@ -236,6 +237,7 @@ describe("CrewSidebarSection one-crew affordance", () => {
       creating: false,
       creatingFor: () => false,
       error: "No host is connected, so a crew cannot be started yet.",
+      lastAttempt: { projectId: "proj_a" },
     });
     useCrewsMock.mockReturnValue({
       crews: [],

@@ -36,6 +36,59 @@ vi.mock("react-router-dom", async () => {
 });
 
 import rootBootstrap from "./rootAgentBootstrap.md?raw";
+import { BbHttpError } from "@bb/sdk/browser";
+
+function stillStartingError(): never {
+  const body = {
+    code: "thread_not_writable",
+    message: "Thread is still starting",
+    details: {
+      archivedAt: null,
+      reason: "still_starting",
+      threadStatus: "starting",
+    },
+  };
+  throw new BbHttpError({
+    status: 409,
+    code: "thread_not_writable",
+    message: "Thread is still starting",
+    body,
+  });
+}
+
+function threadNotWritableError(
+  reason:
+    | "archived"
+    | "stopping"
+    | "deleted"
+    | "already_active"
+    | "errored",
+): never {
+  const body = {
+    code: "thread_not_writable",
+    message: `Thread is ${reason}`,
+    details: {
+      archivedAt: reason === "archived" ? 1 : null,
+      reason,
+      threadStatus:
+        reason === "archived"
+          ? "archived"
+          : reason === "stopping"
+            ? "stopping"
+            : reason === "deleted"
+              ? "deleted"
+              : reason === "already_active"
+                ? "active"
+                : "error",
+    },
+  };
+  throw new BbHttpError({
+    status: 409,
+    code: "thread_not_writable",
+    message: body.message,
+    body,
+  });
+}
 
 /**
  * A FRESH module per test.
@@ -1335,5 +1388,180 @@ describe("useCreateCrew", () => {
 
     expect(send).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("retries still_starting until the opening send is accepted once", async () => {
+    let sendCalls = 0;
+    send.mockImplementation(async () => {
+      sendCalls += 1;
+      if (sendCalls === 1) stillStartingError();
+      return undefined;
+    });
+    stubRig();
+    const { result } = await freshHook();
+
+    act(() => {
+      result.current.createCrew("proj_a", "ship the billing page");
+    });
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalled();
+    });
+
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toHaveLength(1);
+    expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
+    expect(send).toHaveBeenCalledTimes(2);
+    const first = send.mock.calls[0]?.[0] as SentTurn;
+    const second = send.mock.calls[1]?.[0] as SentTurn;
+    expect(JSON.stringify(first.input)).toBe(JSON.stringify(second.input));
+    expect(first.input[0]?.text).toBe(rootBootstrap);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("leaves the chartered root retryable when still_starting never clears", async () => {
+    send.mockImplementation(async () => {
+      stillStartingError();
+    });
+    stubRig();
+    const { result } = await freshHook();
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        result.current.createCrew("proj_a");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      await waitFor(() => {
+        expect(result.current.error).toContain("in time");
+      });
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem("bb.crew.standby-roots")).toContain(
+        "thr_root",
+      );
+
+      send.mockImplementation(async () => undefined);
+      act(() => {
+        result.current.createCrew("proj_a");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      await waitFor(() => {
+        expect(navigate).toHaveBeenCalled();
+      });
+
+      expect(calls.filter((c) => c === "POST /api/v1/threads")).toHaveLength(1);
+      expect(calls.filter((c) => c.includes("crew_charter")).length).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["archived", () => threadNotWritableError("archived")],
+    ["stopping", () => threadNotWritableError("stopping")],
+    ["deleted", () => threadNotWritableError("deleted")],
+    ["already_active", () => threadNotWritableError("already_active")],
+    [
+      "unknown body",
+      () => {
+        throw new BbHttpError({
+          status: 409,
+          code: "thread_not_writable",
+          message: "Thread refused",
+          body: { code: "thread_not_writable", message: "Thread refused" },
+        });
+      },
+    ],
+    [
+      "transport failure",
+      () => {
+        throw new TypeError("Failed to fetch");
+      },
+    ],
+  ])("does not retry the opening send on %s", async (_label, reject) => {
+    send.mockImplementation(async () => {
+      reject();
+    });
+    stubRig();
+    const { result } = await freshHook();
+
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("retries still_starting when opening an existing governed root", async () => {
+    let sendCalls = 0;
+    send.mockImplementation(async () => {
+      sendCalls += 1;
+      if (sendCalls === 1) stillStartingError();
+      return undefined;
+    });
+    stubRig({
+      threads: [
+        {
+          id: "thr_live",
+          title: "Billing crew",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+      fleet: [{ threadId: "thr_live", handle: "AW-1", parentThreadId: null }],
+    });
+    const { result } = await freshHook();
+
+    act(() => {
+      result.current.createCrew("proj_a", "ship the billing page");
+    });
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalled();
+    });
+
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+    expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries still_starting on a recorded standby without another create or charter", async () => {
+    let sendCalls = 0;
+    send.mockImplementation(async () => {
+      sendCalls += 1;
+      if (sendCalls === 1) stillStartingError();
+      return undefined;
+    });
+    window.localStorage.setItem(
+      "bb.crew.standby-roots",
+      JSON.stringify([{ threadId: "thr_standby", projectId: "proj_a" }]),
+    );
+    stubRig({
+      threads: [
+        {
+          id: "thr_standby",
+          title: "New crew",
+          projectId: "proj_a",
+          parentThreadId: null,
+        },
+      ],
+    });
+    const { result } = await freshHook();
+
+    act(() => {
+      result.current.createCrew("proj_a");
+    });
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalled();
+    });
+
+    expect(calls.filter((c) => c === "POST /api/v1/threads")).toEqual([]);
+    expect(calls.filter((c) => c.includes("crew_charter"))).toHaveLength(1);
+    expect(send).toHaveBeenCalledTimes(2);
   });
 });

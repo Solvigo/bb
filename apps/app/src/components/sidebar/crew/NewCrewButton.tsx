@@ -11,6 +11,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useCreateCrew } from "./useCreateCrew";
+import { CrewCreateRecovery } from "./crewCreateRecovery";
 import { useCrews } from "./useCrews";
 
 /**
@@ -61,7 +62,7 @@ export function NewCrewButton({
   openingRequest?: string;
   variant?: "rail" | "page";
 }) {
-  const { createCrew, creating, error } = useCreateCrew();
+  const { createCrew, creating } = useCreateCrew();
   // Only pass a request when there IS one. With nothing typed the call keeps
   // its original shape — createCrew(projectId), createCrew() — rather than
   // trailing an explicit undefined. Callers that assert on how this is invoked
@@ -153,17 +154,7 @@ export function NewCrewButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {error ? (
-        // A refusal here is the only thing that happens when the press does
-        // nothing visible, so it has to announce itself rather than appear.
-        <p
-          role="alert"
-          data-testid="new-crew-error"
-          className="px-2 text-xs text-destructive-text"
-        >
-          {error}
-        </p>
-      ) : null}
+      <CrewCreateRecovery className="hidden px-2 md:flex" />
     </div>
   );
 }

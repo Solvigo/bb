@@ -14,6 +14,7 @@ vi.mock("./useCreateCrew", () => ({
     creating: false,
     creatingFor: () => false,
     error: null,
+    lastAttempt: null,
   }),
 }));
 vi.mock("./useCrews", () => ({

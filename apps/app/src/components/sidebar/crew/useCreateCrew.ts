@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { AGENT_PROVIDER } from "@/lib/agentProvider";
@@ -10,6 +10,11 @@ import {
   recordedStandbyRoots,
   rememberStandbyRoot,
 } from "./standbyRoots";
+import {
+  describeLifecycleError,
+  formatLifecycleErrorDescription,
+  parseLifecycleError,
+} from "@/lib/lifecycle-errors";
 import { sdk } from "@/lib/sdk";
 
 interface ProjectRow {
@@ -61,6 +66,15 @@ const STANDBY_INPUT =
  * worse than a refusal, which at least says something.
  */
 const REQUEST_TIMEOUT_MS = 15_000;
+
+/** One absolute bound for the whole opening-send phase, retries included. */
+const OPENING_SEND_DEADLINE_MS = REQUEST_TIMEOUT_MS;
+
+/** Small pause between still_starting refusals — never overlapping sends. */
+const OPENING_SEND_BACKOFF_MS = 150;
+
+const OPENING_TIMED_OUT =
+  "The opening message could not be delivered in time. Try again.";
 
 async function fetchWithTimeout(
   url: string,
@@ -395,10 +409,59 @@ function isCharteredResult(
   );
 }
 
+function buildRootOpeningInput({
+  bootstrap,
+  openingRequest,
+}: {
+  bootstrap: string | null;
+  openingRequest?: string;
+}): { type: "text"; text: string; mentions: [] }[] {
+  const request = openingRequest?.trim();
+  return [
+    ...(bootstrap !== null
+      ? [{ type: "text" as const, text: bootstrap, mentions: [] as const }]
+      : []),
+    ...(request
+      ? [
+          {
+            type: "text" as const,
+            text: `The Captain's opening request:\n\n${request}`,
+            mentions: [] as const,
+          },
+        ]
+      : []),
+  ];
+}
+
+function isThreadStillStarting(error: unknown): boolean {
+  const lifecycle = parseLifecycleError(error);
+  return (
+    lifecycle?.code === "thread_not_writable" &&
+    lifecycle.details.reason === "still_starting"
+  );
+}
+
+function openingSendErrorMessage(error: unknown): string {
+  const described = describeLifecycleError({
+    error,
+    operation: "send_message",
+  });
+  if (described) return formatLifecycleErrorDescription(described);
+  if (error instanceof Error) return error.message;
+  return "The opening message could not be delivered.";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 /**
  * What a chartered root is told: its brief, then what the Captain actually
- * asked for. One send, so the two cannot arrive as separate turns and have the
- * root answer the brief before it has read the request.
+ * asked for. One logical send, retried only on the structured still_starting
+ * refusal, so the two cannot arrive as separate turns and have the root answer
+ * the brief before it has read the request.
  */
 async function sendRootOpening({
   threadId,
@@ -410,34 +473,47 @@ async function sendRootOpening({
   bootstrap: string | null;
   openingRequest?: string;
 }): Promise<void> {
-  const request = openingRequest?.trim();
-  const input = [
-    ...(bootstrap !== null
-      ? [{ type: "text" as const, text: bootstrap, mentions: [] }]
-      : []),
-    ...(request
-      ? [
-          {
-            type: "text" as const,
-            text: `The Captain's opening request:\n\n${request}`,
-            mentions: [],
-          },
-        ]
-      : []),
-  ];
+  const input = buildRootOpeningInput({ bootstrap, openingRequest });
   if (input.length === 0) return;
-  // The SDK takes no deadline of its own, so the bound is applied here: this
-  // is the last leg before the operator is handed a crew, and a send that
-  // never settles leaves the button spinning with nothing said.
-  await Promise.race([
-    sdk.threads.send({ threadId, input, mode: "auto" }),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("The opening message could not be delivered.")),
-        REQUEST_TIMEOUT_MS,
-      ),
-    ),
-  ]);
+
+  const deadline = Date.now() + OPENING_SEND_DEADLINE_MS;
+  while (true) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(OPENING_TIMED_OUT);
+    }
+
+    try {
+      await Promise.race([
+        sdk.threads.send({ threadId, input, mode: "auto" }),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () => reject(new Error(OPENING_TIMED_OUT)),
+            remaining,
+          );
+        }),
+      ]);
+      return;
+    } catch (error) {
+      if (!isThreadStillStarting(error)) throw error;
+      const wait = Math.min(OPENING_SEND_BACKOFF_MS, remaining);
+      if (wait <= 0) throw new Error(OPENING_TIMED_OUT);
+      await sleep(wait);
+    }
+  }
+}
+
+/** Record a chartered root only after its opening message has landed. */
+async function finishCharteredRootOpening(
+  threadId: string,
+  opening: {
+    bootstrap: string | null;
+    openingRequest?: string;
+  },
+): Promise<void> {
+  await sendRootOpening({ threadId, ...opening });
+  charteredRoots.add(threadId);
+  forgetStandbyRoot(threadId);
 }
 
 /** The id of a thread that WAS created, when the body still yields one. */
@@ -630,13 +706,14 @@ async function openGovernedRoot(
     rootTaskId(projectId),
   );
   if (!repaired.ok) return repaired.message ?? "The crew could not be opened.";
-  charteredRoots.add(thread.id);
-  forgetStandbyRoot(thread.id);
-  await sendRootOpening({
-    threadId: thread.id,
-    bootstrap: null,
-    openingRequest,
-  });
+  try {
+    await finishCharteredRootOpening(thread.id, {
+      bootstrap: null,
+      openingRequest,
+    });
+  } catch (error) {
+    return openingSendErrorMessage(error);
+  }
   return null;
 }
 
@@ -694,6 +771,49 @@ const readCreating = () => creatingSnapshot;
 const noneCreating: ReadonlySet<string> = new Set();
 const readNoneCreating = () => noneCreating;
 
+export interface LastCrewAttempt {
+  projectId: string;
+  openingRequest?: string;
+}
+
+let lastCrewAttempt: LastCrewAttempt | null = null;
+let createCrewError: string | null = null;
+let createCrewErrorSnapshot: string | null = null;
+const createCrewErrorListeners = new Set<() => void>();
+let lastCrewAttemptSnapshot: LastCrewAttempt | null = null;
+const lastCrewAttemptListeners = new Set<() => void>();
+
+function publishCreateCrewError(error: string | null): void {
+  createCrewError = error;
+  createCrewErrorSnapshot = error;
+  for (const listener of createCrewErrorListeners) listener();
+}
+
+function publishLastCrewAttempt(attempt: LastCrewAttempt | null): void {
+  lastCrewAttempt = attempt;
+  lastCrewAttemptSnapshot = attempt;
+  for (const listener of lastCrewAttemptListeners) listener();
+}
+
+function subscribeCreateCrewError(listener: () => void): () => void {
+  createCrewErrorListeners.add(listener);
+  return () => {
+    createCrewErrorListeners.delete(listener);
+  };
+}
+
+function subscribeLastCrewAttempt(listener: () => void): () => void {
+  lastCrewAttemptListeners.add(listener);
+  return () => {
+    lastCrewAttemptListeners.delete(listener);
+  };
+}
+
+const readCreateCrewError = () => createCrewErrorSnapshot;
+const readLastCrewAttempt = () => lastCrewAttemptSnapshot;
+const readNoCreateCrewError = () => null;
+const readNoLastCrewAttempt = () => null;
+
 export function useCreateCrew(): {
   /** Name the project the crew is FOR; omit only when it has no code yet. */
   createCrew: (forProjectId?: string, openingRequest?: string) => void;
@@ -702,6 +822,8 @@ export function useCreateCrew(): {
   /** Whether THIS project is the one standing up a crew. */
   creatingFor: (projectId: string) => boolean;
   error: string | null;
+  /** The last press, so a recovery surface can retry without a second root. */
+  lastAttempt: LastCrewAttempt | null;
 } {
   const navigate = useNavigate();
   // Read from the shared set, so every button that can start a crew shows the
@@ -718,7 +840,16 @@ export function useCreateCrew(): {
     (projectId: string) => creatingIds.has(projectId),
     [creatingIds],
   );
-  const [error, setError] = useState<string | null>(null);
+  const error = useSyncExternalStore(
+    subscribeCreateCrewError,
+    readCreateCrewError,
+    readNoCreateCrewError,
+  );
+  const lastAttempt = useSyncExternalStore(
+    subscribeLastCrewAttempt,
+    readLastCrewAttempt,
+    readNoLastCrewAttempt,
+  );
 
   const createCrew = useCallback(
     (forProjectId?: string, openingRequest?: string) => {
@@ -729,7 +860,11 @@ export function useCreateCrew(): {
       const wantedProjectId = forProjectId ?? PERSONAL_PROJECT_ID;
       if (creatingProjects.has(wantedProjectId)) return;
       markCreating(wantedProjectId, true);
-      setError(null);
+      publishLastCrewAttempt({
+        projectId: wantedProjectId,
+        ...(openingRequest?.trim() ? { openingRequest } : {}),
+      });
+      publishCreateCrewError(null);
       void (async () => {
         try {
           // IDEMPOTENCY: a second press must resume the root already standing
@@ -737,7 +872,7 @@ export function useCreateCrew(): {
           // with nothing under them is what repeated presses produced before.
           const threads = await readThreadRows();
           if (threads === null) {
-            setError(UNREADABLE_FLEET);
+            publishCreateCrewError(UNREADABLE_FLEET);
             return;
           }
 
@@ -748,7 +883,7 @@ export function useCreateCrew(): {
           // already there.
           const owned = await governedRootFor(wantedProjectId, threads);
           if (owned.status === "unavailable") {
-            setError(UNREADABLE_CREW);
+            publishCreateCrewError(UNREADABLE_CREW);
             return;
           }
           if (owned.status === "root") {
@@ -761,14 +896,14 @@ export function useCreateCrew(): {
               threads,
             );
             if (leftover !== null) {
-              setError(leftover);
+              publishCreateCrewError(leftover);
               return;
             }
             const opened = await openGovernedRoot(owned.thread, {
               openingRequest,
             });
             if (opened !== null) {
-              setError(opened);
+              publishCreateCrewError(opened);
               return;
             }
             navigate(
@@ -815,7 +950,7 @@ export function useCreateCrew(): {
                   openingRequest,
                 });
                 if (opened !== null) {
-                  setError(opened);
+                  publishCreateCrewError(opened);
                   return;
                 }
                 navigate(
@@ -826,21 +961,19 @@ export function useCreateCrew(): {
                 );
                 return;
               }
-              setError(recovered.message);
+              publishCreateCrewError(recovered.message);
               return;
             }
-            charteredRoots.add(unfinished.id);
-            forgetStandbyRoot(unfinished.id);
-            // The brief goes out on BOTH paths here. A fleet row proves a
-            // handle was written; it says nothing about whether the brief that
-            // should have gone with it ever landed. Between re-stating standing
-            // orders to a root that has them and leaving a half-chartered root
-            // that never learned what it is, only one is recoverable.
-            await sendRootOpening({
-              threadId: unfinished.id,
-              bootstrap: await loadRootBootstrap(),
-              openingRequest,
-            });
+            const brief = await loadRootBootstrap();
+            try {
+              await finishCharteredRootOpening(unfinished.id, {
+                bootstrap: brief,
+                openingRequest,
+              });
+            } catch (error) {
+              publishCreateCrewError(openingSendErrorMessage(error));
+              return;
+            }
             // Scoped, like every thread link: the projectless route resolves to
             // the Personal project, which happens to be right for a root with
             // no code yet and would be silently wrong the day it is not.
@@ -866,19 +999,19 @@ export function useCreateCrew(): {
             "/api/v1/projects?includePersonal=true",
           );
           if (projects === null) {
-            setError(UNREADABLE_PROJECTS);
+            publishCreateCrewError(UNREADABLE_PROJECTS);
             return;
           }
           const rawProjects = Array.isArray(projects)
             ? projects
             : (projects as { projects?: unknown[] }).projects;
           if (!Array.isArray(rawProjects)) {
-            setError(UNREADABLE_PROJECTS);
+            publishCreateCrewError(UNREADABLE_PROJECTS);
             return;
           }
           const parsedProjects = rawProjects.map(parseProjectRow);
           if (parsedProjects.some((p) => p === null)) {
-            setError(UNREADABLE_PROJECTS);
+            publishCreateCrewError(UNREADABLE_PROJECTS);
             return;
           }
           const list = parsedProjects as ProjectRow[];
@@ -888,7 +1021,7 @@ export function useCreateCrew(): {
           // operator did not ask for, on a project it can never leave.
           if (forProjectId !== undefined) {
             if (!list.some((p) => p.id === forProjectId)) {
-              setError(
+              publishCreateCrewError(
                 "That project is no longer on this rig, so its crew cannot be started.",
               );
               return;
@@ -900,7 +1033,7 @@ export function useCreateCrew(): {
           const projectId =
             forProjectId ?? list.find((p) => p.id === PERSONAL_PROJECT_ID)?.id;
           if (!projectId) {
-            setError(
+            publishCreateCrewError(
               "No project is registered on this rig yet, so a crew cannot be started.",
             );
             return;
@@ -912,7 +1045,7 @@ export function useCreateCrew(): {
             ? hosts
             : (hosts as { hosts?: unknown[] } | null)?.hosts;
           if (!Array.isArray(rawHosts)) {
-            setError("No host is connected, so a crew cannot be started yet.");
+            publishCreateCrewError("No host is connected, so a crew cannot be started yet.");
             return;
           }
           // ALL OR NOTHING, like every other list this flow reads. Skipping a
@@ -920,14 +1053,14 @@ export function useCreateCrew(): {
           // this code has already proved it cannot read.
           const hostIds = rawHosts.map(parseHostId);
           if (hostIds.some((id) => id === null)) {
-            setError(
+            publishCreateCrewError(
               "Could not read this rig's hosts, so a crew cannot be started safely right now.",
             );
             return;
           }
           const hostId = hostIds[0];
           if (!hostId) {
-            setError("No host is connected, so a crew cannot be started yet.");
+            publishCreateCrewError("No host is connected, so a crew cannot be started yet.");
             return;
           }
 
@@ -978,7 +1111,7 @@ export function useCreateCrew(): {
               }),
             });
           } catch {
-            setError(
+            publishCreateCrewError(
               "The rig stopped answering while the crew was being created. " +
                 "It may have been made anyway, and there is no id to clean it " +
                 "up by — check this project for an unnamed root before trying " +
@@ -993,7 +1126,7 @@ export function useCreateCrew(): {
               res.json().catch(() => null),
               "The rig",
             ).catch(() => null);
-            setError(
+            publishCreateCrewError(
               messageOf(failure) ??
                 `Could not start the crew (${res.status}).`,
             );
@@ -1012,7 +1145,7 @@ export function useCreateCrew(): {
             // A thread WAS created. Whether its id is recoverable from this
             // body decides whether it can be cleaned up or only named.
             const strandedId = recoverableThreadId(createdBody);
-            setError(
+            publishCreateCrewError(
               await cleanUpStranded(
                 strandedId,
                 "but this crew cannot be built on it",
@@ -1030,7 +1163,7 @@ export function useCreateCrew(): {
           } catch {
             // The thread exists and nothing here can identify it later, so it
             // is cleaned up now rather than left as an unrecognisable root.
-            setError(
+            publishCreateCrewError(
               await cleanUpStranded(
                 thread.id,
                 "but this browser could not record it",
@@ -1055,7 +1188,7 @@ export function useCreateCrew(): {
                 openingRequest,
               });
               if (opened !== null) {
-                setError(opened);
+                publishCreateCrewError(opened);
                 return;
               }
               navigate(
@@ -1066,16 +1199,18 @@ export function useCreateCrew(): {
               );
               return;
             }
-            setError(recovered.message);
+            publishCreateCrewError(recovered.message);
             return;
           }
-          charteredRoots.add(thread.id);
-          forgetStandbyRoot(thread.id);
-          await sendRootOpening({
-            threadId: thread.id,
-            bootstrap: await loadRootBootstrap(),
-            openingRequest,
-          });
+          try {
+            await finishCharteredRootOpening(thread.id, {
+              bootstrap: await loadRootBootstrap(),
+              openingRequest,
+            });
+          } catch (error) {
+            publishCreateCrewError(openingSendErrorMessage(error));
+            return;
+          }
           navigate(
             getThreadRoutePath({
               projectId: rootProjectId,
@@ -1083,9 +1218,7 @@ export function useCreateCrew(): {
             }),
           );
         } catch (e) {
-          setError(
-            e instanceof Error ? e.message : "Could not start the crew.",
-          );
+          publishCreateCrewError(openingSendErrorMessage(e));
         } finally {
           markCreating(wantedProjectId, false);
         }
@@ -1094,5 +1227,5 @@ export function useCreateCrew(): {
     [navigate],
   );
 
-  return { createCrew, creating, creatingFor, error };
+  return { createCrew, creating, creatingFor, error, lastAttempt };
 }
