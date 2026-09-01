@@ -76,6 +76,7 @@ import {
   type ThreadActionsMenuResponsiveAction,
 } from "@/components/thread/ThreadActionsMenu";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
+import { SwapAgentButton } from "@/components/secondary-panel/tower/SwapAgentButton";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -2344,10 +2345,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       pluginActions={
-        <PluginThreadHeaderActions
-          threadId={thread.id}
-          projectId={thread.projectId}
-        />
+        <div className="flex items-center gap-1">
+          <SwapAgentButton threadId={thread.id} />
+          <PluginThreadHeaderActions
+            threadId={thread.id}
+            projectId={thread.projectId}
+          />
+        </div>
       }
       threadHeaderGitActions={gitActions.threadHeaderGitActions}
       threadTitle={threadTitle}

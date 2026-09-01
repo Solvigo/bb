@@ -18,13 +18,6 @@ interface FleetHomeProps {
   onStartThread: () => void;
 }
 
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
-
 function describeLiveness(
   liveness: AgentLiveness | null,
   hasWorkingLead: boolean,
@@ -150,7 +143,7 @@ export function FleetHome({
     <div className="flex w-full flex-col items-center gap-7 py-8 duration-500 animate-in fade-in-0 slide-in-from-bottom-2 sm:py-12">
       <header className="flex flex-col items-center gap-2 text-center">
         <h1 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-          {getGreeting()}, Solvigo Airways.
+          What should we take on?
         </h1>
         <p className="max-w-lg text-sm text-muted-foreground">
           Name the outcome. Your commander will shape the right crew with you.
