@@ -8,7 +8,7 @@ const useCreateCrewMock = vi.hoisted(() =>
   vi.fn(() => ({
     createCrew,
     creating: false,
-    creatingFor: (_projectId: string) => false,
+    creatingFor: (_projectId: string): boolean => false,
     error: null as string | null,
     lastAttempt: null as { projectId: string; openingRequest?: string } | null,
   })),
@@ -62,7 +62,7 @@ describe("CrewCreateRecovery", () => {
     useCreateCrewMock.mockReturnValue({
       createCrew,
       creating: true,
-      creatingFor: () => true,
+      creatingFor: (_projectId: string): boolean => true,
       error: null,
       lastAttempt: { projectId: "proj_a" },
     });

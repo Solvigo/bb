@@ -16,7 +16,7 @@ const useCreateCrewMock = vi.hoisted(() =>
   vi.fn(() => ({
     createCrew,
     creating: false,
-    creatingFor: (_projectId: string) => false,
+    creatingFor: (_projectId: string): boolean => false,
     error: null as string | null,
     lastAttempt: null as { projectId: string; openingRequest?: string } | null,
   })),

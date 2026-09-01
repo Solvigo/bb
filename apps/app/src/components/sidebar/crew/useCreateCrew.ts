@@ -15,7 +15,6 @@ import {
   formatLifecycleErrorDescription,
   parseLifecycleError,
 } from "@/lib/lifecycle-errors";
-import { BbHttpError } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
 
 interface ProjectRow {
@@ -416,18 +415,19 @@ function buildRootOpeningInput({
 }: {
   bootstrap: string | null;
   openingRequest?: string;
-}): { type: "text"; text: string; mentions: [] }[] {
+}): { type: "text"; text: string; mentions: readonly [] }[] {
   const request = openingRequest?.trim();
+  const emptyMentions = [] as const;
   return [
     ...(bootstrap !== null
-      ? [{ type: "text" as const, text: bootstrap, mentions: [] }]
+      ? [{ type: "text" as const, text: bootstrap, mentions: emptyMentions }]
       : []),
     ...(request
       ? [
           {
             type: "text" as const,
             text: `The Captain's opening request:\n\n${request}`,
-            mentions: [],
+            mentions: emptyMentions,
           },
         ]
       : []),
@@ -435,15 +435,22 @@ function buildRootOpeningInput({
 }
 
 function isThreadStillStarting(error: unknown): boolean {
-  if (!(error instanceof BbHttpError) || error.status !== 409) {
+  const lifecycle = parseLifecycleError(error);
+  if (
+    lifecycle?.code !== "thread_not_writable" ||
+    lifecycle.details.reason !== "still_starting" ||
+    lifecycle.details.threadStatus !== "starting"
+  ) {
     return false;
   }
-  const lifecycle = parseLifecycleError(error);
-  return (
-    lifecycle?.code === "thread_not_writable" &&
-    lifecycle.details.reason === "still_starting" &&
-    lifecycle.details.threadStatus === "starting"
-  );
+  const status =
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status: unknown }).status === "number"
+      ? (error as { status: number }).status
+      : null;
+  return status === 409;
 }
 
 function openingSendErrorMessage(error: unknown): string {

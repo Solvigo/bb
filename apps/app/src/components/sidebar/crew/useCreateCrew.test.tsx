@@ -37,6 +37,7 @@ vi.mock("react-router-dom", async () => {
 
 import rootBootstrap from "./rootAgentBootstrap.md?raw";
 import { BbHttpError } from "@bb/sdk/browser";
+import { HttpError } from "@/lib/api";
 
 function stillStartingError(): never {
   const body = {
@@ -48,7 +49,7 @@ function stillStartingError(): never {
       threadStatus: "starting",
     },
   };
-  throw new BbHttpError({
+  throw new HttpError({
     status: 409,
     code: "thread_not_writable",
     message: "Thread is still starting",
